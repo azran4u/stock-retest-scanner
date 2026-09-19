@@ -239,9 +239,9 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Output paths (repo `azran4u/stock-retest-scanner`)
 - `historical-reports/YYYY-MM-DD.csv` — dated full report
 - `historical-reports/latest.csv` — copy of the newest dated file
-- `docs/historical-reports/*.csv` — mirror for Pages (source = `/docs`)
-- `docs/reports.json` — manifest for the report-date picker: `[{date, file, path}, ...]`
-- `docs/index.html` — dark dashboard (Chart.js CDN): summary cards, PASS vs FAIL, fail-reason buckets, R:R distribution for PASSes, sortable/filterable table
+- `historical-reports/*.csv` — only copy of report CSVs (Pages source = `/`)
+- `reports.json` — manifest for the report-date picker: `[{date, file, path}, ...]`
+- `index.html` — dark dashboard (Chart.js CDN); fetches CSVs from `historical-reports/`
 
 ### Columns
 Same spirit as the verify table, for every ticker:

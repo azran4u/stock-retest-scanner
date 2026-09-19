@@ -15,9 +15,9 @@ Weekly retest stock screener maintained with Grok Bot for Eyal.
 | Path | Purpose |
 |------|---------|
 | `stock_screen.py` | FinViz + yfinance screener |
-| `export_daily_report.py` | Build `historical-reports/YYYY-MM-DD.csv` (+ `latest.csv`) and refresh `docs/reports.json` |
+| `export_daily_report.py` | Build `historical-reports/YYYY-MM-DD.csv` (+ `latest.csv`) and refresh `reports.json` |
 | `historical-reports/` | Dated full-universe CSVs (repo source of truth) |
-| `docs/` | GitHub Pages site (`index.html` dashboard + mirrored CSVs) |
+| `` | GitHub Pages site (`index.html` dashboard + mirrored CSVs) |
 | `RULES.md` | Screening / drawing / reporting rules |
 
 ## Daily report columns
@@ -32,7 +32,7 @@ python export_daily_report.py \
   --verify /workspace/stock_screen_verify.csv \
   --date YYYY-MM-DD \
   --out-dir ./historical-reports \
-  --docs-dir ./docs
+  --docs-dir ./
 ```
 
 See `RULES.md` § Reports for the full process.

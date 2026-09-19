@@ -211,18 +211,12 @@ def write_reports(df: pd.DataFrame, out_dir: Path, report_date: str) -> Dict[str
     return {"dated": dated, "latest": latest}
 
 
-def update_manifest(docs_dir: Path, report_date: str, filename: str, out_dir: Path) -> Path:
-    """Update docs/reports.json and mirror CSVs into docs/historical-reports for Pages."""
-    docs_dir.mkdir(parents=True, exist_ok=True)
-    docs_hist = docs_dir / "historical-reports"
-    docs_hist.mkdir(parents=True, exist_ok=True)
-    # Mirror root historical-reports into docs/ so GitHub Pages (source=/docs) can fetch them
-    for src in out_dir.glob("*.csv"):
-        (docs_hist / src.name).write_bytes(src.read_bytes())
-
-    manifest_path = docs_dir / "reports.json"
+def update_manifest(repo_root: Path, report_date: str, filename: str, out_dir: Path) -> Path:
+    """Write reports.json next to index.html. CSVs live only in historical-reports/ (Pages source=/)."""
+    repo_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = repo_root / "reports.json"
     found = []
-    for p in sorted(docs_hist.glob("????-??-??.csv"), reverse=True):
+    for p in sorted(out_dir.glob("????-??-??.csv"), reverse=True):
         found.append(
             {
                 "date": p.stem,
