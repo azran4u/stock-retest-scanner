@@ -187,7 +187,7 @@ def find_swing_highs(highs: np.ndarray, left: int = 3, right: int = 3) -> List[i
 
 def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Heuristic weekly retest (v2, tighter — AMP should FAIL R:R):
+    Heuristic weekly retest (v2, tighter):
 
     1) Swing high = local max of High (3/3).
     2) Zone = [body_top=max(O,C), wick_high=H] of peak candle.
@@ -381,7 +381,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
         if recent_passes:
             recent_passes.sort(key=lambda x: (-x["score"], -x["rr"]))
             return recent_passes[0]
-    return best  # may be R:R fail (e.g. AMP)
+    return best  # may be R:R fail
 
 
 def to_weekly(daily: pd.DataFrame) -> pd.DataFrame:
@@ -475,8 +475,6 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
     out["detail"]["dollar_vol"] = dollar_vol
     out["detail"]["dollar_vol_30d"] = dollar_vol
 
-    # Filter 1: skip AMP as "known" only after we compute for the note —
-    # User wants AMP shown as FAIL R:R < 2. We still analyze it.
     if dollar_vol < DOLLAR_VOL_MIN:
         out["reason"] = f"$vol(30d) ${dollar_vol/1e6:.1f}M < $50M"
         return out
@@ -503,10 +501,7 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
 
     setup = weekly_retest_setup(weekly)
     if setup is None:
-        # For AMP, still try to report best R:R attempt even if filters fail
         out["reason"] = "no weekly retest setup / geometry"
-        if ticker == "AMP":
-            out["reason"] = "no weekly retest setup / geometry (expected known fail path)"
         if short_flag:
             out["reason"] += " | short float N/A"
         return out
@@ -522,18 +517,10 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
 
     if not setup["pass_rr"]:
         reason = f"R:R {setup['rr']:.2f} < {RR_MIN}"
-        if ticker == "AMP":
-            reason += " (known)"
         if short_flag:
             reason += " | short float N/A"
         out["reason"] = reason
         return out
-
-    # AMP should not PASS under tightened rules; if it does, force-note
-    if ticker == "AMP":
-        # Still report as PASS if geometry says so, but user expects fail —
-        # leave as computed; debug will show.
-        pass
 
     sf_str = f"{short*100:.2f}%" if short is not None else "N/A (flagged)"
     out["status"] = "PASS"
@@ -987,7 +974,7 @@ def main():
             "clamped to [0.5×ATR, 1×ATR]; "
             "TP=body top of latest post-breakout swing; R:R≥2 hard. Short% FinViz HTML "
             "cached; N/A flagged but continues. Not discretionary-chart identical. "
-            "AMP expected FAIL R:R<2 (known). No ticker hard-skips — history/$vol/short/geometry only. Dollar vol = 30d avg volume × last close. Verify: stock_screen_verify.csv/.html."
+            "No ticker hard-skips — history/$vol/short/geometry only. Dollar vol = 30d avg volume × last close. Reports: historical-reports/."
         ),
     ]
     text = "\n".join(header)
