@@ -477,13 +477,13 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
 
     # Filter 1: skip AMP as "known" only after we compute for the note —
     # User wants AMP shown as FAIL R:R < 2. We still analyze it.
-    if ticker != "AMP" and dollar_vol < DOLLAR_VOL_MIN:
+    if dollar_vol < DOLLAR_VOL_MIN:
         out["reason"] = f"$vol(30d) ${dollar_vol/1e6:.1f}M < $50M"
         return out
 
     weekly = to_weekly(hist)
     out["detail"]["weekly_bars"] = len(weekly)
-    if ticker != "AMP" and len(weekly) < MIN_WEEKLY_BARS:
+    if len(weekly) < MIN_WEEKLY_BARS:
         out["reason"] = f"history {len(weekly)} weekly bars < ~3y ({MIN_WEEKLY_BARS})"
         return out
 
@@ -497,7 +497,7 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
     out["detail"]["inst_src"] = fund.get("inst_src")
     if short_flag:
         out["detail"]["short_note"] = "short float N/A"
-    elif ticker != "AMP" and short >= SHORT_FLOAT_MAX:
+    elif short is not None and short >= SHORT_FLOAT_MAX:
         out["reason"] = f"short float {short*100:.2f}% >= 5%"
         return out
 
@@ -916,9 +916,6 @@ def download_batch(tickers: List[str], chunk: int = 50) -> Dict[str, pd.DataFram
 def main():
     print("=== Fetching FinViz screener tickers ===")
     tickers = fetch_screener_tickers()
-    if "AMP" not in tickers:
-        tickers.append("AMP")
-    tickers = ["AMP"] + [t for t in tickers if t != "AMP"]
     print(f"Total tickers: {len(tickers)}")
 
     if HIST_CACHE.exists():
