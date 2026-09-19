@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-18 (30d dollar vol + earnings-aware verify CSV/HTML; no hard-skips)  
+Last updated: 2026-09-19 (full-universe historical reports + GitHub Pages dashboard)  
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -150,7 +150,8 @@ Do **not** add stocks that fail any filter. Do **not** add a foreign same-ticker
 
 Artifacts (typical paths on the bot computer):
 - `/workspace/stock_screen_results.txt` — full debug list  
-- `/workspace/stock_screen_results.csv` — all tickers debug  
+- `/workspace/stock_screen_results.csv` — all tickers debug
+- `historical-reports/YYYY-MM-DD.csv` — published full-universe daily report (repo)  
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
 - Verify columns: ticker, status, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
@@ -227,4 +228,47 @@ Artifacts (typical paths on the bot computer):
 | **grok_upload** | Leave alone unless user asks |
 
 When a new PASS clears the code screen, add it to **Grok queue** promptly (no drawings). Hand the same PASS to TV Drawer for **Grok** drawings.
+
+---
+
+## 12. Reports (historical CSVs + GitHub Pages)
+
+### Goal
+Every daily screen produces a **full-universe** CSV of **all** FinViz-returned tickers (PASS and FAIL), not only PASSes. These feed the public dashboard on GitHub Pages.
+
+### Output paths (repo `azran4u/stock-retest-scanner`)
+- `historical-reports/YYYY-MM-DD.csv` — dated full report
+- `historical-reports/latest.csv` — copy of the newest dated file
+- `docs/historical-reports/*.csv` — mirror for Pages (source = `/docs`)
+- `docs/reports.json` — manifest for the report-date picker: `[{date, file, path}, ...]`
+- `docs/index.html` — dark dashboard (Chart.js CDN): summary cards, PASS vs FAIL, fail-reason buckets, R:R distribution for PASSes, sortable/filterable table
+
+### Columns
+Same spirit as the verify table, for every ticker:
+
+`ticker, status, reason, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
+
+- Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
+- Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
+
+### Helper
+`export_daily_report.py` (also under `/workspace/stock-screener/` on the bot box):
+
+```bash
+python export_daily_report.py \
+  --results /workspace/stock_screen_results.csv \
+  --verify /workspace/stock_screen_verify.csv \
+  --date YYYY-MM-DD \
+  --out-dir ./historical-reports \
+  --docs-dir ./docs \
+  [--handoff /workspace/stock-screener/handoff_YYYY-MM-DD.json]
+```
+
+Call this at the end of the daily routine after `stock_screen.py` finishes, then commit + push so Pages updates.
+
+### Dashboard URL
+https://azran4u.github.io/stock-retest-scanner/
+
+### Fail-reason buckets (dashboard)
+Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.
 
