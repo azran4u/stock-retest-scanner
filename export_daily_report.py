@@ -254,7 +254,7 @@ def main() -> None:
         "--docs-dir",
         type=Path,
         default=None,
-        help="If set, also refresh docs/reports.json",
+        help="Repo root for reports.json (default: parent of --out-dir)",
     )
     args = ap.parse_args()
 
@@ -282,15 +282,9 @@ def main() -> None:
     print(f"  {paths['dated']}")
     print(f"  {paths['latest']}")
 
-    docs_dir = args.docs_dir
-    if docs_dir is None:
-        # sibling docs/ next to historical-reports
-        sibling = args.out_dir.parent / "docs"
-        if sibling.is_dir() or (args.out_dir.parent / "README.md").exists():
-            docs_dir = sibling
-    if docs_dir is not None:
-        mp = update_manifest(docs_dir, args.date, f"{args.date}.csv", args.out_dir)
-        print(f"  manifest {mp}")
+    repo_root = args.docs_dir if args.docs_dir is not None else args.out_dir.parent
+    mp = update_manifest(repo_root, args.date, f"{args.date}.csv", args.out_dir)
+    print(f"  manifest {mp}")
 
 
 if __name__ == "__main__":
