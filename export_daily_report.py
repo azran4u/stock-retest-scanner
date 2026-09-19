@@ -27,7 +27,6 @@ import pandas as pd
 REPORT_COLS = [
     "ticker",
     "status",
-    "reason",
     "current_price",
     "entry",
     "sl",
@@ -45,6 +44,7 @@ REPORT_COLS = [
     "earnings_known",
     "earnings_blackout",
     "tradingview_url",
+    "reason",
 ]
 
 
