@@ -200,7 +200,7 @@ const COLS = [
   "ticker","status","current_price","entry","sl","tp","rr",
   "zone_lo","zone_hi","atr","short_float_pct","inst_own_pct",
   "dollar_vol_30d","avg_vol_30d","weekly_bars","days_to_earnings",
-  "earnings_known","earnings_blackout","tradingview_url","reason"
+  "earnings_known","earnings_blackout","finviz_url","reason"
 ];
 
 const NUM_COLS = new Set([
@@ -272,8 +272,18 @@ function bucketReason(reason, status) {
   return "other";
 }
 
-function fmt(col, val) {
+function fmt(col, val, row) {
+  if (col === "ticker") {
+    const name = val == null ? "" : String(val);
+    const tv = row && row.tradingview_url ? row.tradingview_url : "";
+    if (tv) return `<a href="${tv}" target="_blank" rel="noopener">${name}</a>`;
+    return name;
+  }
   if (val === null || val === undefined || val === "") return "";
+  if (col === "finviz_url") {
+    if (!val) return "";
+    return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
+  }
   if (col === "tradingview_url") {
     return `<a href="${val}" target="_blank" rel="noopener">TV</a>`;
   }
@@ -403,7 +413,7 @@ function renderTable() {
   }).join("") + "</tr>";
   tbody.innerHTML = rows.map(r => {
     const cls = String(r.status).toUpperCase() === "PASS" ? "pass" : "fail";
-    return `<tr class="${cls}">` + COLS.map(c => `<td>${fmt(c, r[c])}</td>`).join("") + "</tr>";
+    return `<tr class="${cls}">` + COLS.map(c => `<td>${fmt(c, r[c], r)}</td>`).join("") + "</tr>";
   }).join("");
   thead.querySelectorAll("th").forEach(th => {
     th.addEventListener("click", () => {

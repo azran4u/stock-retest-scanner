@@ -44,6 +44,7 @@ REPORT_COLS = [
     "earnings_known",
     "earnings_blackout",
     "tradingview_url",
+    "finviz_url",
     "reason",
 ]
 
@@ -159,7 +160,8 @@ def build_report(
             row["inst_own_pct"] = _pct(r.get("inst_own") if "inst_own" in r.index else r.get("inst_own_pct"))
             row["earnings_known"] = False
             row["earnings_blackout"] = False
-            row["tradingview_url"] = tv_url(t, ex_map)
+            row["finviz_url"] = f"https://finviz.com/quote.ashx?t={ticker}"
+        row["tradingview_url"] = tv_url(t, ex_map)
 
         if t in pass_earn:
             pe = pass_earn[t]
