@@ -197,14 +197,14 @@
 
 <script>
 const COLS = [
-  "ticker","status","current_price","entry","sl","tp","rr",
+  "ticker","status","current_price","entry","sl","tp","rr","atrs_from_entry",
   "zone_lo","zone_hi","atr","short_float_pct","inst_own_pct",
   "dollar_vol_30d","avg_vol_30d","weekly_bars","days_to_earnings",
   "earnings_known","earnings_blackout","finviz_url","reason"
 ];
 
 const NUM_COLS = new Set([
-  "current_price","entry","sl","tp","rr","zone_lo","zone_hi","atr",
+  "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
   "weekly_bars","days_to_earnings"
 ]);
@@ -212,6 +212,8 @@ const NUM_COLS = new Set([
 let allRows = [];
 let sortCol = "rr";
 let sortDir = "desc";
+let sortCol2 = "atrs_from_entry";
+let sortDir2 = "asc";
 let charts = { status: null, reasons: null, rr: null };
 let chartFilter = null; // { type: 'status'|'reason'|'rr', value: string } | null
 const RR_BINS = [
@@ -298,7 +300,7 @@ function fmt(col, val, row) {
   if (NUM_COLS.has(col)) {
     const n = toNum(val);
     if (n === null) return "";
-    if (col === "rr") return n.toFixed(3);
+    if (col === "rr" || col === "atrs_from_entry") return n.toFixed(3);
     if (col === "dollar_vol_30d") return Math.round(n).toLocaleString();
     if (col === "avg_vol_30d" || col === "weekly_bars" || col === "days_to_earnings") return String(Math.round(n));
     if (col.endsWith("_pct")) return n.toFixed(2);
@@ -307,25 +309,33 @@ function fmt(col, val, row) {
   return String(val);
 }
 
-function compareRows(a, b) {
-  const av = a[sortCol], bv = b[sortCol];
+function cmpCol(a, b, col, dir) {
+  if (!col) return 0;
+  const av = a[col], bv = b[col];
   const an = toNum(av), bn = toNum(bv);
-  // Empty numeric values (e.g. FAIL rows with no RR) always sort last,
-  // regardless of asc/desc.
-  if (NUM_COLS.has(sortCol)) {
+  if (NUM_COLS.has(col)) {
     const aEmpty = an === null;
     const bEmpty = bn === null;
     if (aEmpty && !bEmpty) return 1;
     if (!aEmpty && bEmpty) return -1;
     if (!aEmpty && !bEmpty) {
       const cmp = an - bn;
-      if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+      if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
     }
-  } else {
-    const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
-    if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+    return 0;
   }
-  // secondary: PASS before FAIL when primary ties / both empty
+  const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
+  if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
+  return 0;
+}
+
+function compareRows(a, b) {
+  let c = cmpCol(a, b, sortCol, sortDir);
+  if (c !== 0) return c;
+  if (sortCol2 && sortCol2 !== sortCol) {
+    c = cmpCol(a, b, sortCol2, sortDir2);
+    if (c !== 0) return c;
+  }
   const as = String(a.status).toUpperCase() === "PASS" ? 0 : 1;
   const bs = String(b.status).toUpperCase() === "PASS" ? 0 : 1;
   if (as !== bs) return as - bs;
@@ -408,23 +418,37 @@ function renderTable() {
   const thead = document.querySelector("#dataTable thead");
   const tbody = document.querySelector("#dataTable tbody");
   thead.innerHTML = "<tr>" + COLS.map(c => {
-    const mark = sortCol === c ? `<span class="sort">${sortDir === "asc" ? "▲" : "▼"}</span>` : "";
-    return `<th data-col="${c}">${c}${mark}</th>`;
+    let mark = "";
+    if (sortCol === c) mark = `<span class="sort">1${sortDir === "asc" ? "▲" : "▼"}</span>`;
+    else if (sortCol2 === c) mark = `<span class="sort">2${sortDir2 === "asc" ? "▲" : "▼"}</span>`;
+    return `<th data-col="${c}" title="Click: primary sort · Shift+click: secondary sort">${c}${mark}</th>`;
   }).join("") + "</tr>";
   tbody.innerHTML = rows.map(r => {
     const cls = String(r.status).toUpperCase() === "PASS" ? "pass" : "fail";
     return `<tr class="${cls}">` + COLS.map(c => `<td>${fmt(c, r[c], r)}</td>`).join("") + "</tr>";
   }).join("");
   thead.querySelectorAll("th").forEach(th => {
-    th.addEventListener("click", () => {
+    th.addEventListener("click", (ev) => {
       const c = th.getAttribute("data-col");
-      if (sortCol === c) sortDir = sortDir === "asc" ? "desc" : "asc";
-      else { sortCol = c; sortDir = (c === "rr" || NUM_COLS.has(c)) ? "desc" : "asc"; }
+      const defaultDir = (c === "rr") ? "desc" : (c === "atrs_from_entry" ? "asc" : (NUM_COLS.has(c) ? "desc" : "asc"));
+      if (ev.shiftKey) {
+        if (sortCol2 === c) sortDir2 = sortDir2 === "asc" ? "desc" : "asc";
+        else { sortCol2 = c; sortDir2 = defaultDir; }
+      } else {
+        if (sortCol === c) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          // demote previous primary to secondary when changing column
+          if (sortCol && sortCol !== c) { sortCol2 = sortCol; sortDir2 = sortDir; }
+          sortCol = c;
+          sortDir = defaultDir;
+        }
+      }
       renderTable();
     });
   });
+  const s2 = (sortCol2 && sortCol2 !== sortCol) ? `, then ${sortCol2} ${sortDir2}` : "";
   document.getElementById("tableMeta").textContent =
-    `Showing ${rows.length} / ${allRows.length} rows · sort: ${sortCol} ${sortDir}`;
+    `Showing ${rows.length} / ${allRows.length} rows · sort: ${sortCol} ${sortDir}${s2} · shift-click for 2nd`;
 }
 
 function destroyCharts() {
@@ -545,6 +569,8 @@ async function loadReport(path, dateLabel) {
   allRows = parseCSV(text);
   sortCol = "rr";
   sortDir = "desc";
+  sortCol2 = "atrs_from_entry";
+  sortDir2 = "asc";
   chartFilter = null;
   document.getElementById("statusFilter").value = "ALL";
   updateChartFilterChip();

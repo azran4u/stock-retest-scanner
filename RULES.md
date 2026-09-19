@@ -85,7 +85,7 @@ Analysis of support / resistance is on the **weekly** timeframe.
 - Example (AMP, teaching example): zone **537.5 – 544.2**
 - Example (R): use the week with the higher body (e.g. week after a tall-wick spike), not the wick-high week alone.
 
-Skip if resistance isn’t clear, price isn’t near the retest, pullback volume isn’t relatively low, or there is no reversal at the zone.
+Skip if resistance isn’t clear, historical pullback to the zone didn’t happen, pullback volume isn’t relatively low, or geometry/R:R fails. Current price distance from entry is **not** a skip reason.
 
 Prefer common stocks over ETFs / CEFs / leveraged products unless the user says otherwise.
 
@@ -115,6 +115,11 @@ Prefer common stocks over ETFs / CEFs / leveraged products unless the user says 
 - `R:R = (TP − entry) / (entry − SL)`  
 - Require **R:R ≥ 2** (at least **1:2**)  
 - If R:R &lt; 2 → **FAIL / skip** (do not add to watchlist)
+
+### 4.5 Distance to entry (informational)
+- `atrs_from_entry = (current_price − entry) / ATR` (signed; **+** = price above entry)
+- **Not** a pass/fail filter. R:R uses entry / SL / TP only; a PASS may still be far from entry.
+- Dashboard default sort: R:R desc, then `atrs_from_entry` asc (closer first). Shift-click for secondary sort.
 
 ---
 
@@ -156,7 +161,7 @@ Artifacts (typical paths on the bot computer):
 - `historical-reports/YYYY-MM-DD.csv` — published full-universe daily report (repo)  
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
-- Verify columns: ticker, status, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
+- Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
 - `tradingview_url` best-effort US exchange (`NASDAQ:…` / `NYSE:…`); `MOG-A` → `MOG.A`  
 - `days_to_earnings` is populated directly in the verification outputs; unknown values are blank/NaN and flagged. The 14-day blackout rule still controls the PASS/draw queue.  
 - `/workspace/pass_queue.json` — current earnings-safe pass queue with levels  
@@ -248,7 +253,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Columns
 Same spirit as the verify table, for every ticker:
 
-`ticker, status, reason, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
+`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
 
 - Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.

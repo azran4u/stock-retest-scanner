@@ -31,8 +31,8 @@ MIN_WEEKLY_BARS = 150
 SHORT_FLOAT_MAX = 0.05
 RR_MIN = 2.0
 EARNINGS_BLACKOUT_DAYS = 14
-NEAR_ZONE_ATR = 1.0          # tighter: within ~1 ATR
-MAX_EXT_ABOVE_ATR = 1.0      # close not more than 1 ATR above zone_hi
+NEAR_ZONE_ATR = 1.0          # soft-score only (not a hard filter)
+MAX_EXT_ABOVE_ATR = 1.0      # legacy soft-score constant; not a hard filter
 PULLBACK_TOUCH_ATR = 0.5     # post-breakout must tag zone (within 0.5 ATR)
 FV_TTL_DAYS = 3              # FinViz quote fundamentals cache TTL
 CACHE_DIR = Path("/workspace/cache")
@@ -202,10 +202,10 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
     3) Breakout = first later weekly Close > zone_hi (and not on last 2 bars).
     4) Pullback REQUIRED: after breakout, some weekly Low <= zone_hi + 0.5*ATR
        (must actually tag the broken resistance).
-    5) Current location: last close/low within 1*ATR of zone OR last 3 weeks
-       touch zone; AND last close <= zone_hi + 1*ATR (not extended).
+    5) Current price distance from entry/zone is NOT a pass/fail filter
+       (R:R uses entry/SL/TP only). Soft score may still prefer nearer prices.
     6) Soft score: below-avg pullback volume vs breakout week; hammer /
-       close>=zone_mid on latest week.
+       close>=zone_mid on latest week; near/touched are soft bonuses only.
     7) Prefer most recent qualifying peak (then score/R:R).
     8) Geometry:
        entry = zone mid
@@ -280,14 +280,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
             (l[k] <= zone_hi and h[k] >= zone_lo)
             for k in range(max(0, last_i - 2), last_i + 1)
         )
-        if not (near or touched):
-            continue
-        # Not extended far above zone
-        if last_close > zone_hi + MAX_EXT_ABOVE_ATR * atr_now:
-            continue
-        # Failed breakout deep below
-        if last_close < zone_lo - 1.0 * atr_now:
-            continue
+        # NOTE: do not filter on current price vs zone/entry — R:R is entry/SL/TP only.
 
         bo_vol = float(v[bo_i])
         pb_vols = v[bo_i + 1 :]
@@ -340,6 +333,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
         if tp <= entry:
             continue
         rr = (tp - entry) / risk
+        atrs_from_entry = (last_close - entry) / atr_now if atr_now else float("nan")
 
         # Prefer more recent peaks
         recency = si / max(1, last_i)
@@ -368,6 +362,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
             "vol_ok": vol_ok,
             "bullish": bullish,
             "atr": atr_now,
+            "atrs_from_entry": atrs_from_entry,
             "score": score,
             "si": si,
             "reason": "PASS" if rr >= RR_MIN else f"R:R {rr:.2f} < {RR_MIN}",
@@ -521,7 +516,10 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
         "wick_sl": setup.get("wick_sl"),
         "atr_floor_applied": setup.get("atr_floor_applied"),
         "atr_cap_applied": setup.get("atr_cap_applied"),
+        "atrs_from_entry": setup.get("atrs_from_entry"),
     })
+    if out["detail"].get("atrs_from_entry") is None and setup.get("atr"):
+        out["detail"]["atrs_from_entry"] = (last_close - setup["entry"]) / setup["atr"]
 
     if not setup["pass_rr"]:
         reason = f"R:R {setup['rr']:.2f} < {RR_MIN}"
@@ -752,6 +750,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Dict[str, 
             "sl": d.get("sl"),
             "tp": d.get("tp"),
             "rr": d.get("rr"),
+            "atrs_from_entry": d.get("atrs_from_entry"),
             "zone_lo": d.get("zone_lo"),
             "zone_hi": d.get("zone_hi"),
             "atr": d.get("atr"),
@@ -771,6 +770,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Dict[str, 
 
     cols = [
         "ticker", "status", "current_price", "entry", "sl", "tp", "rr",
+        "atrs_from_entry",
         "zone_lo", "zone_hi", "atr", "short_float_pct", "inst_own_pct",
         "dollar_vol_30d", "avg_vol_30d", "weekly_bars", "days_to_earnings",
         "earnings_known", "earnings_blackout", "tradingview_url", "reason",
@@ -787,7 +787,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Dict[str, 
             return ""
         if col == "tradingview_url":
             return f'<a href="{val}" target="_blank" rel="noopener">{val}</a>'
-        if col in ("current_price", "entry", "sl", "tp", "zone_lo", "zone_hi", "atr"):
+        if col in ("current_price", "entry", "sl", "tp", "zone_lo", "zone_hi", "atr", "atrs_from_entry"):
             try:
                 return f"{float(val):.4f}"
             except Exception:
@@ -1049,6 +1049,7 @@ def main():
             "weekly_bars": d.get("weekly_bars"), "short_float": d.get("short_float"),
             "inst_own": d.get("inst_own"),
             "entry": d.get("entry"), "sl": d.get("sl"), "tp": d.get("tp"), "rr": d.get("rr"),
+            "atrs_from_entry": d.get("atrs_from_entry"),
             "zone_lo": d.get("zone_lo"), "zone_hi": d.get("zone_hi"), "atr": d.get("atr"),
         })
     pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
@@ -1074,7 +1075,7 @@ def main():
             "v2 tighter retest: swing=3/3 local High max; zone=[body top, wick high]; "
             "breakout=first weekly close > zone_hi; MUST pull back to zone "
             "(post-BO low <= zone_hi+0.5 ATR); current price within ~1 ATR of zone "
-            "and not >1 ATR above zone_hi. Soft score for quiet pullback volume + "
+            "Current price vs entry is informational (atrs_from_entry), not a filter. Soft score for quiet pullback volume + "
             "hammer/close>=mid. Prefer most-recent qualifying peak. "
             "entry=zone mid; SL=deepest Low among weeks with body-top OR High in zone, "
             "clamped to [0.5×ATR, 1×ATR]; "

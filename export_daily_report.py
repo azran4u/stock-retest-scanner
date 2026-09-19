@@ -32,6 +32,7 @@ REPORT_COLS = [
     "sl",
     "tp",
     "rr",
+    "atrs_from_entry",
     "zone_lo",
     "zone_hi",
     "atr",
@@ -145,6 +146,7 @@ def build_report(
                 "sl",
                 "tp",
                 "rr",
+                "atrs_from_entry",
                 "zone_lo",
                 "zone_hi",
                 "atr",
@@ -160,7 +162,7 @@ def build_report(
             row["inst_own_pct"] = _pct(r.get("inst_own") if "inst_own" in r.index else r.get("inst_own_pct"))
             row["earnings_known"] = False
             row["earnings_blackout"] = False
-            row["finviz_url"] = f"https://finviz.com/quote.ashx?t={ticker}"
+            row["finviz_url"] = f"https://finviz.com/quote.ashx?t={t}"
         row["tradingview_url"] = tv_url(t, ex_map)
 
         if t in pass_earn:
@@ -185,6 +187,14 @@ def build_report(
 
         row["earnings_known"] = _as_bool(row.get("earnings_known"), False)
         row["earnings_blackout"] = _as_bool(row.get("earnings_blackout"), False)
+        # Signed ATRs from entry: (price - entry) / ATR. + means price above entry.
+        if row.get("atrs_from_entry") is None:
+            try:
+                px = float(row["current_price"]); en = float(row["entry"]); atr = float(row["atr"])
+                if atr > 0:
+                    row["atrs_from_entry"] = (px - en) / atr
+            except Exception:
+                pass
         rows.append(row)
 
     df = pd.DataFrame(rows)[REPORT_COLS]
