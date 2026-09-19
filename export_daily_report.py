@@ -60,34 +60,74 @@ def _pct(val: Any) -> Optional[float]:
     return round(f, 2)
 
 
-def _load_exchange_map(verify: pd.DataFrame, grok_path: Optional[Path]) -> Dict[str, str]:
-    ex_map: Dict[str, str] = {}
-    if "tradingview_url" in verify.columns:
-        for url in verify["tradingview_url"].dropna():
-            m = re.search(r"symbol=([A-Z]+):([A-Z0-9.]+)", str(url))
-            if m:
-                ex, sym = m.group(1), m.group(2)
-                ex_map[sym] = ex
-                ex_map[sym.replace(".", "-")] = ex
-                ex_map[sym.replace("-", ".")] = ex
-    if grok_path and grok_path.exists():
-        for line in grok_path.read_text().splitlines():
-            line = line.strip()
-            if ":" not in line:
+def _import_resolve_exchange():
+    """Prefer stock_screen helpers (FinViz cache); fall back to local parser."""
+    try:
+        from stock_screen import resolve_exchange, tv_symbol_for  # type: ignore
+
+        return resolve_exchange, tv_symbol_for
+    except Exception:
+        pass
+    try:
+        import importlib.util
+        import sys
+
+        for candidate in (
+            Path(__file__).resolve().parent / "stock_screen.py",
+            Path("/workspace/stock_screen.py"),
+        ):
+            if not candidate.exists():
                 continue
-            ex, sym = line.split(":", 1)
-            ex, sym = ex.strip().upper(), sym.strip().upper()
-            if ex and sym:
-                ex_map[sym] = ex
-                ex_map[sym.replace(".", "-")] = ex
-                ex_map[sym.replace("-", ".")] = ex
-    return ex_map
+            spec = importlib.util.spec_from_file_location("_ss_exchange", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules["_ss_exchange"] = mod
+            spec.loader.exec_module(mod)
+            return mod.resolve_exchange, mod.tv_symbol_for
+    except Exception as e:
+        print(f"[export] could not import stock_screen helpers: {e}")
+    return None, None
 
 
-def tv_url(ticker: str, ex_map: Dict[str, str]) -> str:
+_RESOLVE_EXCHANGE, _TV_SYMBOL_FOR = _import_resolve_exchange()
+
+
+def _parse_exchange_from_finviz_html(html: str, ticker: str) -> Optional[str]:
+    """Local duplicate of FinViz Google-Finance link parser (if import fails)."""
+    raw_t = str(ticker).strip().upper()
+    variants = {raw_t, raw_t.replace("-", "."), raw_t.replace(".", "-")}
+    mapping = {
+        "NASDAQ": "NASDAQ",
+        "NYSE": "NYSE",
+        "AMEX": "AMEX",
+        "NYSEARCA": "AMEX",
+        "NYSEAMERICAN": "AMEX",
+        "BATS": "BATS",
+    }
+    for m in re.finditer(
+        r"google\.com/finance/quote/([A-Z0-9.\-]+):([A-Z][A-Z0-9]+)",
+        html,
+        flags=re.I,
+    ):
+        sym, ex = m.group(1).upper(), m.group(2).upper()
+        if sym in variants or sym.replace(".", "-") in variants or sym.replace("-", ".") in variants:
+            mapped = mapping.get(re.sub(r"[^A-Z]", "", ex))
+            if mapped:
+                return mapped
+    return None
+
+
+def tv_url(ticker: str, ex_map: Optional[Dict[str, str]] = None) -> str:
+    """TradingView URL via FinViz exchange resolution (not Grok.txt)."""
+    del ex_map  # unused; kept for call-site compatibility
+    if _TV_SYMBOL_FOR is not None:
+        return _TV_SYMBOL_FOR(str(ticker))
     raw = str(ticker).strip().upper()
     tv_ticker = raw.replace("-", ".")
-    ex = ex_map.get(raw) or ex_map.get(tv_ticker) or "NASDAQ"
+    ex = "NASDAQ"
+    if _RESOLVE_EXCHANGE is not None:
+        ex = _RESOLVE_EXCHANGE(raw)
     return f"https://www.tradingview.com/chart/?symbol={ex}:{tv_ticker}"
 
 
@@ -106,7 +146,8 @@ def build_report(
     grok_path: Optional[Path] = None,
 ) -> pd.DataFrame:
     verify = verify if verify is not None else pd.DataFrame()
-    ex_map = _load_exchange_map(verify, grok_path)
+    # grok_path retained for CLI compat but is NOT used for TradingView exchange.
+    del grok_path
     v_idx = verify.set_index("ticker") if len(verify) and "ticker" in verify.columns else None
 
     earnings_skips = set((handoff or {}).get("earnings_skips") or [])
@@ -163,15 +204,14 @@ def build_report(
             row["earnings_known"] = False
             row["earnings_blackout"] = False
             row["finviz_url"] = f"https://finviz.com/quote.ashx?t={t}"
-        row["tradingview_url"] = tv_url(t, ex_map)
+        row["tradingview_url"] = tv_url(t)
 
         if t in pass_earn:
             pe = pass_earn[t]
             if row.get("days_to_earnings") is None and pe.get("days_to_earnings") is not None:
                 row["days_to_earnings"] = pe["days_to_earnings"]
                 row["earnings_known"] = pe.get("earnings_known", True)
-            if pe.get("tradingview_url"):
-                row["tradingview_url"] = pe["tradingview_url"]
+            # Do not trust handoff tradingview_url for exchange — FinViz wins below.
             if pe.get("short_float_pct") is not None and row.get("short_float_pct") is None:
                 row["short_float_pct"] = pe["short_float_pct"]
 
@@ -182,8 +222,8 @@ def build_report(
             if "earnings blackout" not in reason.lower():
                 row["reason"] = (reason + " | earnings blackout (<14d)").strip(" |")
 
-        if not row.get("tradingview_url"):
-            row["tradingview_url"] = tv_url(t, ex_map)
+        # Always resolve TradingView exchange from FinViz/yfinance (never Grok.txt).
+        row["tradingview_url"] = tv_url(t)
 
         row["earnings_known"] = _as_bool(row.get("earnings_known"), False)
         row["earnings_blackout"] = _as_bool(row.get("earnings_blackout"), False)
@@ -253,7 +293,12 @@ def main() -> None:
     ap.add_argument("--results", type=Path, default=Path("/workspace/stock_screen_results.csv"))
     ap.add_argument("--verify", type=Path, default=Path("/workspace/stock_screen_verify.csv"))
     ap.add_argument("--handoff", type=Path, default=None)
-    ap.add_argument("--grok", type=Path, default=Path("/workspace/Grok.txt"))
+    ap.add_argument(
+        "--grok",
+        type=Path,
+        default=Path("/workspace/Grok.txt"),
+        help="Deprecated for exchange; TradingView URLs use FinViz/yfinance.",
+    )
     ap.add_argument("--date", required=True, help="Report date YYYY-MM-DD")
     ap.add_argument(
         "--out-dir",

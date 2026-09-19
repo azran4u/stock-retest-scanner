@@ -162,7 +162,7 @@ Artifacts (typical paths on the bot computer):
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
 - Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
-- `tradingview_url` best-effort US exchange (`NASDAQ:…` / `NYSE:…`); `MOG-A` → `MOG.A`  
+- `tradingview_url` US exchange from **FinViz** (Google Finance link on quote page) with yfinance fallback; **not** from `Grok.txt`. `MOG-A` → `MOG.A`  
 - `days_to_earnings` is populated directly in the verification outputs; unknown values are blank/NaN and flagged. The 14-day blackout rule still controls the PASS/draw queue.  
 - `/workspace/pass_queue.json` — current earnings-safe pass queue with levels  
 - `/workspace/earnings_filter_log.txt`  
@@ -282,4 +282,4 @@ Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no r
 ## 14. FinViz caches
 
 - **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
-- **Quote fundamentals** (short float, inst own): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries are re-fetched.
+- **Quote fundamentals** (short float, inst own, **exchange**): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries (including missing `exchange`) are re-fetched. TradingView links use this FinViz exchange (yfinance only if FinViz fails); `Grok.txt` is not authoritative for exchange.

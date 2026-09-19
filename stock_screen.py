@@ -112,9 +112,81 @@ def _finviz_label_value(soup: BeautifulSoup, label: str) -> Optional[float]:
     return None
 
 
-def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Optional[float]]:
-    """Short Float + Inst Own from FinViz quote; cached under cache/fv_{ticker}.json
+def _map_exchange_to_tv(raw) -> Optional[str]:
+    """Map FinViz / Google Finance / yfinance exchange names to TradingView prefixes."""
+    if not raw:
+        return None
+    key = re.sub(r"[^A-Z]", "", str(raw).strip().upper())
+    mapping = {
+        "NASDAQ": "NASDAQ",
+        "NMS": "NASDAQ",
+        "NGM": "NASDAQ",
+        "NCM": "NASDAQ",
+        "NAS": "NASDAQ",
+        "NYSE": "NYSE",
+        "NYQ": "NYSE",
+        "AMEX": "AMEX",
+        "ASE": "AMEX",
+        "NYSEAMERICAN": "AMEX",
+        "NYSEAMER": "AMEX",
+        "NYSEARCA": "AMEX",
+        "ARCA": "AMEX",
+        "PCX": "AMEX",
+        "BATS": "BATS",
+        "BZX": "BATS",
+        "CBOE": "BATS",
+    }
+    return mapping.get(key)
+
+
+def _parse_exchange_from_finviz_html(html: str, ticker: str) -> Optional[str]:
+    """Prefer google.com/finance/quote/TICKER:EXCHANGE; also accept EXCHANGE:TICKER."""
+    raw_t = ticker.strip().upper()
+    variants = {raw_t, raw_t.replace("-", "."), raw_t.replace(".", "-")}
+    for m in re.finditer(
+        r"google\.com/finance/quote/([A-Z0-9.\-]+):([A-Z][A-Z0-9]+)",
+        html,
+        flags=re.I,
+    ):
+        sym, ex = m.group(1).upper(), m.group(2).upper()
+        if sym in variants or sym.replace(".", "-") in variants or sym.replace("-", ".") in variants:
+            mapped = _map_exchange_to_tv(ex)
+            if mapped:
+                return mapped
+    for m in re.finditer(
+        r"\b(NASDAQ|NYSE|AMEX|NYSEARCA|NYSEAMERICAN|BATS):([A-Z0-9.\-]+)\b",
+        html,
+        flags=re.I,
+    ):
+        ex, sym = m.group(1).upper(), m.group(2).upper()
+        if sym in variants or sym.replace(".", "-") in variants or sym.replace("-", ".") in variants:
+            mapped = _map_exchange_to_tv(ex)
+            if mapped:
+                return mapped
+    return None
+
+
+def _exchange_from_yfinance(ticker: str) -> Optional[str]:
+    """Weak fallback when FinViz fails (yfinance .info is often 401 on this box)."""
+    try:
+        import yfinance as yf  # optional; may 401
+
+        info = yf.Ticker(ticker).info or {}
+        for key in ("exchange", "fullExchangeName"):
+            mapped = _map_exchange_to_tv(info.get(key))
+            if mapped:
+                return mapped
+    except Exception as e:
+        print(f"  [yfinance exchange] {ticker}: {e}")
+    return None
+
+
+def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Any]:
+    """Short Float + Inst Own + exchange from FinViz quote; cached under cache/fv_{ticker}.json
     for FV_TTL_DAYS (default 3). Migrates legacy short_{ticker}.json when present.
+
+    Exchange is parsed from the Google Finance link on the FinViz page
+    (e.g. https://www.google.com/finance/quote/UMBF:NASDAQ). Do NOT use Grok.txt.
     """
     cache_f = CACHE_DIR / f"fv_{ticker}.json"
     legacy = CACHE_DIR / f"short_{ticker}.json"
@@ -132,44 +204,90 @@ def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Optional[float]]:
 
     short = cached.get("short_float")
     inst = cached.get("inst_own")
+    exchange = cached.get("exchange")
+    if isinstance(exchange, str):
+        exchange = _map_exchange_to_tv(exchange) or exchange.upper()
+    else:
+        exchange = None
     fetched_at = cached.get("fetched_at")
     fresh = False
-    if fetched_at and short is not None and inst is not None:
+    if fetched_at and short is not None and inst is not None and exchange:
         try:
-            ts = datetime.fromisoformat(str(fetched_at))
-            age_days = (datetime.now(ts.tzinfo) - ts).total_seconds() / 86400.0 if getattr(ts, "tzinfo", None) else (datetime.utcnow() - ts).total_seconds() / 86400.0
+            ts = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
+            age_days = (
+                (datetime.now(ts.tzinfo) - ts).total_seconds() / 86400.0
+                if getattr(ts, "tzinfo", None)
+                else (datetime.utcnow() - ts).total_seconds() / 86400.0
+            )
             fresh = age_days < FV_TTL_DAYS
         except Exception:
             fresh = False
     if fresh:
-        return {"short_float": short, "inst_own": inst}
+        return {"short_float": short, "inst_own": inst, "exchange": exchange}
 
     url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
     try:
         resp = session.get(url, timeout=20)
         if resp.status_code != 200:
-            out = {"short_float": short, "inst_own": inst, "fetched_at": fetched_at}
+            out = {
+                "short_float": short,
+                "inst_own": inst,
+                "exchange": exchange,
+                "fetched_at": fetched_at,
+            }
             cache_f.write_text(json.dumps(out))
-            return {"short_float": short, "inst_own": inst}
+            return {"short_float": short, "inst_own": inst, "exchange": exchange}
         soup = BeautifulSoup(resp.text, "lxml")
         short = _finviz_label_value(soup, "Short Float")
         inst = _finviz_label_value(soup, "Inst Own")
+        exchange = _parse_exchange_from_finviz_html(resp.text, ticker) or exchange
         now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-        out = {"short_float": short, "inst_own": inst, "fetched_at": now_iso}
+        out = {
+            "short_float": short,
+            "inst_own": inst,
+            "exchange": exchange,
+            "fetched_at": now_iso,
+        }
         cache_f.write_text(json.dumps(out))
         legacy.write_text(json.dumps({"short_float": short, "fetched_at": now_iso}))
         time.sleep(0.25)
-        return {"short_float": short, "inst_own": inst}
+        return {"short_float": short, "inst_own": inst, "exchange": exchange}
     except Exception as e:
         print(f"  [finviz scrape] {ticker}: {e}")
-        out = {"short_float": short, "inst_own": inst}
+        out = {"short_float": short, "inst_own": inst, "exchange": exchange}
         if fetched_at:
             out["fetched_at"] = fetched_at
         try:
             cache_f.write_text(json.dumps(out))
         except Exception:
             pass
-        return {"short_float": short, "inst_own": inst}
+        return {"short_float": short, "inst_own": inst, "exchange": exchange}
+
+
+def resolve_exchange(ticker: str) -> str:
+    """US exchange for TradingView: FinViz (cached) → yfinance → NASDAQ last resort."""
+    data = scrape_finviz_fundamentals(ticker)
+    ex = data.get("exchange")
+    if ex:
+        return str(ex)
+    yf_ex = _exchange_from_yfinance(ticker)
+    if yf_ex:
+        cache_f = CACHE_DIR / f"fv_{ticker}.json"
+        try:
+            cached = json.loads(cache_f.read_text()) if cache_f.exists() else {}
+        except Exception:
+            cached = {}
+        cached["exchange"] = yf_ex
+        if "fetched_at" not in cached:
+            cached["fetched_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        try:
+            cache_f.write_text(json.dumps(cached))
+        except Exception:
+            pass
+        return yf_ex
+    print(f"  [exchange] {ticker}: FinViz+yfinance failed; defaulting to NASDAQ")
+    return "NASDAQ"
+
 
 
 def scrape_finviz_short_float(ticker: str) -> Optional[float]:
@@ -414,11 +532,16 @@ def get_fundamentals(ticker: str) -> Dict[str, Any]:
         "short_src": "finviz" if short is not None else "N/A",
         "inst_own": inst,
         "inst_src": "finviz" if inst is not None else "N/A",
+        "exchange": data.get("exchange"),
     }
 
 
 def load_exchange_map() -> Dict[str, str]:
-    """Best-effort US exchange map from Grok.txt lines like NASDAQ:ADI."""
+    """Optional Grok.txt EXCHANGE:TICKER hints for non-TV uses only.
+
+    Do NOT use for TradingView URLs — those resolve via FinViz/yfinance
+    (see resolve_exchange / tv_symbol_for).
+    """
     m: Dict[str, str] = {}
     if GROK_LIST.exists():
         for line in GROK_LIST.read_text().splitlines():
@@ -438,15 +561,11 @@ def load_exchange_map() -> Dict[str, str]:
 
 
 def tv_symbol_for(ticker: str, exchange_map: Optional[Dict[str, str]] = None) -> str:
-    """TradingView chart URL. MOG-A -> MOG.A; best-effort NASDAQ/NYSE."""
-    exchange_map = exchange_map or {}
+    """TradingView chart URL from FinViz exchange (not Grok.txt). MOG-A -> MOG.A."""
+    del exchange_map  # retained for call-site compatibility; ignored on purpose
     raw = ticker.strip().upper()
     tv_ticker = raw.replace("-", ".")
-    ex = (
-        exchange_map.get(raw)
-        or exchange_map.get(tv_ticker)
-        or "NASDAQ"
-    )
+    ex = resolve_exchange(raw)
     return f"https://www.tradingview.com/chart/?symbol={ex}:{tv_ticker}"
 
 
@@ -719,7 +838,7 @@ def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
     return out
 
 
-def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Dict[str, str]) -> None:
+def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[Dict[str, str]] = None) -> None:
     """CSV + static HTML for PASSes and geometric R:R fails, sorted by RR desc."""
     earnings_map = _enrich_verify_earnings(results)
     verify_rows = []
@@ -762,7 +881,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Dict[str, 
             "days_to_earnings": earnings.get("days_to_earnings"),
             "earnings_known": bool(earnings.get("earnings_known")),
             "earnings_blackout": bool(earnings.get("earnings_blackout")),
-            "tradingview_url": tv_symbol_for(r["ticker"], exchange_map),
+            "tradingview_url": tv_symbol_for(r["ticker"]),
             "reason": reason,
         })
     verify_rows.sort(key=lambda x: (-(x["rr"] if x["rr"] is not None else -1), x["ticker"]))
@@ -1054,8 +1173,7 @@ def main():
         })
     pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
 
-    exchange_map = load_exchange_map()
-    write_verify_outputs(results, exchange_map)
+    write_verify_outputs(results)
 
     first_pass = passes[0] if passes else None
     header = [
