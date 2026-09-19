@@ -34,6 +34,7 @@ EARNINGS_BLACKOUT_DAYS = 14
 NEAR_ZONE_ATR = 1.0          # tighter: within ~1 ATR
 MAX_EXT_ABOVE_ATR = 1.0      # close not more than 1 ATR above zone_hi
 PULLBACK_TOUCH_ATR = 0.5     # post-breakout must tag zone (within 0.5 ATR)
+FV_TTL_DAYS = 3              # FinViz quote fundamentals cache TTL
 CACHE_DIR = Path("/workspace/cache")
 OUT_CSV = Path("/workspace/stock_screen_results.csv")
 OUT_TXT = Path("/workspace/stock_screen_results.txt")
@@ -53,11 +54,7 @@ session.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"})
 
 
 def fetch_screener_tickers(max_pages: int = 30) -> List[str]:
-    if TICKERS_JSON.exists():
-        tickers = json.loads(TICKERS_JSON.read_text())
-        if len(tickers) > 50:
-            print(f"[screener] loaded {len(tickers)} from cache {TICKERS_JSON}")
-            return tickers
+    """Always scrape FinViz live — never reuse screener_tickers.json as input."""
     tickers: List[str] = []
     seen = set()
     for page in range(max_pages):
@@ -80,7 +77,9 @@ def fetch_screener_tickers(max_pages: int = 30) -> List[str]:
             break
         tickers.extend(new)
         time.sleep(0.45)
+    # Snapshot only (audit / debugging) — never read back as cache
     TICKERS_JSON.write_text(json.dumps(tickers, indent=2))
+    print(f"[screener] live fetch: {len(tickers)} tickers")
     return tickers
 
 
@@ -114,8 +113,8 @@ def _finviz_label_value(soup: BeautifulSoup, label: str) -> Optional[float]:
 
 
 def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Optional[float]]:
-    """Short Float + Inst Own from FinViz quote; cached under cache/fv_{ticker}.json.
-    Migrates legacy short_{ticker}.json when present.
+    """Short Float + Inst Own from FinViz quote; cached under cache/fv_{ticker}.json
+    for FV_TTL_DAYS (default 3). Migrates legacy short_{ticker}.json when present.
     """
     cache_f = CACHE_DIR / f"fv_{ticker}.json"
     legacy = CACHE_DIR / f"short_{ticker}.json"
@@ -131,38 +130,46 @@ def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Optional[float]]:
         except Exception:
             cached = {}
 
-    need_fetch = ("short_float" not in cached) or ("inst_own" not in cached)
-    if not need_fetch:
-        return {"short_float": cached.get("short_float"), "inst_own": cached.get("inst_own")}
-
-    url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
     short = cached.get("short_float")
     inst = cached.get("inst_own")
+    fetched_at = cached.get("fetched_at")
+    fresh = False
+    if fetched_at and short is not None and inst is not None:
+        try:
+            ts = datetime.fromisoformat(str(fetched_at))
+            age_days = (datetime.now(ts.tzinfo) - ts).total_seconds() / 86400.0 if getattr(ts, "tzinfo", None) else (datetime.utcnow() - ts).total_seconds() / 86400.0
+            fresh = age_days < FV_TTL_DAYS
+        except Exception:
+            fresh = False
+    if fresh:
+        return {"short_float": short, "inst_own": inst}
+
+    url = f"https://finviz.com/quote.ashx?t={ticker}&p=d"
     try:
         resp = session.get(url, timeout=20)
         if resp.status_code != 200:
-            out = {"short_float": short, "inst_own": inst}
+            out = {"short_float": short, "inst_own": inst, "fetched_at": fetched_at}
             cache_f.write_text(json.dumps(out))
-            return out
+            return {"short_float": short, "inst_own": inst}
         soup = BeautifulSoup(resp.text, "lxml")
-        if "short_float" not in cached or short is None:
-            short = _finviz_label_value(soup, "Short Float")
-        if "inst_own" not in cached or inst is None:
-            inst = _finviz_label_value(soup, "Inst Own")
-        out = {"short_float": short, "inst_own": inst}
+        short = _finviz_label_value(soup, "Short Float")
+        inst = _finviz_label_value(soup, "Inst Own")
+        now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        out = {"short_float": short, "inst_own": inst, "fetched_at": now_iso}
         cache_f.write_text(json.dumps(out))
-        # keep legacy short cache in sync for other scripts
-        legacy.write_text(json.dumps({"short_float": short}))
+        legacy.write_text(json.dumps({"short_float": short, "fetched_at": now_iso}))
         time.sleep(0.25)
-        return out
+        return {"short_float": short, "inst_own": inst}
     except Exception as e:
         print(f"  [finviz scrape] {ticker}: {e}")
         out = {"short_float": short, "inst_own": inst}
+        if fetched_at:
+            out["fetched_at"] = fetched_at
         try:
             cache_f.write_text(json.dumps(out))
         except Exception:
             pass
-        return out
+        return {"short_float": short, "inst_own": inst}
 
 
 def scrape_finviz_short_float(ticker: str) -> Optional[float]:

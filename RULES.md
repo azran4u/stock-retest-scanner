@@ -272,8 +272,7 @@ https://azran4u.github.io/stock-retest-scanner/
 ### Fail-reason buckets (dashboard)
 Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.
 
-## 13. Price history cache
+## 14. FinViz caches
 
-`hist_cache.pkl` stores daily OHLCV per ticker. On each run:
-- **Missing** tickers → full download
-- **Stale** tickers (last bar before the latest US session) → download only from the day after the last bar and **append**
+- **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
+- **Quote fundamentals** (short float, inst own): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries are re-fetched.
