@@ -865,22 +865,61 @@ def format_line(res: Dict[str, Any]) -> str:
     return f"{res['ticker']} — FAIL: {res['reason']}"
 
 
-def download_batch(tickers: List[str], chunk: int = 50) -> Dict[str, pd.DataFrame]:
+
+def last_us_session_date(now=None) -> "pd.Timestamp":
+    """Latest completed US cash-session calendar date (weekends -> Friday)."""
+    import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        now = now or _dt.datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        now = now or _dt.datetime.utcnow()
+    d = now.date() if hasattr(now, "date") else now
+    # Before ~10:00 ET Monday data for prior Friday may still be fine; for simplicity
+    # use calendar weekday walk-back only.
+    while d.weekday() >= 5:  # Sat/Sun
+        d -= _dt.timedelta(days=1)
+    return pd.Timestamp(d)
+
+
+def download_batch(
+    tickers: List[str],
+    chunk: int = 50,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    period: str = "5y",
+) -> Dict[str, pd.DataFrame]:
+    """Download daily OHLCV. If start is set, fetch [start, end) instead of period."""
     import yfinance as yf
     out: Dict[str, pd.DataFrame] = {}
     for i in range(0, len(tickers), chunk):
         batch = tickers[i : i + chunk]
-        print(f"[yf] download {i+1}-{i+len(batch)} / {len(tickers)}")
+        print(f"[yf] download {i+1}-{i+len(batch)} / {len(tickers)} start={start} period={period if not start else '-'}")
         try:
-            data = yf.download(
-                batch, period="5y", interval="1d", group_by="ticker",
-                auto_adjust=True, threads=True, progress=False,
+            kwargs = dict(
+                tickers=batch,
+                interval="1d",
+                group_by="ticker",
+                auto_adjust=True,
+                threads=True,
+                progress=False,
             )
+            if start:
+                kwargs["start"] = start
+                if end:
+                    kwargs["end"] = end
+            else:
+                kwargs["period"] = period
+            data = yf.download(**kwargs)
         except Exception as e:
             print(f"[yf] batch error: {e}; per-ticker fallback")
             for t in batch:
                 try:
-                    h = yf.Ticker(t).history(period="5y", interval="1d", auto_adjust=True)
+                    tk = yf.Ticker(t)
+                    if start:
+                        h = tk.history(start=start, end=end, interval="1d", auto_adjust=True)
+                    else:
+                        h = tk.history(period=period, interval="1d", auto_adjust=True)
                     if h is not None and not h.empty:
                         out[t] = h
                 except Exception as e2:
@@ -900,6 +939,68 @@ def download_batch(tickers: List[str], chunk: int = 50) -> Dict[str, pd.DataFram
     return out
 
 
+def _normalize_ohlcv_index(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    d = df.copy()
+    if not isinstance(d.index, pd.DatetimeIndex):
+        d.index = pd.to_datetime(d.index)
+    if getattr(d.index, "tz", None) is not None:
+        d.index = d.index.tz_localize(None)
+    d = d[~d.index.duplicated(keep="last")].sort_index()
+    return d
+
+
+def refresh_hist_map(hist_map: Dict[str, pd.DataFrame], tickers: List[str]) -> Dict[str, pd.DataFrame]:
+    """Fill missing tickers fully; for cached tickers, append bars after last date through latest US session."""
+    target = last_us_session_date()
+    missing: List[str] = []
+    stale: List[Tuple[str, pd.Timestamp]] = []
+    for t in tickers:
+        df = hist_map.get(t)
+        if df is None or getattr(df, "empty", True):
+            missing.append(t)
+            continue
+        df = _normalize_ohlcv_index(df)
+        hist_map[t] = df
+        last = pd.Timestamp(df.index.max()).normalize()
+        if last.date() < target.date():
+            stale.append((t, last))
+
+    if missing:
+        print(f"Re-downloading {len(missing)} missing tickers (full history)...")
+        extra = download_batch(missing, chunk=50)
+        for t, df in extra.items():
+            hist_map[t] = _normalize_ohlcv_index(df)
+
+    if stale:
+        print(f"Refreshing {len(stale)} stale tickers through {target.date()} (append missing days)...")
+        # Group by start date to batch where possible
+        by_start: Dict[str, List[str]] = {}
+        start_for: Dict[str, pd.Timestamp] = {}
+        for t, last in stale:
+            start = (last + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+            by_start.setdefault(start, []).append(t)
+            start_for[t] = last
+        end = (target + pd.Timedelta(days=1)).strftime("%Y-%m-%d")  # yfinance end exclusive-ish
+        for start, group in by_start.items():
+            print(f"  [{start} -> {end}] {len(group)} tickers")
+            extra = download_batch(group, chunk=50, start=start, end=end)
+            for t, new_df in extra.items():
+                new_df = _normalize_ohlcv_index(new_df)
+                if new_df is None or new_df.empty:
+                    continue
+                old = hist_map.get(t)
+                if old is None or old.empty:
+                    hist_map[t] = new_df
+                else:
+                    combined = pd.concat([old, new_df])
+                    hist_map[t] = _normalize_ohlcv_index(combined)
+    else:
+        print(f"Cache fresh through {target.date()} for all present tickers")
+    return hist_map
+
+
 def main():
     print("=== Fetching FinViz screener tickers ===")
     tickers = fetch_screener_tickers()
@@ -908,17 +1009,14 @@ def main():
     if HIST_CACHE.exists():
         print(f"=== Loading cached history {HIST_CACHE} ===")
         hist_map = pd.read_pickle(HIST_CACHE)
-        missing = [t for t in tickers if t not in hist_map or hist_map[t] is None or getattr(hist_map[t], 'empty', True)]
-        if missing:
-            print(f"Re-downloading {len(missing)} missing...")
-            extra = download_batch(missing, chunk=50)
-            hist_map.update(extra)
-            pd.to_pickle(hist_map, HIST_CACHE)
     else:
-        print("=== Batch downloading daily OHLCV (5y) ===")
-        hist_map = download_batch(tickers, chunk=50)
-        pd.to_pickle(hist_map, HIST_CACHE)
-    print(f"Got history for {len(hist_map)} / {len(tickers)}")
+        hist_map = {}
+        print("=== No cache yet; will download full history ===")
+    # Always fill missing tickers + append missing days for stale ones
+    before = len(hist_map)
+    hist_map = refresh_hist_map(hist_map, tickers)
+    pd.to_pickle(hist_map, HIST_CACHE)
+    print(f"Got history for {sum(1 for t in tickers if t in hist_map and hist_map[t] is not None and not getattr(hist_map[t], 'empty', True))} / {len(tickers)} (cache entries={len(hist_map)})")
 
     results, passes = [], []
     for i, ticker in enumerate(tickers):

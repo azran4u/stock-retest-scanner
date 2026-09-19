@@ -272,3 +272,8 @@ https://azran4u.github.io/stock-retest-scanner/
 ### Fail-reason buckets (dashboard)
 Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.
 
+## 13. Price history cache
+
+`hist_cache.pkl` stores daily OHLCV per ticker. On each run:
+- **Missing** tickers → full download
+- **Stale** tickers (last bar before the latest US session) → download only from the day after the last bar and **append**
