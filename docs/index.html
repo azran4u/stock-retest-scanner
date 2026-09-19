@@ -122,6 +122,17 @@
   .pill.pass { background: rgba(63,185,80,0.2); color: var(--pass); }
   .pill.fail { background: rgba(248,81,73,0.2); color: var(--fail); }
   .err { color: var(--fail); padding: 12px; }
+  .chart-filter {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #21262d; border: 1px solid var(--accent);
+    border-radius: 999px; padding: 4px 10px; font-size: 0.85rem;
+  }
+  .chart-filter button {
+    background: transparent; border: 0; color: var(--muted);
+    cursor: pointer; font-size: 1rem; line-height: 1;
+  }
+  .chart-filter button:hover { color: var(--text); }
+  canvas { cursor: pointer; }
   footer { color: var(--muted); font-size: 0.8rem; margin-top: 18px; }
 </style>
 </head>
@@ -170,6 +181,10 @@
 
   <div class="toolbar">
     <div style="color:var(--muted);font-size:0.85rem" id="tableMeta">Loading…</div>
+    <div id="chartFilterChip" class="chart-filter" style="display:none">
+      <span id="chartFilterLabel"></span>
+      <button type="button" id="clearChartFilter" title="Clear chart filter">×</button>
+    </div>
   </div>
   <div class="table-wrap">
     <table id="dataTable">
@@ -198,6 +213,14 @@ let allRows = [];
 let sortCol = "rr";
 let sortDir = "desc";
 let charts = { status: null, reasons: null, rr: null };
+let chartFilter = null; // { type: 'status'|'reason'|'rr', value: string } | null
+const RR_BINS = [
+  { label: "2–2.5", min: 2, max: 2.5 },
+  { label: "2.5–3", min: 2.5, max: 3 },
+  { label: "3–4", min: 3, max: 4 },
+  { label: "4+", min: 4, max: Infinity },
+];
+
 
 function parseCSV(text) {
   const rows = [];
@@ -299,11 +322,71 @@ function compareRows(a, b) {
   return String(a.ticker || "").localeCompare(String(b.ticker || ""));
 }
 
+function rowMatchesChartFilter(r) {
+  if (!chartFilter) return true;
+  const st = String(r.status).toUpperCase();
+  if (chartFilter.type === "status") {
+    return st === String(chartFilter.value).toUpperCase();
+  }
+  if (chartFilter.type === "reason") {
+    if (st === "PASS") return false;
+    return bucketReason(r.reason, r.status) === chartFilter.value;
+  }
+  if (chartFilter.type === "rr") {
+    if (st !== "PASS") return false;
+    const n = toNum(r.rr);
+    if (n === null) return false;
+    const bin = RR_BINS.find(b => b.label === chartFilter.value);
+    if (!bin) return false;
+    return n >= bin.min && n < bin.max;
+  }
+  return true;
+}
+
+function setChartFilter(next) {
+  // Toggle off if clicking the same slice/bar again
+  if (chartFilter && next && chartFilter.type === next.type && chartFilter.value === next.value) {
+    chartFilter = null;
+  } else {
+    chartFilter = next;
+  }
+  // Keep status dropdown in sync for status clicks
+  const sel = document.getElementById("statusFilter");
+  if (chartFilter && chartFilter.type === "status") sel.value = chartFilter.value;
+  else if (!chartFilter || chartFilter.type !== "status") {
+    // leave dropdown alone unless it was set by chart status
+  }
+  updateChartFilterChip();
+  renderTable();
+}
+
+function clearChartFilter() {
+  chartFilter = null;
+  updateChartFilterChip();
+  renderTable();
+}
+
+function updateChartFilterChip() {
+  const chip = document.getElementById("chartFilterChip");
+  const label = document.getElementById("chartFilterLabel");
+  if (!chartFilter) {
+    chip.style.display = "none";
+    label.textContent = "";
+    return;
+  }
+  chip.style.display = "inline-flex";
+  if (chartFilter.type === "status") label.textContent = `Filter: status = ${chartFilter.value}`;
+  else if (chartFilter.type === "reason") label.textContent = `Filter: fail reason = ${chartFilter.value}`;
+  else if (chartFilter.type === "rr") label.textContent = `Filter: R:R ${chartFilter.value}`;
+  else label.textContent = "Chart filter";
+}
+
 function filteredRows() {
   const st = document.getElementById("statusFilter").value;
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
   return allRows.filter(r => {
     if (st !== "ALL" && String(r.status).toUpperCase() !== st) return false;
+    if (!rowMatchesChartFilter(r)) return false;
     if (!q) return true;
     const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""}`.toLowerCase();
     return hay.includes(q);
@@ -352,8 +435,7 @@ function renderCharts() {
   document.getElementById("cFail").textContent = nFail;
   document.getElementById("cBlackout").textContent = nBo;
 
-  const statusCtx = document.getElementById("chartStatus");
-  charts.status = new Chart(statusCtx, {
+  charts.status = new Chart(document.getElementById("chartStatus"), {
     type: "doughnut",
     data: {
       labels: ["PASS", "FAIL"],
@@ -365,7 +447,14 @@ function renderCharts() {
     },
     options: {
       plugins: { legend: { labels: { color: "#e6edf3" } } },
-      maintainAspectRatio: false
+      maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        const label = ["PASS", "FAIL"][idx];
+        setChartFilter({ type: "status", value: label });
+        document.getElementById("statusFilter").value = label;
+      }
     }
   });
 
@@ -375,8 +464,7 @@ function renderCharts() {
     if (!b) return;
     buckets[b] = (buckets[b] || 0) + 1;
   });
-  const order = ["$vol", "short float", "history", "R:R", "no retest", "earnings", "other"];
-  const labels = order.filter(k => buckets[k]);
+  const labels = ["$vol", "short float", "history", "R:R", "no retest", "earnings", "other"].filter(k => buckets[k]);
   const values = labels.map(k => buckets[k]);
   charts.reasons = new Chart(document.getElementById("chartReasons"), {
     type: "bar",
@@ -395,27 +483,26 @@ function renderCharts() {
         x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
         y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true }
       },
-      maintainAspectRatio: false
+      maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        setChartFilter({ type: "reason", value: labels[idx] });
+        document.getElementById("statusFilter").value = "FAIL";
+      }
     }
   });
 
   const rrVals = allRows
     .filter(r => String(r.status).toUpperCase() === "PASS")
     .map(r => toNum(r.rr))
-    .filter(n => n !== null)
-    .sort((a,b) => a-b);
-  const bins = ["2–2.5","2.5–3","3–4","4+"];
-  const counts = [0,0,0,0];
-  rrVals.forEach(v => {
-    if (v < 2.5) counts[0]++;
-    else if (v < 3) counts[1]++;
-    else if (v < 4) counts[2]++;
-    else counts[3]++;
-  });
+    .filter(n => n !== null);
+  const counts = RR_BINS.map(bin => rrVals.filter(v => v >= bin.min && v < bin.max).length);
+  const binLabels = RR_BINS.map(b => b.label);
   charts.rr = new Chart(document.getElementById("chartRR"), {
     type: "bar",
     data: {
-      labels: bins,
+      labels: binLabels,
       datasets: [{
         label: "PASS count",
         data: counts,
@@ -429,7 +516,13 @@ function renderCharts() {
         x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
         y: { ticks: { color: "#8b949e", stepSize: 1 }, grid: { color: "#21262d" }, beginAtZero: true }
       },
-      maintainAspectRatio: false
+      maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        setChartFilter({ type: "rr", value: binLabels[idx] });
+        document.getElementById("statusFilter").value = "PASS";
+      }
     }
   });
 }
@@ -442,6 +535,9 @@ async function loadReport(path, dateLabel) {
   allRows = parseCSV(text);
   sortCol = "rr";
   sortDir = "desc";
+  chartFilter = null;
+  document.getElementById("statusFilter").value = "ALL";
+  updateChartFilterChip();
   renderCharts();
   renderTable();
   document.getElementById("footerNote").textContent =
@@ -467,8 +563,25 @@ async function init() {
       document.getElementById("tableMeta").innerHTML = `<span class="err">${err.message}</span>`;
     });
   });
-  document.getElementById("statusFilter").addEventListener("change", renderTable);
+  document.getElementById("statusFilter").addEventListener("change", () => {
+    // Manual status change clears incompatible chart filters
+    if (chartFilter && chartFilter.type === "status") {
+      const v = document.getElementById("statusFilter").value;
+      if (v === "ALL") chartFilter = null;
+      else chartFilter = { type: "status", value: v };
+      updateChartFilterChip();
+    } else if (chartFilter && chartFilter.type === "reason" && document.getElementById("statusFilter").value === "PASS") {
+      chartFilter = null; updateChartFilterChip();
+    } else if (chartFilter && chartFilter.type === "rr" && document.getElementById("statusFilter").value === "FAIL") {
+      chartFilter = null; updateChartFilterChip();
+    }
+    renderTable();
+  });
   document.getElementById("searchBox").addEventListener("input", renderTable);
+  document.getElementById("clearChartFilter").addEventListener("click", () => {
+    clearChartFilter();
+    document.getElementById("statusFilter").value = "ALL";
+  });
 
   const first = reports[0];
   if (first) {
