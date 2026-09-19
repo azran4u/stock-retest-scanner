@@ -184,6 +184,7 @@ def atr_series(df: pd.DataFrame, n: int = 14) -> pd.Series:
 
 
 def find_swing_highs(highs: np.ndarray, left: int = 3, right: int = 3) -> List[int]:
+    """Local maxima of `highs` (call with body tops for peaks; wick High only if needed)."""
     idxs = []
     for i in range(left, len(highs) - right):
         window = highs[i - left : i + right + 1]
@@ -196,8 +197,8 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
     Heuristic weekly retest (v2, tighter):
 
-    1) Swing high = local max of High (3/3).
-    2) Zone = [body_top=max(O,C), wick_high=H] of peak candle.
+    1) Swing / peak = local max of body top max(O,C) (3/3) — NOT wick High.
+    2) Zone = [body_top=max(O,C), wick_high=H] of that peak candle.
     3) Breakout = first later weekly Close > zone_hi (and not on last 2 bars).
     4) Pullback REQUIRED: after breakout, some weekly Low <= zone_hi + 0.5*ATR
        (must actually tag the broken resistance).
@@ -212,7 +213,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
             among those take lowest Low (deepest wick), SL just below that Low;
             clamp stop distance from entry to [0.5*ATR, 1.0*ATR]
             (widen if <0.5 ATR; cap if >1.0 ATR)
-       TP = body_top of the latest (most recent) swing high AFTER breakout
+       TP = body_top of the latest (most recent) body-top swing AFTER breakout
        Require R:R >= 2.0
     """
     if len(w) < MIN_WEEKLY_BARS:
@@ -235,7 +236,7 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
     last_i = len(w) - 1
     last_close = float(c[-1])
     last_low = float(l[-1])
-    swings = find_swing_highs(h, 3, 3)
+    swings = find_swing_highs(bt, 3, 3)  # peaks by body top, not wick High
     if len(swings) < 2:
         return None
 
