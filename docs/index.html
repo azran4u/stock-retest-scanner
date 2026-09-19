@@ -277,23 +277,26 @@ function fmt(col, val) {
 function compareRows(a, b) {
   const av = a[sortCol], bv = b[sortCol];
   const an = toNum(av), bn = toNum(bv);
-  let cmp;
+  // Empty numeric values (e.g. FAIL rows with no RR) always sort last,
+  // regardless of asc/desc.
   if (NUM_COLS.has(sortCol)) {
-    const aEmpty = an === null, bEmpty = bn === null;
-    if (aEmpty && bEmpty) cmp = 0;
-    else if (aEmpty) cmp = 1;
-    else if (bEmpty) cmp = -1;
-    else cmp = an - bn;
+    const aEmpty = an === null;
+    const bEmpty = bn === null;
+    if (aEmpty && !bEmpty) return 1;
+    if (!aEmpty && bEmpty) return -1;
+    if (!aEmpty && !bEmpty) {
+      const cmp = an - bn;
+      if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+    }
   } else {
-    cmp = String(av ?? "").localeCompare(String(bv ?? ""));
+    const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
+    if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
   }
-  // secondary: PASS first when sorting by rr default feel
-  if (cmp === 0) {
-    const as = a.status === "PASS" ? 0 : 1;
-    const bs = b.status === "PASS" ? 0 : 1;
-    cmp = as - bs;
-  }
-  return sortDir === "asc" ? cmp : -cmp;
+  // secondary: PASS before FAIL when primary ties / both empty
+  const as = String(a.status).toUpperCase() === "PASS" ? 0 : 1;
+  const bs = String(b.status).toUpperCase() === "PASS" ? 0 : 1;
+  if (as !== bs) return as - bs;
+  return String(a.ticker || "").localeCompare(String(b.ticker || ""));
 }
 
 function filteredRows() {
