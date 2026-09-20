@@ -734,28 +734,176 @@ def _earnings_dates_from_frame(frame: Any, today: date) -> List[date]:
     return sorted(set(candidates))
 
 
-def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, Any]:
-    """Fetch the next unreported earnings date through resilient yfinance APIs.
+_TV_EARN_RE = re.compile(
+    r'earnings_release_next_date_fq"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
+)
+_TV_EARN_SLEEP = 0.45  # polite delay between successful / non-rate-limit fetches
+_TV_RATE_LIMIT_CODES = {429, 503}
+_TV_RATE_LIMIT_RETRIES = 3  # retries of the SAME URL before giving up on TV
+_TV_RATE_LIMIT_BACKOFF = (35.0, 50.0, 65.0)  # seconds; backoff on repeats
 
-    Always returns absolute `earnings_date` (YYYY-MM-DD) when known; `days_to_earnings`
-    is derived at fetch time for blackout checks. Reports should persist earnings_date
-    so dashboards can recompute days-left live.
+
+def _tv_ticker_candidates(ticker: str) -> List[str]:
+    """TradingView path tickers: prefer BRK-B → BRK.B, also try original."""
+    raw = ticker.strip().upper()
+    dotted = raw.replace("-", ".")
+    out = [dotted]
+    if raw != dotted:
+        out.append(raw)
+    return out
+
+
+def _earn_cache_path(ticker: str) -> Path:
+    return CACHE_DIR / f"earn_{ticker.strip().upper()}.json"
+
+
+def _load_earn_cache(ticker: str) -> Optional[Dict[str, Any]]:
+    path = _earn_cache_path(ticker)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    fetched_at = data.get("fetched_at") or data.get("earnings_fetched_at")
+    if not fetched_at:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
+        age_days = (
+            (datetime.now(ts.tzinfo) - ts).total_seconds() / 86400.0
+            if getattr(ts, "tzinfo", None)
+            else (datetime.utcnow() - ts).total_seconds() / 86400.0
+        )
+        if age_days >= FV_TTL_DAYS:
+            return None
+    except Exception:
+        return None
+    return data
+
+
+def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str) -> None:
+    payload = {
+        "earnings_date": earnings_date,
+        "source": source,
+        "fetched_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    try:
+        _earn_cache_path(ticker).write_text(json.dumps(payload))
+    except Exception as exc:
+        print(f"  [earn cache] {ticker}: write failed: {exc}")
+
+
+def scrape_tradingview_earnings_date(
+    ticker: str, exchange: Optional[str] = None
+) -> Optional[date]:
+    """Next earnings calendar date from TradingView symbol page.
+
+    Parses `earnings_release_next_date_fq` (unix seconds; ms if > 1e12) and
+    converts to America/New_York calendar date. Uses earn_{TICKER}.json cache
+    with the same TTL as FV_TTL_DAYS. Does not consult Grok.txt.
+
+    On HTTP 429/503, waits with backoff and retries the same URL up to
+    _TV_RATE_LIMIT_RETRIES times before returning None (caller may then use Yahoo).
+    Rate-limit failures are NOT written to the earn_ miss cache.
     """
+    raw = ticker.strip().upper()
+    cached = _load_earn_cache(raw)
+    if cached is not None:
+        ed = cached.get("earnings_date")
+        if not ed:
+            return None
+        try:
+            return date.fromisoformat(str(ed)[:10])
+        except Exception:
+            pass
+
+    if not exchange:
+        try:
+            exchange = resolve_exchange(raw)
+        except Exception:
+            exchange = "NASDAQ"
+    exchange = (exchange or "NASDAQ").strip().upper()
+
+    ny = ZoneInfo("America/New_York")
+    headers = {
+        "User-Agent": UA,
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.tradingview.com/",
+    }
+    last_err: Optional[str] = None
+    rate_limited = False
+
+    for tv_ticker in _tv_ticker_candidates(raw):
+        url = f"https://www.tradingview.com/symbols/{exchange}-{tv_ticker}/"
+        attempt = 0
+        while attempt < _TV_RATE_LIMIT_RETRIES:
+            attempt += 1
+            try:
+                resp = session.get(url, headers=headers, timeout=30)
+            except Exception as exc:
+                last_err = str(exc)
+                time.sleep(_TV_EARN_SLEEP)
+                break  # try next ticker candidate
+
+            if resp.status_code in _TV_RATE_LIMIT_CODES:
+                rate_limited = True
+                wait = _TV_RATE_LIMIT_BACKOFF[
+                    min(attempt - 1, len(_TV_RATE_LIMIT_BACKOFF) - 1)
+                ]
+                last_err = f"HTTP {resp.status_code}"
+                print(
+                    f"  [tv earnings] {raw}: HTTP {resp.status_code}, "
+                    f"backoff {wait:.0f}s (try {attempt}/{_TV_RATE_LIMIT_RETRIES})"
+                )
+                time.sleep(wait)
+                continue  # retry SAME url — do not fall through to Yahoo yet
+
+            if resp.status_code == 404:
+                last_err = "HTTP 404"
+                time.sleep(_TV_EARN_SLEEP)
+                break  # try next ticker candidate (e.g. BRK.B vs BRK-B)
+
+            if resp.status_code != 200:
+                last_err = f"HTTP {resp.status_code}"
+                time.sleep(_TV_EARN_SLEEP)
+                break
+
+            m = _TV_EARN_RE.search(resp.text)
+            if not m:
+                last_err = "field missing"
+                time.sleep(_TV_EARN_SLEEP)
+                break
+
+            ts = float(m.group(1))
+            if ts > 1e12:
+                ts /= 1000.0
+            ed = datetime.fromtimestamp(ts, ny).date()
+            _save_earn_cache(raw, ed.isoformat(), "tradingview")
+            time.sleep(_TV_EARN_SLEEP)
+            return ed
+
+        if rate_limited and attempt >= _TV_RATE_LIMIT_RETRIES:
+            # Exhausted TV retries on rate-limit — stop variants; caller may Yahoo.
+            print(f"  [tv earnings] {raw}: rate-limit retries exhausted; deferring to Yahoo")
+            return None
+
+    # True miss (not rate-limit): cache so we do not re-hammer TV within TTL
+    if not rate_limited:
+        _save_earn_cache(raw, None, "tradingview_miss")
+    if last_err:
+        print(f"  [tv earnings] {raw}: {last_err}")
+    return None
+
+
+def _yahoo_next_earnings(
+    ticker: str, today: date
+) -> Tuple[Optional[date], str, List[str]]:
+    """Fallback: next unreported earnings via yfinance APIs."""
     import yfinance as yf
 
-    today = today or _local_today()
     errors: List[str] = []
     yf_ticker = yf.Ticker(ticker)
-
-    def _ok(next_date: date, source: str) -> Dict[str, Any]:
-        days = int((next_date - today).days)
-        return {
-            "earnings_date": next_date.isoformat(),
-            "days_to_earnings": days,
-            "earnings_known": True,
-            "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
-            "earnings_source": source,
-        }
 
     for method_name in ("get_earnings_dates",):
         method = getattr(yf_ticker, method_name, None)
@@ -768,7 +916,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
                 frame = method()
             dates = _earnings_dates_from_frame(frame, today)
             if dates:
-                return _ok(dates[0], method_name)
+                return dates[0], method_name, errors
         except Exception as exc:
             errors.append(f"{method_name}: {exc}")
 
@@ -776,7 +924,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
         calendar = getattr(yf_ticker, "calendar", None)
         dates = [d for d in _calendar_earnings_dates(calendar) if d >= today]
         if dates:
-            return _ok(dates[0], "calendar")
+            return dates[0], "calendar", errors
     except Exception as exc:
         errors.append(f"calendar: {exc}")
 
@@ -784,9 +932,57 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
         frame = getattr(yf_ticker, "earnings_dates", None)
         dates = _earnings_dates_from_frame(frame, today)
         if dates:
-            return _ok(dates[0], "earnings_dates")
+            return dates[0], "earnings_dates", errors
     except Exception as exc:
         errors.append(f"earnings_dates: {exc}")
+
+    return None, "unknown", errors
+
+
+def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, Any]:
+    """Next earnings date: TradingView symbol page primary, Yahoo/yfinance fallback.
+
+    Always returns absolute `earnings_date` (YYYY-MM-DD) when known; `days_to_earnings`
+    is derived at fetch time for blackout checks. Reports should persist earnings_date
+    so dashboards can recompute days-left live. `earnings_source` is one of
+    tradingview | get_earnings_dates | calendar | earnings_dates | unknown.
+    """
+    today = today or _local_today()
+    errors: List[str] = []
+
+    def _ok(next_date: date, source: str) -> Dict[str, Any]:
+        days = int((next_date - today).days)
+        return {
+            "earnings_date": next_date.isoformat(),
+            "days_to_earnings": days,
+            "earnings_known": True,
+            "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
+            "earnings_source": source,
+        }
+
+    # Primary: TradingView (cached exchange from FinViz / resolve_exchange)
+    try:
+        exchange = resolve_exchange(ticker)
+    except Exception as exc:
+        exchange = None
+        errors.append(f"resolve_exchange: {exc}")
+    try:
+        tv_date = scrape_tradingview_earnings_date(ticker, exchange=exchange)
+        if tv_date is not None and tv_date >= today:
+            return _ok(tv_date, "tradingview")
+        if tv_date is not None and tv_date < today:
+            errors.append(f"tradingview stale date {tv_date.isoformat()}")
+    except Exception as exc:
+        errors.append(f"tradingview: {exc}")
+
+    # Fallback: Yahoo / yfinance
+    try:
+        yf_date, yf_source, yf_errors = _yahoo_next_earnings(ticker, today)
+        errors.extend(yf_errors)
+        if yf_date is not None:
+            return _ok(yf_date, yf_source)
+    except Exception as exc:
+        errors.append(f"yfinance: {exc}")
 
     return {
         "earnings_date": None,
@@ -794,7 +990,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
         "earnings_known": False,
         "earnings_blackout": False,
         "earnings_source": "unknown",
-        "earnings_error": "; ".join(errors[-2:]),
+        "earnings_error": "; ".join(errors[-3:]),
     }
 
 
@@ -960,7 +1156,7 @@ a {{ color: #58a6ff; }}
 <div class="meta">
 Pre-sorted by <b>R:R descending</b>. Rows: PASS ({n_pass}) + R:R-fail with geometry ({n_rr}).
 Dollar volume = <b>30-day average volume × last close</b>.
-earnings_date is the next unreported Yahoo/yfinance earnings day (ISO). days_to_earnings is derived at screen time; the public dashboard recomputes days-left live from earnings_date.
+earnings_date is the next unreported earnings day (ISO); TradingView primary, Yahoo/yfinance fallback. days_to_earnings is derived at screen time; the public dashboard recomputes days-left live from earnings_date.
 The 14-day blackout is marked by <b>earnings_blackout</b>; such names must be skipped from the PASS queue.
 No hard-skips (e.g. AKTS); only real filters apply.
 </div>

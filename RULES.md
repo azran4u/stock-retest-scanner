@@ -56,7 +56,7 @@ Apply in roughly this order (cheap checks first):
 - ≥ 5% → **FAIL**
 
 ### 2.4 Earnings blackout
-- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date from yfinance).
+- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date). **Primary:** TradingView symbol page field `earnings_release_next_date_fq` (unix → America/New_York calendar date). **Fallback:** Yahoo/yfinance (`get_earnings_dates` / calendar / earnings_dates).
 - `days_to_earnings` is derived at screen time for the 14-day blackout; the Pages dashboard **recomputes** days-left live from `earnings_date` (Asia/Jerusalem).
 - If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip it from the PASS queue** (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
@@ -195,7 +195,7 @@ Artifacts (typical paths on the bot computer):
 
 - Code heuristics approximate discretionary chart reading; false positives/negatives expected — user reviews drawings  
 - ATR timeframe: weekly when geometry is weekly  
-- Short float / earnings sourced from FinViz / Yahoo-style data feeds; missing data should be called out in the debug log
+- Short float from FinViz; next earnings date from **TradingView** (primary) with Yahoo/yfinance fallback; missing data should be called out in the debug log
 
 ---
 
@@ -256,7 +256,7 @@ Same spirit as the verify table, for every ticker:
 
 `ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
 
-- Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
+- Prefer verify-enrichment (earnings via TradingView→Yahoo / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
 
 ### Helper
@@ -284,3 +284,4 @@ Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no r
 
 - **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
 - **Quote fundamentals** (short float, inst own, **exchange**): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries (including missing `exchange`) are re-fetched. TradingView links use this FinViz exchange (yfinance only if FinViz fails); `Grok.txt` is not authoritative for exchange.
+- **Next earnings date**: TradingView symbol page (`earnings_release_next_date_fq`) is primary; Yahoo/yfinance is fallback. Cached in `cache/earn_{TICKER}.json` with the same **3-day** TTL. On TV HTTP **429/503**, backoff 30–65s and retry the same URL **2–3 times** before Yahoo — do not fall back immediately. Do **not** use `Grok.txt` for earnings.
