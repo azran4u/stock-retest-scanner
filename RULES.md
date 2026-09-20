@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-20 (post-report Grok watchlist sync)
+Last updated: 2026-09-20 (Grok Bot owns TV sync; no Grok Bot)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -11,10 +11,9 @@ Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawin
 
 | Bot | Job |
 |-----|-----|
-| **Grok Bot** (screener) | FinViz + code filters, pass queue, daily routine code-scan, handoff messages |
-| **TV Drawer** (id `3988761`) | Own desktop/browser: weekly drawings + add to `Grok` only |
+| **Grok Bot** | FinViz + code screen, daily report, TradingView drawings + **`Grok` watchlist sync** |
 
-Never run two TradingView drivers on the same desktop. Grok Bot does not open TradingView for drawing while TV Drawer is the owner.
+Single driver: **Grok Bot** owns TradingView on this desktop (drawings + watchlist). Do not spin up a second TV driver teammate.
 
 ---
 
@@ -58,7 +57,7 @@ Apply in roughly this order (cheap checks first):
 ### 2.4 Earnings blackout
 - Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date from yfinance).
 - `days_to_earnings` is derived at screen time for the 14-day blackout; the Pages dashboard **recomputes** days-left live from `earnings_date` (Asia/Jerusalem).
-- If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip it from the PASS queue** (no drawing or `Grok` watchlist entry).
+- If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip — it must **not** get `status=PASS` (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
 
 ### 2.5 Known examples (not hard-skips)
@@ -221,9 +220,9 @@ Artifacts (typical paths on the bot computer):
 **Rules going forward:**
 1. **Only one TradingView driver at a time** for this bot — never run the daily routine’s TV drawing path in parallel with a chart-drawer task.
 2. While a drawing backlog exists, the daily routine may **code-scan only** (FinViz/yfinance) and queue PASSes; it must **not** open TradingView until drawings are idle.
-3. For **drawing** a ticker: **exchange check → draw zone → draw Long Position**. Watchlist **membership** for `Grok` is synced from the daily report PASS set (add/remove), not gated on drawings finishing first.
+3. Watchlist **membership** for `Grok` is synced from the daily report PASS set (add/remove) after each report. For drawing a ticker: **exchange check → draw zone → draw Long Position**.
 4. Target watchlist remains **`Grok`**. Do not create other lists. Leave `grok_upload` alone unless the user asks to change it. Always select the **US exchange** in symbol search (see §5) — bare tickers can resolve to foreign listings (e.g. ASB ASX vs NYSE).
-5. **Split (active):** teammate **TV Drawer** (agent id `3988761`) owns all TradingView drawings + post-report **`Grok` watchlist sync** on its own desktop. **Grok Bot** (this screener) only runs FinViz/code scans, publishes the report, and hands off the PASS set — it must not drive TradingView while TV Drawer exists.
+5. **Single bot:** Grok Bot runs the code screen, publishes the report, syncs **`Grok`**, and draws setups. Do not use a separate Grok Bot teammate.
 
 ---
 
@@ -231,11 +230,11 @@ Artifacts (typical paths on the bot computer):
 
 | List | Purpose |
 |------|---------|
-| **Grok** | Earnings-safe PASSes from the latest report (synced after each report: add PASSes, remove non-PASSes). TV Drawer owns the TV sync. |
-| **Grok queue** | All code-screen PASSes, **no drawings required** — fast visibility while TV Drawer catches up (screener may bulk-add on its own desktop) |
+| **Grok** | Tickers that **passed every filter** in the latest report (`status=PASS`). Synced after each report: add PASSes, remove anything that did not pass. |
+| **Grok queue** | Optional staging list; prefer syncing **`Grok`** from the report. Leave alone unless needed. |
 | **grok_upload** | Leave alone unless user asks |
 
-When a new PASS clears the code screen, add it to **Grok queue** promptly (no drawings). Hand the same PASS to TV Drawer for **Grok** drawings.
+After the daily report, sync **`Grok`** to the full PASS set (see §12). Drawings for new PASSes can follow on this same bot.
 
 ---
 
@@ -276,14 +275,13 @@ Call this at the end of the daily routine after `stock_screen.py` finishes, then
 
 
 ### After each report — sync `Grok` watchlist
-1. From the new report CSV, take every ticker with `status=PASS` and **not** `earnings_blackout` (earnings-safe PASSes).
+1. From the new report CSV, take every ticker with **`status=PASS`** (these already cleared **all** filters, including earnings blackout, R:R, short float, etc.).
 2. Build the target set as `EXCHANGE:TICKER` using FinViz-resolved US exchanges (same as `tradingview_url`).
-3. **Sync TradingView watchlist `Grok` to that exact set:**
+3. **Grok Bot** syncs TradingView watchlist **`Grok`** to that exact set on **this** desktop:
    - **Add** any PASS missing from `Grok`
-   - **Remove** any symbol currently on `Grok` that is **not** in the PASS set
-4. **TV Drawer** (agent id `3988761`) performs this sync on its own desktop. Grok Bot must **not** open TradingView while TV Drawer exists — after the report is pushed, hand off the target PASS list (and removals) to TV Drawer with priority.
-5. Drawings are separate: this sync is **membership only**. TV Drawer may still draw new PASSes afterward; do not skip the membership sync waiting on drawings.
-6. Leave `grok_upload` alone. Optionally keep `Grok queue` aligned the same way for undrawn visibility, but **`Grok` is the required post-report sync**.
+   - **Remove** any symbol currently on `Grok` that is **not** a PASS in the report
+4. Do this **after** the report is published. Membership sync does not wait on drawings; drawings for new PASSes can run after.
+5. Leave `grok_upload` alone. No separate Grok Bot teammate.
 
 
 ### Dashboard URL
