@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-19 (full-universe historical reports + GitHub Pages dashboard)  
+Last updated: 2026-09-20 (post-report Grok watchlist sync)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -56,7 +56,7 @@ Apply in roughly this order (cheap checks first):
 - ≥ 5% → **FAIL**
 
 ### 2.4 Earnings blackout
-- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date). **Primary:** TradingView symbol page field `earnings_release_next_date_fq` (unix → America/New_York calendar date). **Fallback:** Yahoo/yfinance (`get_earnings_dates` / calendar / earnings_dates).
+- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date from yfinance).
 - `days_to_earnings` is derived at screen time for the 14-day blackout; the Pages dashboard **recomputes** days-left live from `earnings_date` (Asia/Jerusalem).
 - If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip it from the PASS queue** (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
@@ -163,7 +163,7 @@ Artifacts (typical paths on the bot computer):
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
 - Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
-- `tradingview_url` US exchange from **FinViz** (Google Finance link on quote page) with yfinance fallback; **not** from `Grok.txt`. `MOG-A` → `MOG.A`  
+- `tradingview_url` best-effort US exchange (`NASDAQ:…` / `NYSE:…`); `MOG-A` → `MOG.A`  
 - `days_to_earnings` is populated directly in the verification outputs; unknown values are blank/NaN and flagged. The 14-day blackout rule still controls the PASS/draw queue.  
 - `/workspace/pass_queue.json` — current earnings-safe pass queue with levels  
 - `/workspace/earnings_filter_log.txt`  
@@ -195,7 +195,7 @@ Artifacts (typical paths on the bot computer):
 
 - Code heuristics approximate discretionary chart reading; false positives/negatives expected — user reviews drawings  
 - ATR timeframe: weekly when geometry is weekly  
-- Short float from FinViz; next earnings date from **TradingView** (primary) with Yahoo/yfinance fallback; missing data should be called out in the debug log
+- Short float / earnings sourced from FinViz / Yahoo-style data feeds; missing data should be called out in the debug log
 
 ---
 
@@ -221,9 +221,9 @@ Artifacts (typical paths on the bot computer):
 **Rules going forward:**
 1. **Only one TradingView driver at a time** for this bot — never run the daily routine’s TV drawing path in parallel with a chart-drawer task.
 2. While a drawing backlog exists, the daily routine may **code-scan only** (FinViz/yfinance) and queue PASSes; it must **not** open TradingView until drawings are idle.
-3. Strict order per ticker: **exchange check → draw zone → draw Long Position → then add to `Grok`**. Never add first.
+3. For **drawing** a ticker: **exchange check → draw zone → draw Long Position**. Watchlist **membership** for `Grok` is synced from the daily report PASS set (add/remove), not gated on drawings finishing first.
 4. Target watchlist remains **`Grok`**. Do not create other lists. Leave `grok_upload` alone unless the user asks to change it. Always select the **US exchange** in symbol search (see §5) — bare tickers can resolve to foreign listings (e.g. ASB ASX vs NYSE).
-5. **Split (active):** teammate **TV Drawer** (agent id `3988761`) owns all TradingView drawings + `Grok` adds on its own desktop. **Grok Bot** (this screener) only runs FinViz/code scans and hands off PASS queues — it must not drive TradingView while TV Drawer exists.
+5. **Split (active):** teammate **TV Drawer** (agent id `3988761`) owns all TradingView drawings + post-report **`Grok` watchlist sync** on its own desktop. **Grok Bot** (this screener) only runs FinViz/code scans, publishes the report, and hands off the PASS set — it must not drive TradingView while TV Drawer exists.
 
 ---
 
@@ -231,7 +231,7 @@ Artifacts (typical paths on the bot computer):
 
 | List | Purpose |
 |------|---------|
-| **Grok** | Fully processed: drawings done (TV Drawer owns adds after drawings) |
+| **Grok** | Earnings-safe PASSes from the latest report (synced after each report: add PASSes, remove non-PASSes). TV Drawer owns the TV sync. |
 | **Grok queue** | All code-screen PASSes, **no drawings required** — fast visibility while TV Drawer catches up (screener may bulk-add on its own desktop) |
 | **grok_upload** | Leave alone unless user asks |
 
@@ -256,7 +256,7 @@ Same spirit as the verify table, for every ticker:
 
 `ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
 
-- Prefer verify-enrichment (earnings via TradingView→Yahoo / TV URL / pct fields) where tickers overlap.
+- Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
 
 ### Helper
@@ -274,6 +274,18 @@ python export_daily_report.py \
 
 Call this at the end of the daily routine after `stock_screen.py` finishes, then commit + push so Pages updates.
 
+
+### After each report — sync `Grok` watchlist
+1. From the new report CSV, take every ticker with `status=PASS` and **not** `earnings_blackout` (earnings-safe PASSes).
+2. Build the target set as `EXCHANGE:TICKER` using FinViz-resolved US exchanges (same as `tradingview_url`).
+3. **Sync TradingView watchlist `Grok` to that exact set:**
+   - **Add** any PASS missing from `Grok`
+   - **Remove** any symbol currently on `Grok` that is **not** in the PASS set
+4. **TV Drawer** (agent id `3988761`) performs this sync on its own desktop. Grok Bot must **not** open TradingView while TV Drawer exists — after the report is pushed, hand off the target PASS list (and removals) to TV Drawer with priority.
+5. Drawings are separate: this sync is **membership only**. TV Drawer may still draw new PASSes afterward; do not skip the membership sync waiting on drawings.
+6. Leave `grok_upload` alone. Optionally keep `Grok queue` aligned the same way for undrawn visibility, but **`Grok` is the required post-report sync**.
+
+
 ### Dashboard URL
 https://azran4u.github.io/stock-retest-scanner/
 
@@ -283,5 +295,4 @@ Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no r
 ## 14. FinViz caches
 
 - **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
-- **Quote fundamentals** (short float, inst own, **exchange**): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries (including missing `exchange`) are re-fetched. TradingView links use this FinViz exchange (yfinance only if FinViz fails); `Grok.txt` is not authoritative for exchange.
-- **Next earnings date**: TradingView symbol page (`earnings_release_next_date_fq`) is primary; Yahoo/yfinance is fallback. Cached in `cache/earn_{TICKER}.json` with the same **3-day** TTL. On TV HTTP **429/503**, backoff 30–65s and retry the same URL **2–3 times** before Yahoo — do not fall back immediately. Do **not** use `Grok.txt` for earnings.
+- **Quote fundamentals** (short float, inst own): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries are re-fetched.
