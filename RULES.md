@@ -56,7 +56,8 @@ Apply in roughly this order (cheap checks first):
 - ≥ 5% → **FAIL**
 
 ### 2.4 Earnings blackout
-- `days_to_earnings` is the integer number of calendar days from today's Asia/Jerusalem date to the next **unreported** earnings date fetched through yfinance.
+- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date from yfinance).
+- `days_to_earnings` is derived at screen time for the 14-day blackout; the Pages dashboard **recomputes** days-left live from `earnings_date` (Asia/Jerusalem).
 - If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip it from the PASS queue** (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
 
@@ -161,7 +162,7 @@ Artifacts (typical paths on the bot computer):
 - `historical-reports/YYYY-MM-DD.csv` — published full-universe daily report (repo)  
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
-- Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
+- Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
 - `tradingview_url` US exchange from **FinViz** (Google Finance link on quote page) with yfinance fallback; **not** from `Grok.txt`. `MOG-A` → `MOG.A`  
 - `days_to_earnings` is populated directly in the verification outputs; unknown values are blank/NaN and flagged. The 14-day blackout rule still controls the PASS/draw queue.  
 - `/workspace/pass_queue.json` — current earnings-safe pass queue with levels  
@@ -253,7 +254,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Columns
 Same spirit as the verify table, for every ticker:
 
-`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
+`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
 
 - Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.

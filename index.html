@@ -199,7 +199,7 @@
 const COLS = [
   "ticker","status","current_price","entry","sl","tp","rr","atrs_from_entry",
   "zone_lo","zone_hi","atr","short_float_pct","inst_own_pct",
-  "dollar_vol_30d","avg_vol_30d","weekly_bars","days_to_earnings",
+  "dollar_vol_30d","avg_vol_30d","weekly_bars","earnings_date","days_to_earnings",
   "earnings_known","earnings_blackout","finviz_url","reason"
 ];
 
@@ -208,6 +208,7 @@ const NUM_COLS = new Set([
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
   "weekly_bars","days_to_earnings"
 ]);
+const EARNINGS_BLACKOUT_DAYS = 14;
 
 let allRows = [];
 let sortCol = "rr";
@@ -223,6 +224,37 @@ const RR_BINS = [
   { label: "4+", min: 4, max: Infinity },
 ];
 
+
+
+function todayJerusalemISO() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
+}
+
+function liveDaysToEarnings(earningsDate) {
+  if (!earningsDate) return null;
+  const ed = String(earningsDate).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ed)) return null;
+  const today = todayJerusalemISO();
+  const a = Date.parse(today + "T00:00:00Z");
+  const b = Date.parse(ed + "T00:00:00Z");
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+function enrichEarningsLive(rows) {
+  return rows.map(r => {
+    const out = Object.assign({}, r);
+    const days = liveDaysToEarnings(out.earnings_date);
+    if (days !== null) {
+      out.days_to_earnings = days;
+      out.earnings_known = true;
+      out.earnings_blackout = days >= 0 && days < EARNINGS_BLACKOUT_DAYS;
+    }
+    return out;
+  });
+}
 
 function parseCSV(text) {
   const rows = [];
@@ -275,6 +307,7 @@ function bucketReason(reason, status) {
 }
 
 function fmt(col, val, row) {
+  if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
     const name = val == null ? "" : String(val);
     const tv = row && row.tradingview_url ? row.tradingview_url : "";
@@ -566,7 +599,7 @@ async function loadReport(path, dateLabel) {
   const res = await fetch(path + "?t=" + Date.now());
   if (!res.ok) throw new Error("Failed to load " + path + " (" + res.status + ")");
   const text = await res.text();
-  allRows = parseCSV(text);
+  allRows = enrichEarningsLive(parseCSV(text));
   sortCol = "rr";
   sortDir = "desc";
   sortCol2 = "atrs_from_entry";

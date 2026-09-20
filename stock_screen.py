@@ -735,15 +735,28 @@ def _earnings_dates_from_frame(frame: Any, today: date) -> List[date]:
 
 
 def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, Any]:
-    """Fetch the next unreported earnings date through resilient yfinance APIs."""
+    """Fetch the next unreported earnings date through resilient yfinance APIs.
+
+    Always returns absolute `earnings_date` (YYYY-MM-DD) when known; `days_to_earnings`
+    is derived at fetch time for blackout checks. Reports should persist earnings_date
+    so dashboards can recompute days-left live.
+    """
     import yfinance as yf
 
     today = today or _local_today()
     errors: List[str] = []
     yf_ticker = yf.Ticker(ticker)
 
-    # get_earnings_dates is the most useful source because it exposes the
-    # reported EPS field; keep the other APIs as compatibility fallbacks.
+    def _ok(next_date: date, source: str) -> Dict[str, Any]:
+        days = int((next_date - today).days)
+        return {
+            "earnings_date": next_date.isoformat(),
+            "days_to_earnings": days,
+            "earnings_known": True,
+            "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
+            "earnings_source": source,
+        }
+
     for method_name in ("get_earnings_dates",):
         method = getattr(yf_ticker, method_name, None)
         if not callable(method):
@@ -755,13 +768,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
                 frame = method()
             dates = _earnings_dates_from_frame(frame, today)
             if dates:
-                next_date = dates[0]
-                return {
-                    "days_to_earnings": int((next_date - today).days),
-                    "earnings_known": True,
-                    "earnings_blackout": 0 <= (next_date - today).days < EARNINGS_BLACKOUT_DAYS,
-                    "earnings_source": method_name,
-                }
+                return _ok(dates[0], method_name)
         except Exception as exc:
             errors.append(f"{method_name}: {exc}")
 
@@ -769,35 +776,20 @@ def get_next_earnings(ticker: str, today: Optional[date] = None) -> Dict[str, An
         calendar = getattr(yf_ticker, "calendar", None)
         dates = [d for d in _calendar_earnings_dates(calendar) if d >= today]
         if dates:
-            next_date = dates[0]
-            days = int((next_date - today).days)
-            return {
-                "days_to_earnings": days,
-                "earnings_known": True,
-                "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
-                "earnings_source": "calendar",
-            }
+            return _ok(dates[0], "calendar")
     except Exception as exc:
         errors.append(f"calendar: {exc}")
 
-    # Some yfinance releases expose earnings_dates as a property rather than
-    # a callable method, so try it last.
     try:
         frame = getattr(yf_ticker, "earnings_dates", None)
         dates = _earnings_dates_from_frame(frame, today)
         if dates:
-            next_date = dates[0]
-            days = int((next_date - today).days)
-            return {
-                "days_to_earnings": days,
-                "earnings_known": True,
-                "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
-                "earnings_source": "earnings_dates",
-            }
+            return _ok(dates[0], "earnings_dates")
     except Exception as exc:
         errors.append(f"earnings_dates: {exc}")
 
     return {
+        "earnings_date": None,
         "days_to_earnings": None,
         "earnings_known": False,
         "earnings_blackout": False,
@@ -824,6 +816,7 @@ def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
             info = get_next_earnings(ticker, today=today)
         except Exception as exc:
             info = {
+                "earnings_date": None,
                 "days_to_earnings": None,
                 "earnings_known": False,
                 "earnings_blackout": False,
@@ -852,6 +845,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
         short = d.get("short_float")
         inst = d.get("inst_own")
         earnings = earnings_map.get(r["ticker"], {
+            "earnings_date": None,
             "days_to_earnings": None,
             "earnings_known": False,
             "earnings_blackout": False,
@@ -878,6 +872,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
             "dollar_vol_30d": d.get("dollar_vol_30d", d.get("dollar_vol")),
             "avg_vol_30d": d.get("avg_vol_30d", d.get("avg_vol")),
             "weekly_bars": d.get("weekly_bars"),
+            "earnings_date": earnings.get("earnings_date"),
             "days_to_earnings": earnings.get("days_to_earnings"),
             "earnings_known": bool(earnings.get("earnings_known")),
             "earnings_blackout": bool(earnings.get("earnings_blackout")),
@@ -891,7 +886,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
         "ticker", "status", "current_price", "entry", "sl", "tp", "rr",
         "atrs_from_entry",
         "zone_lo", "zone_hi", "atr", "short_float_pct", "inst_own_pct",
-        "dollar_vol_30d", "avg_vol_30d", "weekly_bars", "days_to_earnings",
+        "dollar_vol_30d", "avg_vol_30d", "weekly_bars", "earnings_date", "days_to_earnings",
         "earnings_known", "earnings_blackout", "tradingview_url", "reason",
     ]
     # ensure column order even if empty
@@ -965,7 +960,7 @@ a {{ color: #58a6ff; }}
 <div class="meta">
 Pre-sorted by <b>R:R descending</b>. Rows: PASS ({n_pass}) + R:R-fail with geometry ({n_rr}).
 Dollar volume = <b>30-day average volume × last close</b>.
-days_to_earnings is the integer calendar-day distance from <b>{_local_today().isoformat()} Asia/Jerusalem</b> to the next unreported Yahoo/yfinance earnings date; unknown values are flagged.
+earnings_date is the next unreported Yahoo/yfinance earnings day (ISO). days_to_earnings is derived at screen time; the public dashboard recomputes days-left live from earnings_date.
 The 14-day blackout is marked by <b>earnings_blackout</b>; such names must be skipped from the PASS queue.
 No hard-skips (e.g. AKTS); only real filters apply.
 </div>

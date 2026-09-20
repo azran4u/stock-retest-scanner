@@ -41,6 +41,7 @@ REPORT_COLS = [
     "dollar_vol_30d",
     "avg_vol_30d",
     "weekly_bars",
+    "earnings_date",
     "days_to_earnings",
     "earnings_known",
     "earnings_blackout",
@@ -208,6 +209,8 @@ def build_report(
 
         if t in pass_earn:
             pe = pass_earn[t]
+            if row.get("earnings_date") is None and pe.get("earnings_date") is not None:
+                row["earnings_date"] = pe["earnings_date"]
             if row.get("days_to_earnings") is None and pe.get("days_to_earnings") is not None:
                 row["days_to_earnings"] = pe["days_to_earnings"]
                 row["earnings_known"] = pe.get("earnings_known", True)
