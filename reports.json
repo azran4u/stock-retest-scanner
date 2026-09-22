@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-09-22",
+    "file": "2026-09-22.csv",
+    "path": "historical-reports/2026-09-22.csv"
+  },
+  {
     "date": "2026-09-21",
     "file": "2026-09-21.csv",
     "path": "historical-reports/2026-09-21.csv"
