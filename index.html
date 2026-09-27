@@ -37,6 +37,8 @@
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   }
   label { color: var(--muted); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
+  label.chk { flex-direction: row; align-items: center; gap: 6px; align-self: end; padding-bottom: 6px; cursor: pointer; user-select: none; }
+  label.chk input { accent-color: var(--accent, #58a6ff); width: 14px; height: 14px; }
   select, input[type="search"], input[type="text"] {
     background: var(--panel);
     color: var(--text);
@@ -151,6 +153,9 @@
         <option value="FAIL">FAIL</option>
       </select>
     </label>
+    <label class="chk"><input type="checkbox" id="fltSmooth"/> smooth_pullback</label>
+    <label class="chk"><input type="checkbox" id="fltWeeklyRev"/> weekly_reversal</label>
+    <label class="chk"><input type="checkbox" id="fltSmoothAndRev"/> smooth_and_reversal</label>
     <label>Search
       <input type="search" id="searchBox" placeholder="Ticker or reason…"/>
     </label>
@@ -200,7 +205,9 @@ const COLS = [
   "ticker","status","current_price","entry","sl","tp","rr","atrs_from_entry",
   "zone_lo","zone_hi","atr","short_float_pct","inst_own_pct",
   "dollar_vol_30d","avg_vol_30d","weekly_bars","earnings_date","days_to_earnings",
-  "earnings_known","earnings_blackout","finviz_url","reason"
+  "earnings_known","earnings_blackout",
+  "smooth_pullback","weekly_reversal","weekly_reversal_kind","smooth_and_reversal",
+  "finviz_url","reason"
 ];
 
 const NUM_COLS = new Set([
@@ -326,7 +333,9 @@ function fmt(col, val, row) {
     const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";
     return `<span class="pill ${cls}">${val}</span>`;
   }
-  if (col === "earnings_blackout" || col === "earnings_known") {
+  if (col === "earnings_blackout" || col === "earnings_known"
+      || col === "smooth_pullback" || col === "weekly_reversal" || col === "smooth_and_reversal") {
+    if (val === null || val === undefined || val === "") return "";
     const b = String(val).toLowerCase() === "true" || val === true || val === "1";
     return b ? "true" : "false";
   }
@@ -434,14 +443,25 @@ function updateChartFilterChip() {
   else label.textContent = "Chart filter";
 }
 
+
+function isTrueFlag(val) {
+  return String(val).toLowerCase() === "true" || val === true || val === "1";
+}
+
 function filteredRows() {
   const st = document.getElementById("statusFilter").value;
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  const wantSmooth = document.getElementById("fltSmooth").checked;
+  const wantRev = document.getElementById("fltWeeklyRev").checked;
+  const wantBoth = document.getElementById("fltSmoothAndRev").checked;
   return allRows.filter(r => {
     if (st !== "ALL" && String(r.status).toUpperCase() !== st) return false;
     if (!rowMatchesChartFilter(r)) return false;
+    if (wantSmooth && !isTrueFlag(r.smooth_pullback)) return false;
+    if (wantRev && !isTrueFlag(r.weekly_reversal)) return false;
+    if (wantBoth && !isTrueFlag(r.smooth_and_reversal)) return false;
     if (!q) return true;
-    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""}`.toLowerCase();
+    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.weekly_reversal_kind || ""}`.toLowerCase();
     return hay.includes(q);
   });
 }
@@ -606,6 +626,9 @@ async function loadReport(path, dateLabel) {
   sortDir2 = "asc";
   chartFilter = null;
   document.getElementById("statusFilter").value = "ALL";
+  document.getElementById("fltSmooth").checked = false;
+  document.getElementById("fltWeeklyRev").checked = false;
+  document.getElementById("fltSmoothAndRev").checked = false;
   updateChartFilterChip();
   renderCharts();
   renderTable();
@@ -647,6 +670,9 @@ async function init() {
     renderTable();
   });
   document.getElementById("searchBox").addEventListener("input", renderTable);
+  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev"].forEach(id => {
+    document.getElementById(id).addEventListener("change", renderTable);
+  });
   document.getElementById("clearChartFilter").addEventListener("click", () => {
     clearChartFilter();
     document.getElementById("statusFilter").value = "ALL";

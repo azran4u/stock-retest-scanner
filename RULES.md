@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-20 (Grok Bot owns TV sync; no Grok Bot)
+Last updated: 2026-09-27 (smooth_pullback / weekly_reversal report filters)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -253,7 +253,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Columns
 Same spirit as the verify table, for every ticker:
 
-`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url`
+`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, smooth_pullback, weekly_reversal, weekly_reversal_kind, smooth_and_reversal, tradingview_url`
 
 - Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
@@ -286,6 +286,25 @@ Call this at the end of the daily routine after `stock_screen.py` finishes, then
 
 ### Dashboard URL
 https://azran4u.github.io/stock-retest-scanner/
+
+
+### Report filters — smooth pullback & weekly reversal
+Dashboard / CSV flags (computed on **PASS** setups after the daily screen; FAIL rows stay `False` / empty kind). Source: `/workspace/smooth_support_analysis.py`.
+
+| Column | Meaning |
+|--------|---------|
+| `smooth_pullback` | `True` when pullback-into-support quality is **STRONG** on **weekly** candles |
+| `weekly_reversal` | `True` when the latest **completed** weekly candle shows a reversal near the zone |
+| `weekly_reversal_kind` | `hammer` \| `engulfing` \| `strong_close` \| `rejection` \| `none` (empty on FAIL) |
+| `smooth_and_reversal` | `True` when both `smooth_pullback` and `weekly_reversal` are true |
+
+**Volume (smooth pullback):** compare **weekly** volume to the **30-week SMA of weekly volume**. Do **not** use daily_eq = weekly_SMA/5. A “smooth” week is green, or red **and** vol &lt; SMA30. A loud red week (red & vol &gt; SMA30) on the approach blocks STRONG → `smooth_pullback=False`.
+
+**STRONG / smooth_pullback gate (summary):** near zone (≤1.5 weekly ATR / in-zone / testing), `pct_smooth≥0.70`, quiet reds (no loud red), `n_weeks≥3`, and (vol drying **or** price–vol corr&gt;0.2 **or** `pct_green≥0.40`).
+
+**Weekly reversal:** last **or** prior completed week near zone (touch or within **1.0** weekly ATR). Then any of: hammer/pin (lower wick ≥0.9×body, close upper half); bullish engulfing; strong_close (green, close ≥ open+0.5×range or top 40% of range after near-zone prior week); rejection (long lower wick poked zone, close ≥ zone_lo). Kind preference: hammer → engulfing → strong_close → rejection.
+
+Dashboard checkboxes filter to rows where the chosen flag is true. Future `export_daily_report.py` runs always emit these columns (blank/`False` until the smooth/reversal pass fills them).
 
 ### Fail-reason buckets (dashboard)
 Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.

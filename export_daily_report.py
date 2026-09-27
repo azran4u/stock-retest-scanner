@@ -45,6 +45,10 @@ REPORT_COLS = [
     "days_to_earnings",
     "earnings_known",
     "earnings_blackout",
+    "smooth_pullback",
+    "weekly_reversal",
+    "weekly_reversal_kind",
+    "smooth_and_reversal",
     "tradingview_url",
     "finviz_url",
     "reason",
@@ -230,6 +234,24 @@ def build_report(
 
         row["earnings_known"] = _as_bool(row.get("earnings_known"), False)
         row["earnings_blackout"] = _as_bool(row.get("earnings_blackout"), False)
+        # Optional report filters (filled by smooth_support_analysis / daily post-pass); blank until computed
+        if "smooth_pullback" not in row or row.get("smooth_pullback") is None:
+            row["smooth_pullback"] = False
+        else:
+            row["smooth_pullback"] = _as_bool(row.get("smooth_pullback"), False)
+        if "weekly_reversal" not in row or row.get("weekly_reversal") is None:
+            row["weekly_reversal"] = False
+        else:
+            row["weekly_reversal"] = _as_bool(row.get("weekly_reversal"), False)
+        kind = row.get("weekly_reversal_kind")
+        if kind is None or (isinstance(kind, float) and str(kind) == "nan") or kind == "":
+            row["weekly_reversal_kind"] = ""
+        else:
+            row["weekly_reversal_kind"] = str(kind)
+        if "smooth_and_reversal" not in row or row.get("smooth_and_reversal") is None:
+            row["smooth_and_reversal"] = bool(row["smooth_pullback"] and row["weekly_reversal"])
+        else:
+            row["smooth_and_reversal"] = _as_bool(row.get("smooth_and_reversal"), False)
         # Signed ATRs from entry: (price - entry) / ATR. + means price above entry.
         if row.get("atrs_from_entry") is None:
             try:
