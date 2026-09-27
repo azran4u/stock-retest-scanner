@@ -49,6 +49,8 @@ REPORT_COLS = [
     "weekly_reversal",
     "weekly_reversal_kind",
     "smooth_and_reversal",
+    "daily_reversal",
+    "daily_reversal_kind",
     "tradingview_url",
     "finviz_url",
     "reason",
@@ -252,6 +254,15 @@ def build_report(
             row["smooth_and_reversal"] = bool(row["smooth_pullback"] and row["weekly_reversal"])
         else:
             row["smooth_and_reversal"] = _as_bool(row.get("smooth_and_reversal"), False)
+        if "daily_reversal" not in row or row.get("daily_reversal") is None:
+            row["daily_reversal"] = False
+        else:
+            row["daily_reversal"] = _as_bool(row.get("daily_reversal"), False)
+        dkind = row.get("daily_reversal_kind")
+        if dkind is None or (isinstance(dkind, float) and str(dkind) == "nan") or dkind == "":
+            row["daily_reversal_kind"] = ""
+        else:
+            row["daily_reversal_kind"] = str(dkind)
         # Signed ATRs from entry: (price - entry) / ATR. + means price above entry.
         if row.get("atrs_from_entry") is None:
             try:

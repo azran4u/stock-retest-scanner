@@ -22,7 +22,7 @@ Weekly retest stock screener maintained with Grok Bot for Eyal.
 
 ## Daily report columns
 
-`ticker, status, reason, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, smooth_pullback, weekly_reversal, weekly_reversal_kind, smooth_and_reversal, tradingview_url`
+`ticker, status, reason, current_price, entry, sl, tp, rr, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, days_to_earnings, earnings_known, earnings_blackout, smooth_pullback, weekly_reversal, weekly_reversal_kind, smooth_and_reversal, daily_reversal, daily_reversal_kind, tradingview_url`
 
 ## Export after a screen run
 

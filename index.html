@@ -163,6 +163,7 @@
     <label class="chk"><input type="checkbox" id="fltSmooth"/> smooth_pullback</label>
     <label class="chk"><input type="checkbox" id="fltWeeklyRev"/> weekly_reversal</label>
     <label class="chk"><input type="checkbox" id="fltSmoothAndRev"/> smooth_and_reversal</label>
+    <label class="chk"><input type="checkbox" id="fltDailyRev"/> daily_reversal</label>
     <label>Search
       <input type="search" id="searchBox" placeholder="Ticker or reason…"/>
     </label>
@@ -214,6 +215,7 @@ const COLS = [
   "dollar_vol_30d","avg_vol_30d","weekly_bars","earnings_date","days_to_earnings",
   "earnings_known","earnings_blackout",
   "smooth_pullback","weekly_reversal","weekly_reversal_kind","smooth_and_reversal",
+  "daily_reversal","daily_reversal_kind",
   "finviz_url","reason"
 ];
 
@@ -386,7 +388,8 @@ function fmt(col, val, row) {
     return `<span class="pill ${cls}">${val}</span>`;
   }
   if (col === "earnings_blackout" || col === "earnings_known"
-      || col === "smooth_pullback" || col === "weekly_reversal" || col === "smooth_and_reversal") {
+      || col === "smooth_pullback" || col === "weekly_reversal" || col === "smooth_and_reversal"
+      || col === "daily_reversal") {
     if (val === null || val === undefined || val === "") return "";
     const b = String(val).toLowerCase() === "true" || val === true || val === "1";
     return b ? "true" : "false";
@@ -506,14 +509,16 @@ function filteredRows() {
   const wantSmooth = document.getElementById("fltSmooth").checked;
   const wantRev = document.getElementById("fltWeeklyRev").checked;
   const wantBoth = document.getElementById("fltSmoothAndRev").checked;
+  const wantDailyRev = document.getElementById("fltDailyRev").checked;
   return allRows.filter(r => {
     if (st !== "ALL" && String(r.status).toUpperCase() !== st) return false;
     if (!rowMatchesChartFilter(r)) return false;
     if (wantSmooth && !isTrueFlag(r.smooth_pullback)) return false;
     if (wantRev && !isTrueFlag(r.weekly_reversal)) return false;
     if (wantBoth && !isTrueFlag(r.smooth_and_reversal)) return false;
+    if (wantDailyRev && !isTrueFlag(r.daily_reversal)) return false;
     if (!q) return true;
-    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.weekly_reversal_kind || ""}`.toLowerCase();
+    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.weekly_reversal_kind || ""} ${r.daily_reversal_kind || ""}`.toLowerCase();
     return hay.includes(q);
   });
 }
@@ -681,6 +686,7 @@ async function loadReport(path, dateLabel) {
   document.getElementById("fltSmooth").checked = false;
   document.getElementById("fltWeeklyRev").checked = false;
   document.getElementById("fltSmoothAndRev").checked = false;
+  document.getElementById("fltDailyRev").checked = false;
   updateChartFilterChip();
   renderCharts();
   renderTable();
@@ -722,7 +728,7 @@ async function init() {
     renderTable();
   });
   document.getElementById("searchBox").addEventListener("input", renderTable);
-  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev"].forEach(id => {
+  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev","fltDailyRev"].forEach(id => {
     document.getElementById(id).addEventListener("change", renderTable);
   });
   // TradingView app links: clipboard + cache-bust deep link (do not also open https).
