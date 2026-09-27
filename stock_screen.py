@@ -561,12 +561,15 @@ def load_exchange_map() -> Dict[str, str]:
 
 
 def tv_symbol_for(ticker: str, exchange_map: Optional[Dict[str, str]] = None) -> str:
-    """TradingView app deep link from FinViz exchange (not Grok.txt). MOG-A -> MOG.A."""
+    """Portable TradingView https chart URL from FinViz exchange (not Grok.txt). MOG-A -> MOG.A.
+
+    Dashboard builds tradingview:// app links at render time from the symbol.
+    """
     del exchange_map  # retained for call-site compatibility; ignored on purpose
     raw = ticker.strip().upper()
     tv_ticker = raw.replace("-", ".")
     ex = resolve_exchange(raw)
-    return f"tradingview://chart?symbol={ex}:{tv_ticker}"
+    return f"https://www.tradingview.com/chart/?symbol={ex}:{tv_ticker}"
 
 
 def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:

@@ -162,7 +162,7 @@ Artifacts (typical paths on the bot computer):
 - `/workspace/stock_screen_verify.csv` — verification table: all PASSes (+ R:R fails with geometry), **sorted by R:R descending**  
 - `/workspace/stock_screen_verify.html` — same table as static HTML for easy review  
 - Verify columns: ticker, status, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, tradingview_url, reason  
-- `tradingview_url` best-effort US exchange (`NASDAQ:…` / `NYSE:…`); `MOG-A` → `MOG.A`; uses `tradingview://chart?symbol=…` so iPhone/Mac open the TradingView **app** (dashboard also shows a small https “web” fallback)  
+- `tradingview_url` best-effort US exchange as portable https (`https://www.tradingview.com/chart/?symbol=NASDAQ:…`); `MOG-A` → `MOG.A`; dashboard ticker opens app via `tradingview://` (best-effort; TV often ignores symbol if app already open); web link always has the chart  
 - `days_to_earnings` is populated directly in the verification outputs; unknown values are blank/NaN and flagged. The 14-day blackout rule still controls the PASS/draw queue.  
 - `/workspace/pass_queue.json` — current earnings-safe pass queue with levels  
 - `/workspace/earnings_filter_log.txt`  
@@ -249,7 +249,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 - `historical-reports/*.csv` — only copy of report CSVs (Pages source = `/`)
 - `reports.json` — manifest for the report-date picker: `[{date, file, path}, ...]`
 - `index.html` — dark dashboard (Chart.js CDN); fetches CSVs from `historical-reports/`
-- TV links: primary `tradingview://chart?symbol=EXCHANGE:TICKER` (iPhone/Mac app); secondary https “web” fallback on the dashboard
+- TV links: CSV stores https; dashboard ticker opens app via `tradingview://` (best-effort; TV often ignores symbol if app already open); web link always has the chart
 
 ### Columns
 Same spirit as the verify table, for every ticker:

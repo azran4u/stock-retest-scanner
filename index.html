@@ -331,21 +331,38 @@ function tvSymbolFromUrl(url) {
   return bare ? bare[1] : "";
 }
 
-function tvAppHref(symbol) {
-  return symbol ? `tradingview://chart?symbol=${symbol}` : "";
+function tvAppHref(symbol, cacheBust) {
+  if (!symbol) return "";
+  const base = `tradingview://chart?symbol=${symbol}`;
+  return cacheBust ? `${base}&t=${cacheBust}` : base;
 }
 
 function tvWebHref(symbol) {
   return symbol ? `https://www.tradingview.com/chart/?symbol=${symbol}` : "";
 }
 
-/** Primary app deep link + small https "web" fallback. */
+const TV_APP_TIP = "Opens TradingView app; if chart doesn't change, use web or paste the copied symbol.";
+
+/** Best-effort app open: clipboard + cache-busted tradingview:// via location.href. */
+function openTradingViewApp(symbol) {
+  if (!symbol) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(symbol).catch(() => {});
+    }
+  } catch (_) { /* ignore */ }
+  // Cache-bust so a warm-started app may re-fire the deep link (plain scheme is often ignored).
+  window.location.href = tvAppHref(symbol, Date.now());
+}
+
+/** App deep link (click handler) + visible https "web" fallback (always correct chart). */
 function tvLinksHtml(label, tradingviewUrl) {
   const symbol = tvSymbolFromUrl(tradingviewUrl);
   if (!symbol) return label == null ? "" : String(label);
   const app = tvAppHref(symbol);
   const web = tvWebHref(symbol);
-  return `<a href="${app}">${label}</a><a class="tv-web" href="${web}" target="_blank" rel="noopener">web</a>`;
+  const tip = TV_APP_TIP.replace(/"/g, "&quot;");
+  return `<a class="tv-app" href="${app}" data-tv-symbol="${symbol}" title="${tip}">${label}</a><a class="tv-web" href="${web}" target="_blank" rel="noopener">web</a>`;
 }
 
 function fmt(col, val, row) {
@@ -708,6 +725,15 @@ async function init() {
   ["fltSmooth","fltWeeklyRev","fltSmoothAndRev"].forEach(id => {
     document.getElementById(id).addEventListener("change", renderTable);
   });
+  // TradingView app links: clipboard + cache-bust deep link (do not also open https).
+  document.addEventListener("click", (ev) => {
+    const a = ev.target && ev.target.closest && ev.target.closest("a.tv-app");
+    if (!a) return;
+    ev.preventDefault();
+    const symbol = a.getAttribute("data-tv-symbol") || tvSymbolFromUrl(a.getAttribute("href") || "");
+    openTradingViewApp(symbol);
+  });
+
   document.getElementById("clearChartFilter").addEventListener("click", () => {
     clearChartFilter();
     document.getElementById("statusFilter").value = "ALL";
