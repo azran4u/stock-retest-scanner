@@ -114,6 +114,13 @@
   tr:hover { background: rgba(88, 166, 255, 0.08); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  a.tv-web {
+    margin-left: 6px;
+    font-size: 0.75em;
+    color: var(--muted, #8b949e);
+    opacity: 0.85;
+  }
+  a.tv-web:hover { opacity: 1; }
   .pill {
     display: inline-block;
     padding: 1px 8px;
@@ -313,12 +320,40 @@ function bucketReason(reason, status) {
   return "other";
 }
 
+/** Parse EXCHANGE:TICKER from tradingview_url (https or tradingview://). */
+function tvSymbolFromUrl(url) {
+  if (!url) return "";
+  const s = String(url);
+  const m = s.match(/[?&]symbol=([^&]+)/i);
+  if (m) return decodeURIComponent(m[1]);
+  // bare EXCHANGE:TICKER fallback
+  const bare = s.match(/([A-Z0-9]+:[A-Z0-9.=\-]+)/i);
+  return bare ? bare[1] : "";
+}
+
+function tvAppHref(symbol) {
+  return symbol ? `tradingview://chart?symbol=${symbol}` : "";
+}
+
+function tvWebHref(symbol) {
+  return symbol ? `https://www.tradingview.com/chart/?symbol=${symbol}` : "";
+}
+
+/** Primary app deep link + small https "web" fallback. */
+function tvLinksHtml(label, tradingviewUrl) {
+  const symbol = tvSymbolFromUrl(tradingviewUrl);
+  if (!symbol) return label == null ? "" : String(label);
+  const app = tvAppHref(symbol);
+  const web = tvWebHref(symbol);
+  return `<a href="${app}">${label}</a><a class="tv-web" href="${web}" target="_blank" rel="noopener">web</a>`;
+}
+
 function fmt(col, val, row) {
   if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
     const name = val == null ? "" : String(val);
     const tv = row && row.tradingview_url ? row.tradingview_url : "";
-    if (tv) return `<a href="${tv}" target="_blank" rel="noopener">${name}</a>`;
+    if (tv) return tvLinksHtml(name, tv);
     return name;
   }
   if (val === null || val === undefined || val === "") return "";
@@ -327,7 +362,7 @@ function fmt(col, val, row) {
     return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
   }
   if (col === "tradingview_url") {
-    return `<a href="${val}" target="_blank" rel="noopener">TV</a>`;
+    return tvLinksHtml("TV", val);
   }
   if (col === "status") {
     const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";

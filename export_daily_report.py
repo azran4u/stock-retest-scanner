@@ -124,7 +124,7 @@ def _parse_exchange_from_finviz_html(html: str, ticker: str) -> Optional[str]:
 
 
 def tv_url(ticker: str, ex_map: Optional[Dict[str, str]] = None) -> str:
-    """TradingView URL via FinViz exchange resolution (not Grok.txt)."""
+    """TradingView app deep link via FinViz exchange resolution (not Grok.txt)."""
     del ex_map  # unused; kept for call-site compatibility
     if _TV_SYMBOL_FOR is not None:
         return _TV_SYMBOL_FOR(str(ticker))
@@ -133,7 +133,7 @@ def tv_url(ticker: str, ex_map: Optional[Dict[str, str]] = None) -> str:
     ex = "NASDAQ"
     if _RESOLVE_EXCHANGE is not None:
         ex = _RESOLVE_EXCHANGE(raw)
-    return f"https://www.tradingview.com/chart/?symbol={ex}:{tv_ticker}"
+    return f"tradingview://chart?symbol={ex}:{tv_ticker}"
 
 
 def _as_bool(val: Any, default: bool = False) -> bool:
