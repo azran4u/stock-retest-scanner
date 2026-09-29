@@ -143,62 +143,65 @@
   .chart-filter button:hover { color: var(--text); }
   canvas { cursor: pointer; }
   footer { color: var(--muted); font-size: 0.8rem; margin-top: 18px; }
+  .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-top:12px; }
+  .filters .grp { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
+  label.fchk { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px; color: var(--text); font-size: 0.82rem; }
+  label.fchk.on { border-color: var(--accent); background: rgba(88,166,255,0.12); }
+  label.fchk.disabled { opacity: 0.4; cursor: not-allowed; }
+  label.fchk input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
+  label.fchk .cnt { color: var(--muted); font-size: 0.75rem; }
+  button.btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.82rem; }
+  button.btn:hover { border-color: var(--accent); }
+  .matchcount { font-size: 1.05rem; font-weight: 650; margin-left: 6px; }
+  .matchcount b { color: var(--accent); }
+  .schema-note { color: var(--warn); font-size: 0.82rem; margin-top: 6px; }
+  td.ft { color: var(--pass); } td.ff { color: var(--muted); }
 </style>
 </head>
 <body>
 <header>
   <h1>Stock Retest Scanner</h1>
-  <div class="sub">Full FinViz universe daily report · Asia/Jerusalem · no live orders</div>
+  <div class="sub">Full FinViz screener list · every filter computed independently for every stock · checked filters are ANDed · Asia/Jerusalem · no live orders</div>
   <div class="controls">
     <label>Report date
       <select id="reportSelect"></select>
     </label>
-    <label>Status
-      <select id="statusFilter">
-        <option value="ALL">All</option>
-        <option value="PASS">PASS</option>
-        <option value="FAIL">FAIL</option>
-      </select>
-    </label>
-    <label class="chk"><input type="checkbox" id="fltSmooth"/> smooth_pullback</label>
-    <label class="chk"><input type="checkbox" id="fltWeeklyRev"/> weekly_reversal</label>
-    <label class="chk"><input type="checkbox" id="fltSmoothAndRev"/> smooth_and_reversal</label>
-    <label class="chk"><input type="checkbox" id="fltDailyRev"/> daily_reversal</label>
-    <label class="chk" title="Short float &lt; 5% AND consecutive smooth weekly candles (green, quiet red vol&lt;SMA30, or reversal shape) back from the last completed week"><input type="checkbox" id="fltSmoothStreak"/> <span id="fltSmoothStreakLabel">smooth_streak (≥5w)</span></label>
     <label>Search
-      <input type="search" id="searchBox" placeholder="Ticker or reason…"/>
+      <input type="search" id="searchBox" placeholder="Ticker, kind, note…"/>
     </label>
+    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters that define status=PASS (Grok watchlist)">PASS-equivalent</button>
+    <button type="button" class="btn" id="btnClear">Clear filters</button>
+    <div class="matchcount" id="matchCount">—</div>
   </div>
+  <div class="filters" id="filterBox"></div>
+  <div class="schema-note" id="schemaNote" style="display:none"></div>
 </header>
 <main>
   <div class="cards">
-    <div class="card"><div class="label">Scanned</div><div class="value" id="cScanned">—</div></div>
-    <div class="card pass"><div class="label">PASS</div><div class="value" id="cPass">—</div></div>
-    <div class="card fail"><div class="label">FAIL</div><div class="value" id="cFail">—</div></div>
-    <div class="card warn"><div class="label">Earnings blackout</div><div class="value" id="cBlackout">—</div></div>
+    <div class="card"><div class="label">FinViz list</div><div class="value" id="cScanned">—</div></div>
+    <div class="card"><div class="label">Matching filters</div><div class="value" id="cMatch" style="color:var(--accent)">—</div></div>
+    <div class="card pass"><div class="label">status = PASS</div><div class="value" id="cPass">—</div></div>
+    <div class="card warn"><div class="label">Earnings ≤14d</div><div class="value" id="cBlackout">—</div></div>
   </div>
 
   <div class="charts">
     <div class="chart-box">
-      <h2>PASS vs FAIL</h2>
-      <div class="chart-wrap"><canvas id="chartStatus"></canvas></div>
+      <h2>Stocks passing each filter (click to toggle)</h2>
+      <div class="chart-wrap"><canvas id="chartFilters"></canvas></div>
     </div>
     <div class="chart-box">
-      <h2>FAIL reason buckets</h2>
-      <div class="chart-wrap"><canvas id="chartReasons"></canvas></div>
-    </div>
-    <div class="chart-box">
-      <h2>R:R distribution (PASS)</h2>
+      <h2>R:R distribution (current selection)</h2>
       <div class="chart-wrap"><canvas id="chartRR"></canvas></div>
+    </div>
+    <div class="chart-box">
+      <h2>smooth_streak_weeks (current selection)</h2>
+      <div class="chart-wrap"><canvas id="chartStreak"></canvas></div>
     </div>
   </div>
 
   <div class="toolbar">
     <div style="color:var(--muted);font-size:0.85rem" id="tableMeta">Loading…</div>
-    <div id="chartFilterChip" class="chart-filter" style="display:none">
-      <span id="chartFilterLabel"></span>
-      <button type="button" id="clearChartFilter" title="Clear chart filter">×</button>
-    </div>
   </div>
   <div class="table-wrap">
     <table id="dataTable">
@@ -210,42 +213,57 @@
 </main>
 
 <script>
-const COLS = [
-  "ticker","status","current_price","entry","sl","tp","rr","atrs_from_entry",
-  "zone_lo","zone_hi","atr","short_float_pct","inst_own_pct",
-  "dollar_vol_30d","avg_vol_30d","weekly_bars","earnings_date","days_to_earnings",
-  "earnings_known","earnings_blackout",
-  "smooth_pullback","weekly_reversal","weekly_reversal_kind","smooth_and_reversal",
-  "daily_reversal","daily_reversal_kind",
-  "smooth_streak","smooth_streak_weeks",
-  "finviz_url","reason"
+// Filter definitions (thresholds documented in RULES.md; values set in report_filters.py CONFIG)
+const FILTERS = [
+  { col: "f_dollar_vol",      label: "$vol ≥ $50M (30d)",     core: true,  tip: "30-day average dollar volume ≥ $50M (dollar_vol_30d)" },
+  { col: "f_short_float",     label: "short float < 5%",      core: true,  tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
+  { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days of the report date. Unknown → false" },
+  { col: "f_history",         label: "history ≥ 3y",          core: true,  tip: "≥ 150 weekly bars (weekly_bars)" },
+  { col: "f_rr",              label: "R:R ≥ 2 (retest setup)", core: true, tip: "Whole retest pipeline as ONE filter: breakout-retest zone → entry / SL (0.5–1×ATR) / TP computed AND R:R ≥ 2. Zone columns are informational only" },
+  { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
+  { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
+  { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
 ];
+const CORE = FILTERS.filter(f => f.core).map(f => f.col);
 
+const PREFERRED_COLS = [
+  "ticker","status","failed_filters",
+  ...FILTERS.map(f => f.col),
+  "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings","days_to_earnings_live",
+  "weekly_bars","rr","entry","sl","tp","zone_lo","zone_hi","sl_atr_mult","atr","atrs_from_entry",
+  "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
+  "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
+  "filter_notes","finviz_url","reason"
+];
+const HIDDEN_COLS = new Set(["tradingview_url"]);
 const NUM_COLS = new Set([
-  "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr",
+  "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
-  "weekly_bars","days_to_earnings","smooth_streak_weeks"
+  "weekly_bars","days_to_earnings","days_to_earnings_live","smooth_streak_weeks"
 ]);
-// Default MIN_SMOOTH_STREAK_WEEKS (smooth_support_analysis.py); label is re-derived
-// from the loaded report (min weeks among smooth_streak=true rows) when possible.
-const DEFAULT_MIN_SMOOTH_STREAK_WEEKS = 5;
+const BOOL_COLS = new Set([
+  ...FILTERS.map(f => f.col), "smooth_pullback","earnings_known","earnings_blackout",
+  "weekly_reversal","daily_reversal","smooth_and_reversal","smooth_streak"
+]);
 const EARNINGS_BLACKOUT_DAYS = 14;
+const RR_BINS = [
+  { label: "<1", min: -Infinity, max: 1 }, { label: "1–2", min: 1, max: 2 },
+  { label: "2–2.5", min: 2, max: 2.5 }, { label: "2.5–3", min: 2.5, max: 3 },
+  { label: "3–4", min: 3, max: 4 }, { label: "4+", min: 4, max: Infinity },
+];
+const STREAK_BINS = [
+  { label: "0–4", min: 0, max: 5 }, { label: "5", min: 5, max: 6 }, { label: "6", min: 6, max: 7 },
+  { label: "7", min: 7, max: 8 }, { label: "8", min: 8, max: 9 }, { label: "9–12", min: 9, max: 13 },
+  { label: "13+", min: 13, max: Infinity },
+];
 
 let allRows = [];
-let sortCol = "rr";
-let sortDir = "desc";
-let sortCol2 = "atrs_from_entry";
-let sortDir2 = "asc";
-let charts = { status: null, reasons: null, rr: null };
-let chartFilter = null; // { type: 'status'|'reason'|'rr', value: string } | null
-const RR_BINS = [
-  { label: "2–2.5", min: 2, max: 2.5 },
-  { label: "2.5–3", min: 2.5, max: 3 },
-  { label: "3–4", min: 3, max: 4 },
-  { label: "4+", min: 4, max: Infinity },
-];
-
-
+let headers = [];
+let COLS = [];
+let available = new Set();      // filter cols present in the loaded CSV
+let checked = new Set();
+let sortCol = "rr", sortDir = "desc", sortCol2 = "ticker", sortDir2 = "asc";
+let charts = { filters: null, rr: null, streak: null };
 
 function todayJerusalemISO() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -264,20 +282,18 @@ function liveDaysToEarnings(earningsDate) {
   return Math.round((b - a) / 86400000);
 }
 
+/** Adds days_to_earnings_live (vs today). Filters keep the report-date values. */
 function enrichEarningsLive(rows) {
   return rows.map(r => {
     const out = Object.assign({}, r);
     const days = liveDaysToEarnings(out.earnings_date);
-    if (days !== null) {
-      out.days_to_earnings = days;
-      out.earnings_known = true;
-      out.earnings_blackout = days >= 0 && days < EARNINGS_BLACKOUT_DAYS;
-    }
+    out.days_to_earnings_live = days === null ? "" : days;
     return out;
   });
 }
 
 function parseCSV(text) {
+  headers = [];
   const rows = [];
   let i = 0, field = "", row = [], inQ = false;
   while (i < text.length) {
@@ -301,7 +317,7 @@ function parseCSV(text) {
   }
   if (field.length || row.length) { row.push(field); rows.push(row); }
   if (!rows.length) return [];
-  const headers = rows[0].map(h => h.trim());
+  headers = rows[0].map(h => h.trim());
   return rows.slice(1).filter(r => r.some(x => x !== "")).map(r => {
     const obj = {};
     headers.forEach((h, idx) => { obj[h] = r[idx] !== undefined ? r[idx] : ""; });
@@ -315,16 +331,9 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-function bucketReason(reason, status) {
-  if (status === "PASS") return null;
-  const s = (reason || "").toLowerCase();
-  if (s.includes("earnings blackout") || s.includes("earnings")) return "earnings";
-  if (s.includes("$vol") || s.includes("dollar vol") || s.includes("vol(30d)")) return "$vol";
-  if (s.includes("short float")) return "short float";
-  if (s.includes("history") || s.includes("no price") || s.includes("too little") || s.includes("weekly bars")) return "history";
-  if (s.includes("r:r") || s.startsWith("r:r")) return "R:R";
-  if (s.includes("retest") || s.includes("geometry") || s.includes("no weekly")) return "no retest";
-  return "other";
+
+function isTrueFlag(val) {
+  return val === true || String(val).toLowerCase() === "true" || val === "1";
 }
 
 /** Parse EXCHANGE:TICKER from tradingview_url (https or tradingview://). */
@@ -372,42 +381,30 @@ function tvLinksHtml(label, tradingviewUrl) {
   return `<a class="tv-app" href="${app}" data-tv-symbol="${symbol}" title="${tip}">${label}</a><a class="tv-web" href="${web}" target="_blank" rel="noopener">web</a>`;
 }
 
+
 function fmt(col, val, row) {
   if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
     const name = val == null ? "" : String(val);
     const tv = row && row.tradingview_url ? row.tradingview_url : "";
-    if (tv) return tvLinksHtml(name, tv);
-    return name;
+    return tv ? tvLinksHtml(name, tv) : name;
   }
   if (val === null || val === undefined || val === "") return "";
-  if (col === "finviz_url") {
-    if (!val) return "";
-    return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
-  }
-  if (col === "tradingview_url") {
-    return tvLinksHtml("TV", val);
-  }
+  if (col === "finviz_url") return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
   if (col === "status") {
     const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";
     return `<span class="pill ${cls}">${val}</span>`;
   }
-  if (col === "earnings_blackout" || col === "earnings_known"
-      || col === "smooth_pullback" || col === "weekly_reversal" || col === "smooth_and_reversal"
-      || col === "daily_reversal" || col === "smooth_streak") {
-    if (val === null || val === undefined || val === "") return "";
-    const b = String(val).toLowerCase() === "true" || val === true || val === "1";
-    return b ? "true" : "false";
-  }
+  if (BOOL_COLS.has(col)) return isTrueFlag(val) ? "✓" : "·";
   if (NUM_COLS.has(col)) {
     const n = toNum(val);
     if (n === null) return "";
-    if (col === "rr" || col === "atrs_from_entry") return n.toFixed(3);
-    if (col === "dollar_vol_30d") return Math.round(n).toLocaleString();
-    if (col === "avg_vol_30d" || col === "weekly_bars" || col === "days_to_earnings"
+    if (col === "rr" || col === "atrs_from_entry" || col === "sl_atr_mult") return n.toFixed(2);
+    if (col === "dollar_vol_30d") return "$" + (n / 1e6).toFixed(1) + "M";
+    if (col === "avg_vol_30d" || col === "weekly_bars" || col.startsWith("days_to_earnings")
         || col === "smooth_streak_weeks") return String(Math.round(n));
     if (col.endsWith("_pct")) return n.toFixed(2);
-    return n.toFixed(4);
+    return n.toFixed(2);
   }
   return String(val);
 }
@@ -415,138 +412,67 @@ function fmt(col, val, row) {
 function cmpCol(a, b, col, dir) {
   if (!col) return 0;
   const av = a[col], bv = b[col];
-  const an = toNum(av), bn = toNum(bv);
   if (NUM_COLS.has(col)) {
-    const aEmpty = an === null;
-    const bEmpty = bn === null;
-    if (aEmpty && !bEmpty) return 1;
-    if (!aEmpty && bEmpty) return -1;
-    if (!aEmpty && !bEmpty) {
-      const cmp = an - bn;
-      if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
-    }
+    const an = toNum(av), bn = toNum(bv);
+    if (an === null && bn !== null) return 1;
+    if (an !== null && bn === null) return -1;
+    if (an !== null && bn !== null && an !== bn) return dir === "asc" ? an - bn : bn - an;
     return 0;
   }
+  if (BOOL_COLS.has(col)) {
+    const x = isTrueFlag(av) ? 1 : 0, y = isTrueFlag(bv) ? 1 : 0;
+    return dir === "asc" ? x - y : y - x;
+  }
   const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
-  if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
-  return 0;
+  return dir === "asc" ? cmp : -cmp;
 }
 
 function compareRows(a, b) {
   let c = cmpCol(a, b, sortCol, sortDir);
   if (c !== 0) return c;
-  if (sortCol2 && sortCol2 !== sortCol) {
-    c = cmpCol(a, b, sortCol2, sortDir2);
-    if (c !== 0) return c;
-  }
-  const as = String(a.status).toUpperCase() === "PASS" ? 0 : 1;
-  const bs = String(b.status).toUpperCase() === "PASS" ? 0 : 1;
-  if (as !== bs) return as - bs;
+  if (sortCol2 && sortCol2 !== sortCol) { c = cmpCol(a, b, sortCol2, sortDir2); if (c !== 0) return c; }
   return String(a.ticker || "").localeCompare(String(b.ticker || ""));
 }
 
-function rowMatchesChartFilter(r) {
-  if (!chartFilter) return true;
-  const st = String(r.status).toUpperCase();
-  if (chartFilter.type === "status") {
-    return st === String(chartFilter.value).toUpperCase();
-  }
-  if (chartFilter.type === "reason") {
-    if (st === "PASS") return false;
-    return bucketReason(r.reason, r.status) === chartFilter.value;
-  }
-  if (chartFilter.type === "rr") {
-    if (st !== "PASS") return false;
-    const n = toNum(r.rr);
-    if (n === null) return false;
-    const bin = RR_BINS.find(b => b.label === chartFilter.value);
-    if (!bin) return false;
-    return n >= bin.min && n < bin.max;
-  }
+function rowPasses(r, active) {
+  for (const col of active) if (!isTrueFlag(r[col])) return false;
   return true;
 }
 
-function setChartFilter(next) {
-  // Toggle off if clicking the same slice/bar again
-  if (chartFilter && next && chartFilter.type === next.type && chartFilter.value === next.value) {
-    chartFilter = null;
-  } else {
-    chartFilter = next;
-  }
-  // Keep status dropdown in sync for status clicks
-  const sel = document.getElementById("statusFilter");
-  if (chartFilter && chartFilter.type === "status") sel.value = chartFilter.value;
-  else if (!chartFilter || chartFilter.type !== "status") {
-    // leave dropdown alone unless it was set by chart status
-  }
-  updateChartFilterChip();
-  renderTable();
-}
-
-function clearChartFilter() {
-  chartFilter = null;
-  updateChartFilterChip();
-  renderTable();
-}
-
-function updateChartFilterChip() {
-  const chip = document.getElementById("chartFilterChip");
-  const label = document.getElementById("chartFilterLabel");
-  if (!chartFilter) {
-    chip.style.display = "none";
-    label.textContent = "";
-    return;
-  }
-  chip.style.display = "inline-flex";
-  if (chartFilter.type === "status") label.textContent = `Filter: status = ${chartFilter.value}`;
-  else if (chartFilter.type === "reason") label.textContent = `Filter: fail reason = ${chartFilter.value}`;
-  else if (chartFilter.type === "rr") label.textContent = `Filter: R:R ${chartFilter.value}`;
-  else label.textContent = "Chart filter";
-}
-
-
-function updateSmoothStreakLabel() {
-  let mw = null;
-  for (const r of allRows) {
-    if (!isTrueFlag(r.smooth_streak)) continue;
-    const n = toNum(r.smooth_streak_weeks);
-    if (n !== null && (mw === null || n < mw)) mw = n;
-  }
-  // Threshold isn't stored in the CSV; with dozens of true rows the smallest
-  // true streak equals the threshold used, so show it (else the default).
-  const shown = mw !== null ? mw : DEFAULT_MIN_SMOOTH_STREAK_WEEKS;
-  const el = document.getElementById("fltSmoothStreakLabel");
-  if (el) el.textContent = `smooth_streak (≥${shown}w)`;
-}
-
-function isTrueFlag(val) {
-  return String(val).toLowerCase() === "true" || val === true || val === "1";
-}
-
 function filteredRows() {
-  const st = document.getElementById("statusFilter").value;
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
-  const wantSmooth = document.getElementById("fltSmooth").checked;
-  const wantRev = document.getElementById("fltWeeklyRev").checked;
-  const wantBoth = document.getElementById("fltSmoothAndRev").checked;
-  const wantDailyRev = document.getElementById("fltDailyRev").checked;
-  const wantSmoothStreak = document.getElementById("fltSmoothStreak").checked;
+  const active = [...checked].filter(c => available.has(c));
   return allRows.filter(r => {
-    if (st !== "ALL" && String(r.status).toUpperCase() !== st) return false;
-    if (!rowMatchesChartFilter(r)) return false;
-    if (wantSmooth && !isTrueFlag(r.smooth_pullback)) return false;
-    if (wantRev && !isTrueFlag(r.weekly_reversal)) return false;
-    if (wantBoth && !isTrueFlag(r.smooth_and_reversal)) return false;
-    if (wantDailyRev && !isTrueFlag(r.daily_reversal)) return false;
-    if (wantSmoothStreak && !isTrueFlag(r.smooth_streak)) return false;
+    if (!rowPasses(r, active)) return false;
     if (!q) return true;
-    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.weekly_reversal_kind || ""} ${r.daily_reversal_kind || ""}`.toLowerCase();
+    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.failed_filters || ""} ${r.filter_notes || ""} ${r.weekly_reversal_kind || ""} ${r.daily_reversal_kind || ""}`.toLowerCase();
     return hay.includes(q);
   });
 }
 
-function renderTable() {
-  const rows = filteredRows().slice().sort(compareRows);
+function renderFilterBox() {
+  const box = document.getElementById("filterBox");
+  const groups = [["Core (PASS)", FILTERS.filter(f => f.core)], ["Extra", FILTERS.filter(f => !f.core)]];
+  box.innerHTML = groups.map(([name, fs]) =>
+    `<span class="grp">${name}</span>` + fs.map(f => {
+      const avail = available.has(f.col);
+      const n = avail ? allRows.filter(r => isTrueFlag(r[f.col])).length : null;
+      const on = checked.has(f.col) && avail;
+      return `<label class="fchk${on ? " on" : ""}${avail ? "" : " disabled"}" title="${f.tip}${avail ? "" : " — not in this report (older schema)"}">` +
+        `<input type="checkbox" data-fcol="${f.col}" ${on ? "checked" : ""} ${avail ? "" : "disabled"}/>` +
+        `${f.label} <span class="cnt">${n === null ? "n/a" : n}</span></label>`;
+    }).join("")
+  ).join("");
+  box.querySelectorAll("input[data-fcol]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const c = inp.getAttribute("data-fcol");
+      if (inp.checked) checked.add(c); else checked.delete(c);
+      refresh();
+    });
+  });
+}
+
+function renderTable(rows) {
   const thead = document.querySelector("#dataTable thead");
   const tbody = document.querySelector("#dataTable tbody");
   thead.innerHTML = "<tr>" + COLS.map(c => {
@@ -557,140 +483,96 @@ function renderTable() {
   }).join("") + "</tr>";
   tbody.innerHTML = rows.map(r => {
     const cls = String(r.status).toUpperCase() === "PASS" ? "pass" : "fail";
-    return `<tr class="${cls}">` + COLS.map(c => `<td>${fmt(c, r[c], r)}</td>`).join("") + "</tr>";
+    return `<tr class="${cls}">` + COLS.map(c => {
+      const tdc = c.startsWith("f_") ? (isTrueFlag(r[c]) ? ' class="ft"' : ' class="ff"') : "";
+      return `<td${tdc}>${fmt(c, r[c], r)}</td>`;
+    }).join("") + "</tr>";
   }).join("");
   thead.querySelectorAll("th").forEach(th => {
     th.addEventListener("click", (ev) => {
       const c = th.getAttribute("data-col");
-      const defaultDir = (c === "rr") ? "desc" : (c === "atrs_from_entry" ? "asc" : (NUM_COLS.has(c) ? "desc" : "asc"));
+      const defaultDir = (NUM_COLS.has(c) || BOOL_COLS.has(c)) ? "desc" : "asc";
       if (ev.shiftKey) {
         if (sortCol2 === c) sortDir2 = sortDir2 === "asc" ? "desc" : "asc";
         else { sortCol2 = c; sortDir2 = defaultDir; }
+      } else if (sortCol === c) {
+        sortDir = sortDir === "asc" ? "desc" : "asc";
       } else {
-        if (sortCol === c) sortDir = sortDir === "asc" ? "desc" : "asc";
-        else {
-          // demote previous primary to secondary when changing column
-          if (sortCol && sortCol !== c) { sortCol2 = sortCol; sortDir2 = sortDir; }
-          sortCol = c;
-          sortDir = defaultDir;
-        }
+        if (sortCol) { sortCol2 = sortCol; sortDir2 = sortDir; }
+        sortCol = c; sortDir = defaultDir;
       }
-      renderTable();
+      refresh();
     });
   });
   const s2 = (sortCol2 && sortCol2 !== sortCol) ? `, then ${sortCol2} ${sortDir2}` : "";
   document.getElementById("tableMeta").textContent =
-    `Showing ${rows.length} / ${allRows.length} rows · sort: ${sortCol} ${sortDir}${s2} · shift-click for 2nd`;
+    `Showing ${rows.length} of ${allRows.length} stocks · sort: ${sortCol} ${sortDir}${s2} · shift-click for 2nd`;
 }
 
-function destroyCharts() {
-  Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
+function binCounts(vals, bins) {
+  return bins.map(b => vals.filter(v => v >= b.min && v < b.max).length);
 }
 
-function renderCharts() {
-  destroyCharts();
-  const nPass = allRows.filter(r => String(r.status).toUpperCase() === "PASS").length;
-  const nFail = allRows.filter(r => String(r.status).toUpperCase() !== "PASS").length;
-  const nBo = allRows.filter(r => {
-    const v = r.earnings_blackout;
-    return String(v).toLowerCase() === "true" || v === true || v === "1";
-  }).length;
+const axisOpts = {
+  x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
+  y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true }
+};
 
-  document.getElementById("cScanned").textContent = allRows.length;
-  document.getElementById("cPass").textContent = nPass;
-  document.getElementById("cFail").textContent = nFail;
-  document.getElementById("cBlackout").textContent = nBo;
-
-  charts.status = new Chart(document.getElementById("chartStatus"), {
-    type: "doughnut",
-    data: {
-      labels: ["PASS", "FAIL"],
-      datasets: [{
-        data: [nPass, nFail],
-        backgroundColor: ["#3fb950", "#f85149"],
-        borderWidth: 0
-      }]
-    },
-    options: {
-      plugins: { legend: { labels: { color: "#e6edf3" } } },
-      maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        const label = ["PASS", "FAIL"][idx];
-        setChartFilter({ type: "status", value: label });
-        document.getElementById("statusFilter").value = label;
-      }
-    }
-  });
-
-  const buckets = {};
-  allRows.forEach(r => {
-    const b = bucketReason(r.reason, r.status);
-    if (!b) return;
-    buckets[b] = (buckets[b] || 0) + 1;
-  });
-  const labels = ["$vol", "short float", "history", "R:R", "no retest", "earnings", "other"].filter(k => buckets[k]);
-  const values = labels.map(k => buckets[k]);
-  charts.reasons = new Chart(document.getElementById("chartReasons"), {
+function renderCharts(rows) {
+  const availF = FILTERS.filter(f => available.has(f.col));
+  const fLabels = availF.map(f => f.label);
+  const fAll = availF.map(f => allRows.filter(r => isTrueFlag(r[f.col])).length);
+  const fSel = availF.map(f => rows.filter(r => isTrueFlag(r[f.col])).length);
+  const rrVals = rows.map(r => toNum(r.rr)).filter(n => n !== null);
+  const stVals = rows.map(r => toNum(r.smooth_streak_weeks)).filter(n => n !== null);
+  const rrCounts = binCounts(rrVals, RR_BINS), stCounts = binCounts(stVals, STREAK_BINS);
+  if (charts.filters) {
+    charts.filters.data.labels = fLabels;
+    charts.filters.data.datasets[0].data = fAll;
+    charts.filters.data.datasets[1].data = fSel;
+    charts.filters.data.datasets[0].backgroundColor = availF.map(f => checked.has(f.col) ? "#58a6ff" : "#30363d");
+    charts.filters.update("none");
+    charts.rr.data.datasets[0].data = rrCounts; charts.rr.update("none");
+    charts.streak.data.datasets[0].data = stCounts; charts.streak.update("none");
+    return;
+  }
+  charts.filters = new Chart(document.getElementById("chartFilters"), {
     type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: "FAIL count",
-        data: values,
-        backgroundColor: "#f78166",
-        borderRadius: 6
-      }]
-    },
+    data: { labels: fLabels, datasets: [
+      { label: "all stocks", data: fAll, backgroundColor: availF.map(f => checked.has(f.col) ? "#58a6ff" : "#30363d"), borderRadius: 4 },
+      { label: "in selection", data: fSel, backgroundColor: "#3fb950", borderRadius: 4 },
+    ]},
     options: {
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-        y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true }
-      },
-      maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        setChartFilter({ type: "reason", value: labels[idx] });
-        document.getElementById("statusFilter").value = "FAIL";
+      indexAxis: "y", maintainAspectRatio: false, scales: axisOpts,
+      plugins: { legend: { labels: { color: "#e6edf3" } } },
+      onClick: (evt, els) => {
+        if (!els.length) return;
+        const f = FILTERS.filter(x => available.has(x.col))[els[0].index];
+        if (checked.has(f.col)) checked.delete(f.col); else checked.add(f.col);
+        refresh();
       }
     }
   });
-
-  const rrVals = allRows
-    .filter(r => String(r.status).toUpperCase() === "PASS")
-    .map(r => toNum(r.rr))
-    .filter(n => n !== null);
-  const counts = RR_BINS.map(bin => rrVals.filter(v => v >= bin.min && v < bin.max).length);
-  const binLabels = RR_BINS.map(b => b.label);
   charts.rr = new Chart(document.getElementById("chartRR"), {
     type: "bar",
-    data: {
-      labels: binLabels,
-      datasets: [{
-        label: "PASS count",
-        data: counts,
-        backgroundColor: "#58a6ff",
-        borderRadius: 6
-      }]
-    },
-    options: {
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-        y: { ticks: { color: "#8b949e", stepSize: 1 }, grid: { color: "#21262d" }, beginAtZero: true }
-      },
-      maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        setChartFilter({ type: "rr", value: binLabels[idx] });
-        document.getElementById("statusFilter").value = "PASS";
-      }
-    }
+    data: { labels: RR_BINS.map(b => b.label), datasets: [{ label: "stocks", data: rrCounts, backgroundColor: "#58a6ff", borderRadius: 6 }] },
+    options: { maintainAspectRatio: false, scales: axisOpts, plugins: { legend: { display: false } } }
   });
+  charts.streak = new Chart(document.getElementById("chartStreak"), {
+    type: "bar",
+    data: { labels: STREAK_BINS.map(b => b.label), datasets: [{ label: "stocks", data: stCounts, backgroundColor: "#d29922", borderRadius: 6 }] },
+    options: { maintainAspectRatio: false, scales: axisOpts, plugins: { legend: { display: false } } }
+  });
+}
+
+function refresh() {
+  const rows = filteredRows().slice().sort(compareRows);
+  renderFilterBox();
+  const m = allRows.length, n = rows.length;
+  document.getElementById("matchCount").innerHTML = `<b>${n}</b> of ${m} stocks`;
+  document.getElementById("cMatch").textContent = n;
+  renderTable(rows);
+  try { if (window.Chart) renderCharts(rows); } catch (e) { console.warn("charts", e); }
 }
 
 async function loadReport(path, dateLabel) {
@@ -699,23 +581,28 @@ async function loadReport(path, dateLabel) {
   if (!res.ok) throw new Error("Failed to load " + path + " (" + res.status + ")");
   const text = await res.text();
   allRows = enrichEarningsLive(parseCSV(text));
-  sortCol = "rr";
-  sortDir = "desc";
-  sortCol2 = "atrs_from_entry";
-  sortDir2 = "asc";
-  chartFilter = null;
-  document.getElementById("statusFilter").value = "ALL";
-  document.getElementById("fltSmooth").checked = false;
-  document.getElementById("fltWeeklyRev").checked = false;
-  document.getElementById("fltSmoothAndRev").checked = false;
-  document.getElementById("fltDailyRev").checked = false;
-  document.getElementById("fltSmoothStreak").checked = false;
-  updateSmoothStreakLabel();
-  updateChartFilterChip();
-  renderCharts();
-  renderTable();
+  const hdr = new Set([...headers, "days_to_earnings_live"]);
+  available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c)));
+  COLS = PREFERRED_COLS.filter(c => hdr.has(c) && !HIDDEN_COLS.has(c))
+    .concat(headers.filter(c => !PREFERRED_COLS.includes(c) && !HIDDEN_COLS.has(c)));
+  checked = new Set();
+  sortCol = hdr.has("rr") ? "rr" : "ticker"; sortDir = sortCol === "rr" ? "desc" : "asc";
+  sortCol2 = "ticker"; sortDir2 = "asc";
+  const note = document.getElementById("schemaNote");
+  const missing = FILTERS.filter(f => !available.has(f.col)).map(f => f.label);
+  if (missing.length) {
+    note.style.display = "block";
+    note.textContent = `Older report schema — unavailable filters: ${missing.join(", ")}. Showing the columns this report has.`;
+  } else { note.style.display = "none"; }
+  const nPass = allRows.filter(r => String(r.status).toUpperCase() === "PASS").length;
+  const nBo = allRows.filter(r => isTrueFlag(r.earnings_blackout)).length;
+  document.getElementById("cScanned").textContent = allRows.length;
+  document.getElementById("cPass").textContent = nPass;
+  document.getElementById("cBlackout").textContent = nBo;
+  Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
+  refresh();
   document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} tickers · Chart.js CDN · historical-reports/`;
+    `Report ${dateLabel} · ${allRows.length} FinViz tickers · status=PASS = all core filters · Chart.js CDN · historical-reports/`;
 }
 
 async function init() {
@@ -727,35 +614,18 @@ async function init() {
     reports = [{ date: "latest", file: "latest.csv", path: "historical-reports/latest.csv" }];
   }
   const sel = document.getElementById("reportSelect");
-  sel.innerHTML = reports.map((r, i) =>
-    `<option value="${r.path}" ${i===0?"selected":""}>${r.date}</option>`
-  ).join("");
-  // Prefer latest dated entry; also offer latest.csv if present via first dated
+  sel.innerHTML = reports.map((r, i) => `<option value="${r.path}" ${i === 0 ? "selected" : ""}>${r.date}</option>`).join("");
   sel.addEventListener("change", () => {
     const opt = sel.selectedOptions[0];
     loadReport(opt.value, opt.textContent).catch(err => {
       document.getElementById("tableMeta").innerHTML = `<span class="err">${err.message}</span>`;
     });
   });
-  document.getElementById("statusFilter").addEventListener("change", () => {
-    // Manual status change clears incompatible chart filters
-    if (chartFilter && chartFilter.type === "status") {
-      const v = document.getElementById("statusFilter").value;
-      if (v === "ALL") chartFilter = null;
-      else chartFilter = { type: "status", value: v };
-      updateChartFilterChip();
-    } else if (chartFilter && chartFilter.type === "reason" && document.getElementById("statusFilter").value === "PASS") {
-      chartFilter = null; updateChartFilterChip();
-    } else if (chartFilter && chartFilter.type === "rr" && document.getElementById("statusFilter").value === "FAIL") {
-      chartFilter = null; updateChartFilterChip();
-    }
-    renderTable();
+  document.getElementById("searchBox").addEventListener("input", refresh);
+  document.getElementById("btnClear").addEventListener("click", () => { checked = new Set(); refresh(); });
+  document.getElementById("btnPassPreset").addEventListener("click", () => {
+    checked = new Set(CORE.filter(c => available.has(c))); refresh();
   });
-  document.getElementById("searchBox").addEventListener("input", renderTable);
-  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev","fltDailyRev","fltSmoothStreak"].forEach(id => {
-    document.getElementById(id).addEventListener("change", renderTable);
-  });
-  // TradingView app links: clipboard + cache-bust deep link (do not also open https).
   document.addEventListener("click", (ev) => {
     const a = ev.target && ev.target.closest && ev.target.closest("a.tv-app");
     if (!a) return;
@@ -763,18 +633,8 @@ async function init() {
     const symbol = a.getAttribute("data-tv-symbol") || tvSymbolFromUrl(a.getAttribute("href") || "");
     openTradingViewApp(symbol);
   });
-
-  document.getElementById("clearChartFilter").addEventListener("click", () => {
-    clearChartFilter();
-    document.getElementById("statusFilter").value = "ALL";
-  });
-
   const first = reports[0];
-  if (first) {
-    await loadReport(first.path, first.date);
-  } else {
-    await loadReport("historical-reports/latest.csv", "latest");
-  }
+  await loadReport(first ? first.path : "historical-reports/latest.csv", first ? first.date : "latest");
 }
 
 init().catch(err => {

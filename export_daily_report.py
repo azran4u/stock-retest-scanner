@@ -13,10 +13,14 @@ Writes:
   historical-reports/YYYY-MM-DD.csv
   historical-reports/latest.csv
 
-Also fills the smooth_streak / smooth_streak_weeks report filter for EVERY row
-(PASS + FAIL) from /workspace/hist_cache.pkl via smooth_support_analysis.py.
-Threshold: MIN_SMOOTH_STREAK_WEEKS in smooth_support_analysis.py, override with
---min-smooth-streak-weeks N.
+Every row then gets the standalone filter schema from report_filters.py
+(f_* booleans + value columns, computed independently for ALL rows from
+/workspace/hist_cache.pkl + FinViz/earnings caches + stock_screen_universe.json).
+`status` = PASS iff all core filters pass. Threshold overrides: any
+report_filters CONFIG key as a flag, e.g. --min-smooth-streak-weeks 6.
+
+Also writes the Grok watchlist target (status=PASS) to
+/workspace/stock-screener/grok_sync_target.{json,txt} (disable: --no-grok-target).
 """
 from __future__ import annotations
 
@@ -29,7 +33,13 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-REPORT_COLS = [
+import sys as _sys
+from datetime import date
+
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+import report_filters as rf  # noqa: E402
+
+BASE_COLS = [  # screen/verify fields collected before report_filters recomputes the schema
     "ticker",
     "status",
     "current_price",
@@ -50,14 +60,6 @@ REPORT_COLS = [
     "days_to_earnings",
     "earnings_known",
     "earnings_blackout",
-    "smooth_pullback",
-    "weekly_reversal",
-    "weekly_reversal_kind",
-    "smooth_and_reversal",
-    "daily_reversal",
-    "daily_reversal_kind",
-    "smooth_streak",
-    "smooth_streak_weeks",
     "tradingview_url",
     "finviz_url",
     "reason",
@@ -153,31 +155,6 @@ def _as_bool(val: Any, default: bool = False) -> bool:
     return bool(val)
 
 
-def _import_smooth_support():
-    """smooth_support_analysis lives on the bot box (/workspace); optional."""
-    import sys
-
-    for d in (Path(__file__).resolve().parent, Path("/workspace")):
-        if (d / "smooth_support_analysis.py").exists() and str(d) not in sys.path:
-            sys.path.append(str(d))
-    try:
-        import smooth_support_analysis as ssa  # type: ignore
-
-        return ssa
-    except Exception as e:
-        print(f"[export] smooth_support_analysis unavailable ({e}); smooth_streak left False/blank")
-        return None
-
-
-def apply_smooth_streak(df: pd.DataFrame, min_weeks: Optional[int] = None) -> pd.DataFrame:
-    """Fill smooth_streak / smooth_streak_weeks for all rows (cached history only)."""
-    ssa = _import_smooth_support()
-    if ssa is None:
-        return df
-    out = ssa.add_smooth_streak_columns(df, min_weeks=min_weeks)
-    return out[REPORT_COLS]
-
-
 def build_report(
     results: pd.DataFrame,
     verify: Optional[pd.DataFrame] = None,
@@ -199,7 +176,7 @@ def build_report(
     rows = []
     for _, r in results.iterrows():
         t = r["ticker"]
-        row: Dict[str, Any] = {c: None for c in REPORT_COLS}
+        row: Dict[str, Any] = {c: None for c in BASE_COLS}
         row["ticker"] = t
         row["status"] = r.get("status")
         row["reason"] = r.get("reason", "")
@@ -208,7 +185,7 @@ def build_report(
             v = v_idx.loc[t]
             if isinstance(v, pd.DataFrame):
                 v = v.iloc[0]
-            for c in REPORT_COLS:
+            for c in BASE_COLS:
                 if c == "ticker" or c not in v.index:
                     continue
                 val = v[c]
@@ -268,37 +245,6 @@ def build_report(
 
         row["earnings_known"] = _as_bool(row.get("earnings_known"), False)
         row["earnings_blackout"] = _as_bool(row.get("earnings_blackout"), False)
-        # Optional report filters (filled by smooth_support_analysis / daily post-pass); blank until computed
-        if "smooth_pullback" not in row or row.get("smooth_pullback") is None:
-            row["smooth_pullback"] = False
-        else:
-            row["smooth_pullback"] = _as_bool(row.get("smooth_pullback"), False)
-        if "weekly_reversal" not in row or row.get("weekly_reversal") is None:
-            row["weekly_reversal"] = False
-        else:
-            row["weekly_reversal"] = _as_bool(row.get("weekly_reversal"), False)
-        kind = row.get("weekly_reversal_kind")
-        if kind is None or (isinstance(kind, float) and str(kind) == "nan") or kind == "":
-            row["weekly_reversal_kind"] = ""
-        else:
-            row["weekly_reversal_kind"] = str(kind)
-        if "smooth_and_reversal" not in row or row.get("smooth_and_reversal") is None:
-            row["smooth_and_reversal"] = bool(row["smooth_pullback"] and row["weekly_reversal"])
-        else:
-            row["smooth_and_reversal"] = _as_bool(row.get("smooth_and_reversal"), False)
-        if "daily_reversal" not in row or row.get("daily_reversal") is None:
-            row["daily_reversal"] = False
-        else:
-            row["daily_reversal"] = _as_bool(row.get("daily_reversal"), False)
-        dkind = row.get("daily_reversal_kind")
-        if dkind is None or (isinstance(dkind, float) and str(dkind) == "nan") or dkind == "":
-            row["daily_reversal_kind"] = ""
-        else:
-            row["daily_reversal_kind"] = str(dkind)
-        # smooth_streak: filled for ALL rows by apply_smooth_streak() after build
-        row["smooth_streak"] = _as_bool(row.get("smooth_streak"), False)
-        ssw = row.get("smooth_streak_weeks")
-        row["smooth_streak_weeks"] = None if ssw is None or pd.isna(ssw) or ssw == "" else int(float(ssw))
         # Signed ATRs from entry: (price - entry) / ATR. + means price above entry.
         if row.get("atrs_from_entry") is None:
             try:
@@ -309,7 +255,7 @@ def build_report(
                 pass
         rows.append(row)
 
-    df = pd.DataFrame(rows)[REPORT_COLS]
+    df = pd.DataFrame(rows)[BASE_COLS]
 
     def sort_key(i: int):
         status_rank = 0 if df.at[i, "status"] == "PASS" else 1
@@ -322,6 +268,20 @@ def build_report(
 
     order = sorted(range(len(df)), key=sort_key)
     return df.iloc[order].reset_index(drop=True)
+
+
+def write_grok_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path:
+    """grok_sync_target.{json,txt}: EXCHANGE:TICKER for every status=PASS row."""
+    syms = []
+    for _, r in df[df["status"] == "PASS"].iterrows():
+        m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
+        syms.append(m.group(1) if m else str(r["ticker"]))
+    syms = sorted(set(syms))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jp = out_dir / "grok_sync_target.json"
+    jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms}, indent=2) + "\n")
+    (out_dir / "grok_sync_target.txt").write_text("\n".join(syms) + "\n")
+    return jp
 
 
 def write_reports(df: pd.DataFrame, out_dir: Path, report_date: str) -> Dict[str, Path]:
@@ -384,17 +344,17 @@ def main() -> None:
         help="Repo root for reports.json (default: parent of --out-dir)",
     )
     ap.add_argument(
-        "--min-smooth-streak-weeks",
-        type=int,
-        default=None,
-        help="Override MIN_SMOOTH_STREAK_WEEKS (default 5, defined in smooth_support_analysis.py)",
+        "--grok-target-dir",
+        type=Path,
+        default=Path("/workspace/stock-screener"),
+        help="Where to write grok_sync_target.{json,txt} (status=PASS set)",
     )
-    ap.add_argument(
-        "--no-smooth-streak",
-        action="store_true",
-        help="Skip smooth_streak computation (columns stay False/blank)",
-    )
+    ap.add_argument("--no-grok-target", action="store_true")
+    rf.add_cli_overrides(ap)
     args = ap.parse_args()
+    changed = rf.apply_cli_overrides(args)
+    if changed:
+        print(f"[export] report_filters CONFIG overrides: {changed}")
 
     results = pd.read_csv(args.results)
     verify = pd.read_csv(args.verify) if args.verify and args.verify.exists() else pd.DataFrame()
@@ -407,19 +367,21 @@ def main() -> None:
         if guess.exists():
             handoff = json.loads(guess.read_text())
 
-    df = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
-    if not args.no_smooth_streak:
-        df = apply_smooth_streak(df, args.min_smooth_streak_weeks)
+    base = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
+    df = rf.apply_filters_to_report(base, date.fromisoformat(args.date))
     paths = write_reports(df, args.out_dir, args.date)
+    if not args.no_grok_target:
+        gp = write_grok_target(df, args.date, args.grok_target_dir)
+        print(f"  grok target {gp}")
 
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
     n_bo = int(df["earnings_blackout"].astype(bool).sum())
-    n_ss = int(df["smooth_streak"].astype(bool).sum())
     print(
         f"Report {args.date}: {len(df)} rows "
-        f"(PASS={n_pass}, FAIL={n_fail}, earnings_blackout={n_bo}, smooth_streak={n_ss})"
+        f"(PASS={n_pass}, FAIL={n_fail}, earnings_blackout={n_bo})"
     )
+    print(f"  filter counts: {rf.summarize(df)}")
     print(f"  {paths['dated']}")
     print(f"  {paths['latest']}")
 

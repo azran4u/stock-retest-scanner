@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-29 (smooth_pullback / weekly_reversal / daily_reversal / smooth_streak report filters; smooth_streak doji + $vol/history gates)
+Last updated: 2026-09-29 (standalone ANDed report filters: f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr, f_smooth_streak, f_weekly_reversal, f_daily_reversal)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -38,7 +38,7 @@ Screener URL pattern (example):
 
 ## 2. Hard filters (after FinViz)
 
-Apply in roughly this order (cheap checks first):
+The screen (`stock_screen.py`) still applies these cheap-first for its `reason` text, but the **report** evaluates every rule independently for every row as standalone `f_*` columns (§12 “Report filters — standalone, ANDed”); `status=PASS` = all core filters. Short float N/A and unknown earnings now count as **not** passing.
 
 ### 2.1 Liquidity
 - Dollar volume = **30-day average volume × last close** ≥ **$50,000,000** USD  
@@ -254,7 +254,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Columns
 Same spirit as the verify table, for every ticker:
 
-`ticker, status, reason, current_price, entry, sl, tp, rr, atrs_from_entry, zone_lo, zone_hi, atr, short_float_pct, inst_own_pct, dollar_vol_30d, avg_vol_30d, weekly_bars, earnings_date, days_to_earnings, earnings_known, earnings_blackout, smooth_pullback, weekly_reversal, weekly_reversal_kind, smooth_and_reversal, daily_reversal, daily_reversal_kind, smooth_streak, smooth_streak_weeks, tradingview_url`
+`ticker, status, failed_filters, f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr, f_smooth_streak, f_weekly_reversal, f_daily_reversal, current_price, dollar_vol_30d, avg_vol_30d, short_float_pct, inst_own_pct, earnings_date, days_to_earnings, weekly_bars, zone_lo, zone_hi, entry, sl, tp, rr, sl_atr_mult, atr, atrs_from_entry, smooth_streak_weeks, weekly_reversal_kind, weekly_reversal_date, daily_reversal_kind, daily_reversal_date, smooth_pullback, earnings_known, earnings_blackout, filter_notes, tradingview_url, finviz_url, reason` (see “Report filters — standalone, ANDed”). Reports before 2026-09-28 use the older schema.
 
 - Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
@@ -272,11 +272,11 @@ python export_daily_report.py \
   [--handoff /workspace/stock-screener/handoff_YYYY-MM-DD.json]
 ```
 
-Call this at the end of the daily routine after `stock_screen.py` finishes, then commit + push so Pages updates. The export also fills `smooth_streak` / `smooth_streak_weeks` for all rows automatically (see “Report filter — smooth_streak”); add `--min-smooth-streak-weeks N` to change the threshold for that run.
+Call this at the end of the daily routine after `stock_screen.py` finishes, then commit + push so Pages updates. The export computes **all** standalone filter columns for every row automatically (`report_filters.py`), sets `status` from the core filters, and writes `/workspace/stock-screener/grok_sync_target.{json,txt}` (PASS set). Any `report_filters` CONFIG key can be overridden as a flag, e.g. `--min-smooth-streak-weeks 6`.
 
 
 ### After each report — sync `Grok` watchlist
-1. From the new report CSV, take every ticker with **`status=PASS`** (these already cleared **all** filters, including earnings blackout, R:R, short float, etc.).
+1. From the new report CSV, take every ticker with **`status=PASS`** = `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr` (earnings blackout / unknown earnings, R:R, short float N/A all block PASS). `export_daily_report.py` writes this set to `/workspace/stock-screener/grok_sync_target.{json,txt}`.
 2. Build the target set as `EXCHANGE:TICKER` using FinViz-resolved US exchanges (same as `tradingview_url`).
 3. **Grok Bot** syncs TradingView watchlist **`Grok`** to that exact set on **this** desktop:
    - **Add** any PASS missing from `Grok`
@@ -289,44 +289,55 @@ Call this at the end of the daily routine after `stock_screen.py` finishes, then
 https://azran4u.github.io/stock-retest-scanner/
 
 
-### Report filters — smooth pullback & weekly/daily reversal
-Dashboard / CSV flags (computed on **PASS** setups after the daily screen; FAIL rows stay `False` / empty kind). Source: `/workspace/smooth_support_analysis.py`. These are **report filters only** — they do **not** demote PASS status.
+### Report filters — standalone, ANDed (2026-09-29 restructure)
+Rows = **every** ticker the FinViz screener returned for the report day; no row is ever dropped. Every rule is computed for **every** row independently (no short-circuit: a `$vol` fail still gets short float, earnings, R:R, streak, reversals). Missing data → `False` plus a note in `filter_notes`. Code: `report_filters.py` (repo root; copy in `/workspace/stock-screener/`), called by `export_daily_report.py`.
 
-| Column | Meaning |
-|--------|---------|
-| `smooth_pullback` | `True` when pullback-into-support quality is **STRONG** on **weekly** candles |
-| `weekly_reversal` | `True` when the latest **completed** weekly candle shows a reversal near the zone |
-| `weekly_reversal_kind` | `hammer` \| `engulfing` \| `strong_close` \| `rejection` \| `none` (empty on FAIL) |
-| `smooth_and_reversal` | `True` when both `smooth_pullback` and `weekly_reversal` are true |
-| `daily_reversal` | `True` when the latest **completed** daily candle shows a reversal near the zone (same patterns as weekly, vs **daily** ATR) |
-| `daily_reversal_kind` | `hammer` \| `engulfing` \| `strong_close` \| `rejection` \| `none` (empty on FAIL) |
+| Filter (bool) | Rule | Value column(s) |
+|---|---|---|
+| `f_dollar_vol` | 30-day average **dollar** volume (30d avg volume × last close) **≥ $50M** | `dollar_vol_30d`, `avg_vol_30d` |
+| `f_short_float` | FinViz short float **< 5%** (missing → False) | `short_float_pct` |
+| `f_no_earnings_14d` | next earnings **not** within 14 days of the report date (`days_to_earnings ≥ 14`). Unknown or stale date → False | `earnings_date`, `days_to_earnings` |
+| `f_history` | **≥ 150 weekly bars** (~3y) | `weekly_bars` |
+| `f_rr` | The **whole retest pipeline is ONE filter**: weekly breakout-retest zone found (§3) → entry / SL / TP placed (§4; SL clamped to 0.5–1.0×ATR is part of the calc, **not** a filter) → **R:R ≥ 2**. No setup → False, rr blank. Zone detection is not accurate enough to be its own filter, so it never filters anything implicitly. Computed for any ticker with ≥ 30 weekly bars, independent of `f_history`. | `rr`, informational `zone_lo`, `zone_hi`, `entry`, `sl`, `tp`, `sl_atr_mult`, `atr`, `atrs_from_entry` |
+| `f_smooth_streak` | `smooth_streak_weeks ≥ 5` — pure candle rule (no short float / $vol / history gate; those are separate filters) | `smooth_streak_weeks` |
+| `f_weekly_reversal` | reversal-shape candle on **any of the last 5 completed weekly bars**, shape-only (no zone gate) | `weekly_reversal_kind`, `weekly_reversal_date` (most recent hit) |
+| `f_daily_reversal` | reversal-shape candle on **any of the last 10 completed daily bars**, shape-only (no zone gate) | `daily_reversal_kind`, `daily_reversal_date` (most recent hit) |
 
-**Volume (smooth pullback):** compare **weekly** volume to the **30-week SMA of weekly volume**. Do **not** use daily_eq = weekly_SMA/5. A “smooth” week is green, or red **and** vol &lt; SMA30. A loud red week (red & vol &gt; SMA30) on the approach blocks STRONG → `smooth_pullback=False`.
+**`status` (back-compat, Grok watchlist):** `PASS` iff `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr`. `failed_filters` lists the core filters that failed. Smooth/reversal filters never change PASS. `reason` keeps the screen's text (appended `| FAIL: …` if the filters demote a screen PASS).
 
-**STRONG / smooth_pullback gate (summary):** near zone (≤1.5 weekly ATR / in-zone / testing), `pct_smooth≥0.70`, quiet reds (no loud red), `n_weeks≥3`, and (vol drying **or** price–vol corr&gt;0.2 **or** `pct_green≥0.40`).
+**Reversal shapes** (`weekly_reversal_shapes`, same thresholds on daily bars vs daily ATR14): hammer/pin (lower wick ≥ 0.9×body, close in upper half, lower wick ≥ upper wick, not doji junk); bullish engulfing (green body engulfs prior red body); strong_close (green, close ≥ open+0.5×range or top 40% of range — the old “prior bar near zone” context is dropped in shape-only mode); rejection (lower wick ≥ max(body, 0.35×ATR)). Kind preference per bar: hammer → engulfing → strong_close → rejection. ⚠ Shape-only with these lookbacks is very permissive (2026-09-28: weekly 360/379, daily 377/379); tighten via `--reversal-kinds` or shorter lookbacks.
 
-**Weekly reversal:** last **or** prior completed week near zone (touch or within **1.0** weekly ATR). Then any of: hammer/pin (lower wick ≥0.9×body, close upper half); bullish engulfing; strong_close (green, close ≥ open+0.5×range or top 40% of range after near-zone prior week); rejection (long lower wick poked zone, close ≥ zone_lo). Kind preference: hammer → engulfing → strong_close → rejection.
+**Smooth week** (streak): green, OR red with weekly vol < 30-week SMA of weekly vol, OR a reversal shape, OR a doji (body ≤ 10% of range and close ≥ low + 40% of range, any volume). Counted back from the most recent **completed** W-FRI week; cap 104.
 
-**Daily reversal:** same pattern definitions and near-zone gate as weekly, but on the most recent **completed** daily bar (weekend → last finished session) and **daily** ATR(14). Near gate: last **or** prior day within **1.0** daily ATR of the PASS zone.
+**Informational:** `smooth_pullback` (zone-based STRONG pullback, only when a setup exists), `inst_own_pct`, `current_price`, `earnings_known`, `earnings_blackout`, TV/FinViz links. Dashboard adds `days_to_earnings_live` (vs today); the filter uses the report-date value.
 
-Dashboard checkboxes filter to rows where the chosen flag is true. Future `export_daily_report.py` runs always emit these columns (blank/`False` until the smooth/reversal pass fills them).
+**Parameters — one place: `report_filters.py` `CONFIG`** (core screen numbers are read from `stock_screen.py` so they have one definition). Every key is a CLI flag on both `export_daily_report.py` and `report_filters.py`:
 
-### Report filter — smooth_streak (all rows; short float, $vol & history gates)
-Computed for **every** report row (PASS **and** FAIL) at export time by `export_daily_report.py` → `smooth_support_analysis.add_smooth_streak_columns` using the cached daily history (`/workspace/hist_cache.pkl`, refreshed by `stock_screen.py` earlier in the same run). Report filter only — does **not** change PASS/FAIL.
+| CONFIG key / flag | Default |
+|---|---|
+| `dollar_vol_min` / `--dollar-vol-min` | 50,000,000 (`stock_screen.DOLLAR_VOL_MIN`) |
+| `avg_vol_days` | 30 |
+| `short_float_max_pct` | 5.0 |
+| `earnings_blackout_days` | 14 |
+| `min_weekly_bars` | 150 |
+| `rr_min` | 2.0 |
+| `retest_min_weekly_bars` | 30 (min bars to attempt the retest geometry) |
+| `min_smooth_streak_weeks` | 5 |
+| `smooth_streak_cap_weeks` | 104 |
+| `doji_max_body_frac` / `doji_min_close_pos` | 0.10 / 0.40 |
+| `daily_reversal_lookback_days` | 10 |
+| `weekly_reversal_lookback_weeks` | 5 |
+| `reversal_kinds` | `hammer,engulfing,strong_close,rejection` |
 
-| Column | Meaning |
-|--------|---------|
-| `smooth_streak_weeks` | Consecutive **smooth** weekly candles counting back from the most recent **completed** W-FRI week (incomplete current week and today's unfinished session excluded), stopping at the first non-smooth week; cap 104. Filled for every ticker with history (informational, even if a gate fails). |
-| `smooth_streak` | `True` iff **all** of: short float **< 5%** (`SHORT_FLOAT_MAX`); 30d dollar volume **≥ $50M** (`DOLLAR_VOL_MIN`, 30d avg volume × last close); history **≥ 150 weekly bars (~3y)** (`MIN_WEEKLY_BARS`); and `smooth_streak_weeks ≥ MIN_SMOOTH_STREAK_WEEKS`. The three gates import the screen's own constants from `stock_screen.py` (no separate numbers). Uses the row's `dollar_vol_30d` / `weekly_bars`; blanks are recomputed from the cache with the screen's formulas. Missing data → `False`. |
+SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of the R:R calc, not filters.
 
-**Smooth week** = ANY of: (1) green (`Close ≥ Open`); (2) red **and** weekly volume **<** 30-week SMA of weekly volume (weekly vol vs SMA30 of weekly vol — **not** daily_eq); (3) reversal-shape candle, green or red, using the weekly_reversal shapes **without** the support-zone gate (`weekly_reversal_shapes`): hammer/pin, bullish engulfing, strong_close shape (green, close ≥ open+0.5×range or top 40%), long-lower-wick rejection shape (lower wick ≥ max(body, 0.35×weekly ATR14)); (4) **doji**, green or red, **any volume**: range > 0, body ≤ `DOJI_MAX_BODY_FRAC` (0.10) × range, and close ≥ low + `DOJI_MIN_CLOSE_POS` (0.40) × range (close in the middle/upper part of the week). So the streak breaks only on a **loud red** week (red, vol ≥ SMA30) that is neither a hammer/long-lower-wick candle nor a mid/upper-close doji.
+**Data sources (cache-first):** price history `/workspace/hist_cache.pkl` (refreshed by `stock_screen.py`); short float / inst own: screen row → `/workspace/stock_screen_universe.json` (written by `stock_screen.py` for **all** tickers) → FinViz quote cache `cache/fv_{T}.json`; earnings: screen/verify row → universe json → `cache/earn_{T}.json`.
 
-**Short float source:** the row's `short_float_pct`; when blank (e.g. names that failed `$vol` before the short-float step) it is filled from the FinViz quote cache `cache/fv_{TICKER}.json` (no extra network).
+**Backfill / recompute** an existing report (cache only, no network):
+`python report_filters.py --report historical-reports/latest.csv --report historical-reports/YYYY-MM-DD.csv --date YYYY-MM-DD [--min-smooth-streak-weeks 6 …]`
 
-**Threshold parameters:** `MIN_SMOOTH_STREAK_WEEKS = 5`, `DOJI_MAX_BODY_FRAC = 0.10`, `DOJI_MIN_CLOSE_POS = 0.40` in `/workspace/smooth_support_analysis.py` (single source of truth). Per-run override: `export_daily_report.py … --min-smooth-streak-weeks N`. Backfill/recompute an existing CSV in place: `python /workspace/smooth_support_analysis.py --smooth-streak historical-reports/latest.csv historical-reports/YYYY-MM-DD.csv [--min-smooth-streak-weeks N]`. Dashboard checkbox **smooth_streak (≥Nw)** filters all rows (Status=All shows FAIL rows too); `smooth_streak_weeks` sorts numerically.
+**Dashboard:** one checkbox per filter (grouped Core / Extra, each with its true-count), checked filters ANDed, nothing checked = full FinViz list, live “N of M stocks”, **PASS-equivalent** button = the 5 core filters (matches `status=PASS`). Charts: per-filter pass counts (click toggles the filter), R:R and streak distributions of the current selection. Older dated CSVs load with the columns they have; missing filters are disabled.
 
-### Fail-reason buckets (dashboard)
-Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.
 
 ## 14. FinViz caches
 

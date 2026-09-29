@@ -30,6 +30,8 @@ AVG_VOL_DAYS = 30            # dollar vol = 30d avg volume × last close
 MIN_WEEKLY_BARS = 150
 SHORT_FLOAT_MAX = 0.05
 RR_MIN = 2.0
+SL_ATR_MIN = 0.5             # SL distance from entry clamped to [0.5, 1.0] x weekly ATR
+SL_ATR_MAX = 1.0
 EARNINGS_BLACKOUT_DAYS = 14
 NEAR_ZONE_ATR = 1.0          # soft-score only (not a hard filter)
 MAX_EXT_ABOVE_ATR = 1.0      # legacy soft-score constant; not a hard filter
@@ -42,6 +44,7 @@ OUT_VERIFY_CSV = Path("/workspace/stock_screen_verify.csv")
 OUT_VERIFY_HTML = Path("/workspace/stock_screen_verify.html")
 TICKERS_JSON = Path("/workspace/screener_tickers.json")
 HIST_CACHE = Path("/workspace/hist_cache.pkl")
+UNIVERSE_JSON = Path("/workspace/stock_screen_universe.json")  # all-ticker short float / earnings
 GROK_LIST = Path("/workspace/Grok.txt")  # optional EXCHANGE:TICKER hints
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -311,7 +314,7 @@ def find_swing_highs(highs: np.ndarray, left: int = 3, right: int = 3) -> List[i
     return idxs
 
 
-def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
+def weekly_retest_setup(w: pd.DataFrame, min_bars: int = MIN_WEEKLY_BARS) -> Optional[Dict[str, Any]]:
     """
     Heuristic weekly retest (v2, tighter):
 
@@ -333,8 +336,12 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
             (widen if <0.5 ATR; cap if >1.0 ATR)
        TP = body_top of the latest (most recent) body-top swing AFTER breakout
        Require R:R >= 2.0
+
+    `min_bars` defaults to MIN_WEEKLY_BARS (the screen's history rule). The
+    standalone report filters pass a smaller value so the retest geometry is
+    computed independently of f_history (PASS still requires f_history).
     """
-    if len(w) < MIN_WEEKLY_BARS:
+    if len(w) < min_bars:
         return None
 
     w = w.copy().reset_index(drop=True)
@@ -421,8 +428,8 @@ def weekly_retest_setup(w: pd.DataFrame) -> Optional[Dict[str, Any]]:
         risk = entry - wick_sl
         if risk <= 0:
             continue
-        min_risk = 0.5 * atr_now
-        max_risk = 1.0 * atr_now
+        min_risk = SL_ATR_MIN * atr_now
+        max_risk = SL_ATR_MAX * atr_now
         atr_floor_applied = False
         atr_cap_applied = False
         if risk < min_risk:
@@ -1075,14 +1082,6 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
             "days_to_earnings": earnings.get("days_to_earnings"),
             "earnings_known": bool(earnings.get("earnings_known")),
             "earnings_blackout": bool(earnings.get("earnings_blackout")),
-            "smooth_pullback": False,
-            "weekly_reversal": False,
-            "weekly_reversal_kind": "",
-            "smooth_and_reversal": False,
-            "daily_reversal": False,
-            "daily_reversal_kind": "",
-            "smooth_streak": False,
-            "smooth_streak_weeks": None,
             "tradingview_url": tv_symbol_for(r["ticker"]),
             "reason": reason,
         })
@@ -1095,9 +1094,6 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
         "zone_lo", "zone_hi", "atr", "short_float_pct", "inst_own_pct",
         "dollar_vol_30d", "avg_vol_30d", "weekly_bars", "earnings_date", "days_to_earnings",
         "earnings_known", "earnings_blackout",
-        "smooth_pullback", "weekly_reversal", "weekly_reversal_kind", "smooth_and_reversal",
-        "daily_reversal", "daily_reversal_kind",
-        "smooth_streak", "smooth_streak_weeks",
         "tradingview_url", "reason",
     ]
     # ensure column order even if empty
@@ -1334,6 +1330,40 @@ def refresh_hist_map(hist_map: Dict[str, pd.DataFrame], tickers: List[str]) -> D
     return hist_map
 
 
+def write_universe_data(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Short float / inst own / next earnings for EVERY screener ticker.
+
+    The standalone report filters (report_filters.py) need these for all rows,
+    not only the ones that survive the screen's early $vol/history exits.
+    Uses the FinViz quote cache and earnings cache (TTL FV_TTL_DAYS), so a
+    warm cache means few network calls. Writes UNIVERSE_JSON.
+    """
+    today = _local_today()
+    out: Dict[str, Dict[str, Any]] = {}
+    for i, t in enumerate(tickers, start=1):
+        rec: Dict[str, Any] = {}
+        try:
+            f = get_fundamentals(t)
+            rec["short_float"] = f.get("short_float")
+            rec["inst_own"] = f.get("inst_own")
+        except Exception as exc:
+            rec["fund_error"] = str(exc)
+        try:
+            e = get_next_earnings(t, today=today)
+            rec["earnings_date"] = e.get("earnings_date")
+            rec["earnings_source"] = e.get("earnings_source")
+        except Exception as exc:
+            rec["earnings_error"] = str(exc)
+        out[t] = rec
+        if i % 50 == 0:
+            print(f"[universe {i}/{len(tickers)}]")
+    UNIVERSE_JSON.write_text(json.dumps(
+        {"date": today.isoformat(), "tickers": out}, indent=1, default=str
+    ))
+    print(f"UNIVERSE_JSON: {UNIVERSE_JSON} ({len(out)} tickers)")
+    return out
+
+
 def main():
     print("=== Fetching FinViz screener tickers ===")
     tickers = fetch_screener_tickers()
@@ -1380,6 +1410,7 @@ def main():
     pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
 
     write_verify_outputs(results)
+    write_universe_data(tickers)
 
     first_pass = passes[0] if passes else None
     header = [
