@@ -338,7 +338,7 @@ SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of
 **Backfill / recompute** an existing report (cache only, no network):
 `python report_filters.py --report historical-reports/latest.csv --report historical-reports/YYYY-MM-DD.csv --date YYYY-MM-DD [--min-smooth-streak-weeks 6 …]`
 
-**Dashboard:** one checkbox per filter (grouped Core / Extra, each with its true-count), checked filters ANDed, nothing checked = full FinViz list, live “N of M stocks”, **PASS-equivalent** button = the 5 core filters (matches `status=PASS`). Charts: per-filter pass counts (click toggles the filter), R:R and streak distributions of the current selection. Older dated CSVs load with the columns they have; missing filters are disabled.
+**Dashboard:** one checkbox per filter (grouped Core / Extra, each with its true-count), checked filters ANDed, nothing checked = full FinViz list, live “N of M stocks”, **PASS-equivalent** button = the 5 core filters (matches `status=PASS`). Charts: per-filter pass counts (click toggles the filter), R:R and streak distributions of the current selection. Older dated CSVs load with the columns they have; missing filters are disabled. Checked filters, search text and sort (primary + secondary) persist in browser localStorage (`srs_dashboard_state_v1`) across reloads; the report date is not saved (latest stays default); saved filters missing from the loaded report are ignored; **Clear filters** resets everything and deletes the saved state.
 
 
 ## 14. FinViz caches

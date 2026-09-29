@@ -572,7 +572,47 @@ function renderCharts(rows) {
   });
 }
 
-function refresh() {
+// ---- persisted UI state (localStorage; report date intentionally NOT saved) ----
+const STATE_KEY = "srs_dashboard_state_v1";
+
+function saveState() {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      checked: [...checked],
+      search: document.getElementById("searchBox").value,
+      sortCol, sortDir, sortCol2, sortDir2,
+    }));
+  } catch (_) { /* storage unavailable */ }
+}
+
+function loadSavedState() {
+  try { return JSON.parse(localStorage.getItem(STATE_KEY) || "null"); } catch (_) { return null; }
+}
+
+function clearSavedState() {
+  try { localStorage.removeItem(STATE_KEY); } catch (_) { /* ignore */ }
+}
+
+function defaultSort(hdr) {
+  sortCol = hdr.has("rr") ? "rr" : "ticker"; sortDir = sortCol === "rr" ? "desc" : "asc";
+  sortCol2 = "ticker"; sortDir2 = "asc";
+}
+
+/** Apply saved state to the loaded report; filters/sort cols missing here are ignored. */
+function applySavedState(hdr) {
+  const st = loadSavedState();
+  checked = new Set();
+  defaultSort(hdr);
+  if (!st) return;
+  if (Array.isArray(st.checked)) st.checked.forEach(c => { if (available.has(c)) checked.add(c); });
+  if (typeof st.search === "string") document.getElementById("searchBox").value = st.search;
+  const okDir = d => d === "asc" || d === "desc";
+  if (st.sortCol && hdr.has(st.sortCol)) { sortCol = st.sortCol; if (okDir(st.sortDir)) sortDir = st.sortDir; }
+  if (st.sortCol2 && hdr.has(st.sortCol2)) { sortCol2 = st.sortCol2; if (okDir(st.sortDir2)) sortDir2 = st.sortDir2; }
+}
+
+function refresh(persist = true) {
+  if (persist) saveState();
   const rows = filteredRows().slice().sort(compareRows);
   renderFilterBox();
   const m = allRows.length, n = rows.length;
@@ -592,9 +632,7 @@ async function loadReport(path, dateLabel) {
   available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c)));
   COLS = PREFERRED_COLS.filter(c => hdr.has(c) && !HIDDEN_COLS.has(c))
     .concat(headers.filter(c => !PREFERRED_COLS.includes(c) && !HIDDEN_COLS.has(c)));
-  checked = new Set();
-  sortCol = hdr.has("rr") ? "rr" : "ticker"; sortDir = sortCol === "rr" ? "desc" : "asc";
-  sortCol2 = "ticker"; sortDir2 = "asc";
+  applySavedState(hdr);
   const note = document.getElementById("schemaNote");
   const missing = FILTERS.filter(f => !available.has(f.col)).map(f => f.label);
   if (missing.length) {
@@ -607,7 +645,7 @@ async function loadReport(path, dateLabel) {
   document.getElementById("cPass").textContent = nPass;
   document.getElementById("cBlackout").textContent = nBo;
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
-  refresh();
+  refresh(false);  // restoring on load must not rewrite storage
   document.getElementById("footerNote").textContent =
     `Report ${dateLabel} · ${allRows.length} FinViz tickers · status=PASS = all core filters as of the report date · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
 }
@@ -629,7 +667,13 @@ async function init() {
     });
   });
   document.getElementById("searchBox").addEventListener("input", refresh);
-  document.getElementById("btnClear").addEventListener("click", () => { checked = new Set(); refresh(); });
+  document.getElementById("btnClear").addEventListener("click", () => {
+    checked = new Set();
+    document.getElementById("searchBox").value = "";
+    defaultSort(new Set(headers));
+    clearSavedState();
+    refresh(false);
+  });
   document.getElementById("btnPassPreset").addEventListener("click", () => {
     checked = new Set(CORE.filter(c => available.has(c))); refresh();
   });
