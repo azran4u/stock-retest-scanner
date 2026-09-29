@@ -1081,6 +1081,8 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
             "smooth_and_reversal": False,
             "daily_reversal": False,
             "daily_reversal_kind": "",
+            "smooth_streak": False,
+            "smooth_streak_weeks": None,
             "tradingview_url": tv_symbol_for(r["ticker"]),
             "reason": reason,
         })
@@ -1095,6 +1097,7 @@ def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[D
         "earnings_known", "earnings_blackout",
         "smooth_pullback", "weekly_reversal", "weekly_reversal_kind", "smooth_and_reversal",
         "daily_reversal", "daily_reversal_kind",
+        "smooth_streak", "smooth_streak_weeks",
         "tradingview_url", "reason",
     ]
     # ensure column order even if empty

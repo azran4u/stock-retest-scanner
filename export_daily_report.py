@@ -12,6 +12,11 @@ Usage:
 Writes:
   historical-reports/YYYY-MM-DD.csv
   historical-reports/latest.csv
+
+Also fills the smooth_streak / smooth_streak_weeks report filter for EVERY row
+(PASS + FAIL) from /workspace/hist_cache.pkl via smooth_support_analysis.py.
+Threshold: MIN_SMOOTH_STREAK_WEEKS in smooth_support_analysis.py, override with
+--min-smooth-streak-weeks N.
 """
 from __future__ import annotations
 
@@ -51,6 +56,8 @@ REPORT_COLS = [
     "smooth_and_reversal",
     "daily_reversal",
     "daily_reversal_kind",
+    "smooth_streak",
+    "smooth_streak_weeks",
     "tradingview_url",
     "finviz_url",
     "reason",
@@ -144,6 +151,31 @@ def _as_bool(val: Any, default: bool = False) -> bool:
     if isinstance(val, str):
         return val.strip().lower() in ("true", "1", "yes")
     return bool(val)
+
+
+def _import_smooth_support():
+    """smooth_support_analysis lives on the bot box (/workspace); optional."""
+    import sys
+
+    for d in (Path(__file__).resolve().parent, Path("/workspace")):
+        if (d / "smooth_support_analysis.py").exists() and str(d) not in sys.path:
+            sys.path.append(str(d))
+    try:
+        import smooth_support_analysis as ssa  # type: ignore
+
+        return ssa
+    except Exception as e:
+        print(f"[export] smooth_support_analysis unavailable ({e}); smooth_streak left False/blank")
+        return None
+
+
+def apply_smooth_streak(df: pd.DataFrame, min_weeks: Optional[int] = None) -> pd.DataFrame:
+    """Fill smooth_streak / smooth_streak_weeks for all rows (cached history only)."""
+    ssa = _import_smooth_support()
+    if ssa is None:
+        return df
+    out = ssa.add_smooth_streak_columns(df, min_weeks=min_weeks)
+    return out[REPORT_COLS]
 
 
 def build_report(
@@ -263,6 +295,10 @@ def build_report(
             row["daily_reversal_kind"] = ""
         else:
             row["daily_reversal_kind"] = str(dkind)
+        # smooth_streak: filled for ALL rows by apply_smooth_streak() after build
+        row["smooth_streak"] = _as_bool(row.get("smooth_streak"), False)
+        ssw = row.get("smooth_streak_weeks")
+        row["smooth_streak_weeks"] = None if ssw is None or pd.isna(ssw) or ssw == "" else int(float(ssw))
         # Signed ATRs from entry: (price - entry) / ATR. + means price above entry.
         if row.get("atrs_from_entry") is None:
             try:
@@ -347,6 +383,17 @@ def main() -> None:
         default=None,
         help="Repo root for reports.json (default: parent of --out-dir)",
     )
+    ap.add_argument(
+        "--min-smooth-streak-weeks",
+        type=int,
+        default=None,
+        help="Override MIN_SMOOTH_STREAK_WEEKS (default 5, defined in smooth_support_analysis.py)",
+    )
+    ap.add_argument(
+        "--no-smooth-streak",
+        action="store_true",
+        help="Skip smooth_streak computation (columns stay False/blank)",
+    )
     args = ap.parse_args()
 
     results = pd.read_csv(args.results)
@@ -361,14 +408,17 @@ def main() -> None:
             handoff = json.loads(guess.read_text())
 
     df = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
+    if not args.no_smooth_streak:
+        df = apply_smooth_streak(df, args.min_smooth_streak_weeks)
     paths = write_reports(df, args.out_dir, args.date)
 
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
     n_bo = int(df["earnings_blackout"].astype(bool).sum())
+    n_ss = int(df["smooth_streak"].astype(bool).sum())
     print(
         f"Report {args.date}: {len(df)} rows "
-        f"(PASS={n_pass}, FAIL={n_fail}, earnings_blackout={n_bo})"
+        f"(PASS={n_pass}, FAIL={n_fail}, earnings_blackout={n_bo}, smooth_streak={n_ss})"
     )
     print(f"  {paths['dated']}")
     print(f"  {paths['latest']}")

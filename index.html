@@ -164,6 +164,7 @@
     <label class="chk"><input type="checkbox" id="fltWeeklyRev"/> weekly_reversal</label>
     <label class="chk"><input type="checkbox" id="fltSmoothAndRev"/> smooth_and_reversal</label>
     <label class="chk"><input type="checkbox" id="fltDailyRev"/> daily_reversal</label>
+    <label class="chk" title="Short float &lt; 5% AND consecutive smooth weekly candles (green, quiet red vol&lt;SMA30, or reversal shape) back from the last completed week"><input type="checkbox" id="fltSmoothStreak"/> <span id="fltSmoothStreakLabel">smooth_streak (≥5w)</span></label>
     <label>Search
       <input type="search" id="searchBox" placeholder="Ticker or reason…"/>
     </label>
@@ -216,14 +217,18 @@ const COLS = [
   "earnings_known","earnings_blackout",
   "smooth_pullback","weekly_reversal","weekly_reversal_kind","smooth_and_reversal",
   "daily_reversal","daily_reversal_kind",
+  "smooth_streak","smooth_streak_weeks",
   "finviz_url","reason"
 ];
 
 const NUM_COLS = new Set([
   "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
-  "weekly_bars","days_to_earnings"
+  "weekly_bars","days_to_earnings","smooth_streak_weeks"
 ]);
+// Default MIN_SMOOTH_STREAK_WEEKS (smooth_support_analysis.py); label is re-derived
+// from the loaded report (min weeks among smooth_streak=true rows) when possible.
+const DEFAULT_MIN_SMOOTH_STREAK_WEEKS = 5;
 const EARNINGS_BLACKOUT_DAYS = 14;
 
 let allRows = [];
@@ -389,7 +394,7 @@ function fmt(col, val, row) {
   }
   if (col === "earnings_blackout" || col === "earnings_known"
       || col === "smooth_pullback" || col === "weekly_reversal" || col === "smooth_and_reversal"
-      || col === "daily_reversal") {
+      || col === "daily_reversal" || col === "smooth_streak") {
     if (val === null || val === undefined || val === "") return "";
     const b = String(val).toLowerCase() === "true" || val === true || val === "1";
     return b ? "true" : "false";
@@ -399,7 +404,8 @@ function fmt(col, val, row) {
     if (n === null) return "";
     if (col === "rr" || col === "atrs_from_entry") return n.toFixed(3);
     if (col === "dollar_vol_30d") return Math.round(n).toLocaleString();
-    if (col === "avg_vol_30d" || col === "weekly_bars" || col === "days_to_earnings") return String(Math.round(n));
+    if (col === "avg_vol_30d" || col === "weekly_bars" || col === "days_to_earnings"
+        || col === "smooth_streak_weeks") return String(Math.round(n));
     if (col.endsWith("_pct")) return n.toFixed(2);
     return n.toFixed(4);
   }
@@ -499,6 +505,20 @@ function updateChartFilterChip() {
 }
 
 
+function updateSmoothStreakLabel() {
+  let mw = null;
+  for (const r of allRows) {
+    if (!isTrueFlag(r.smooth_streak)) continue;
+    const n = toNum(r.smooth_streak_weeks);
+    if (n !== null && (mw === null || n < mw)) mw = n;
+  }
+  // Threshold isn't stored in the CSV; with dozens of true rows the smallest
+  // true streak equals the threshold used, so show it (else the default).
+  const shown = mw !== null ? mw : DEFAULT_MIN_SMOOTH_STREAK_WEEKS;
+  const el = document.getElementById("fltSmoothStreakLabel");
+  if (el) el.textContent = `smooth_streak (≥${shown}w)`;
+}
+
 function isTrueFlag(val) {
   return String(val).toLowerCase() === "true" || val === true || val === "1";
 }
@@ -510,6 +530,7 @@ function filteredRows() {
   const wantRev = document.getElementById("fltWeeklyRev").checked;
   const wantBoth = document.getElementById("fltSmoothAndRev").checked;
   const wantDailyRev = document.getElementById("fltDailyRev").checked;
+  const wantSmoothStreak = document.getElementById("fltSmoothStreak").checked;
   return allRows.filter(r => {
     if (st !== "ALL" && String(r.status).toUpperCase() !== st) return false;
     if (!rowMatchesChartFilter(r)) return false;
@@ -517,6 +538,7 @@ function filteredRows() {
     if (wantRev && !isTrueFlag(r.weekly_reversal)) return false;
     if (wantBoth && !isTrueFlag(r.smooth_and_reversal)) return false;
     if (wantDailyRev && !isTrueFlag(r.daily_reversal)) return false;
+    if (wantSmoothStreak && !isTrueFlag(r.smooth_streak)) return false;
     if (!q) return true;
     const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.weekly_reversal_kind || ""} ${r.daily_reversal_kind || ""}`.toLowerCase();
     return hay.includes(q);
@@ -687,6 +709,8 @@ async function loadReport(path, dateLabel) {
   document.getElementById("fltWeeklyRev").checked = false;
   document.getElementById("fltSmoothAndRev").checked = false;
   document.getElementById("fltDailyRev").checked = false;
+  document.getElementById("fltSmoothStreak").checked = false;
+  updateSmoothStreakLabel();
   updateChartFilterChip();
   renderCharts();
   renderTable();
@@ -728,7 +752,7 @@ async function init() {
     renderTable();
   });
   document.getElementById("searchBox").addEventListener("input", renderTable);
-  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev","fltDailyRev"].forEach(id => {
+  ["fltSmooth","fltWeeklyRev","fltSmoothAndRev","fltDailyRev","fltSmoothStreak"].forEach(id => {
     document.getElementById(id).addEventListener("change", renderTable);
   });
   // TradingView app links: clipboard + cache-bust deep link (do not also open https).
