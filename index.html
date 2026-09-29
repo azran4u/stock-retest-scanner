@@ -172,6 +172,7 @@
     </label>
     <button type="button" class="btn" id="btnPassPreset" title="Check the core filters that define status=PASS (Grok watchlist)">PASS-equivalent</button>
     <button type="button" class="btn" id="btnClear">Clear filters</button>
+    <button type="button" class="btn" id="btnExportTV" title="Download the rows shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <div class="matchcount" id="matchCount">—</div>
   </div>
   <div class="filters" id="filterBox"></div>
@@ -611,9 +612,44 @@ function applySavedState(hdr) {
   if (st.sortCol2 && hdr.has(st.sortCol2)) { sortCol2 = st.sortCol2; if (okDir(st.sortDir2)) sortDir2 = st.sortDir2; }
 }
 
+let currentRows = [];
+let currentReportDate = "latest";
+
+/** EXCHANGE:TICKER exactly as used in the row's TradingView link (dedup, keep order). */
+function tvSymbolsForRows(rows) {
+  const seen = new Set(), out = [];
+  for (const r of rows) {
+    let sym = tvSymbolFromUrl(r.tradingview_url);
+    if (!sym) sym = String(r.ticker || "").trim().toUpperCase().replace(/-/g, ".");
+    if (sym && !seen.has(sym)) { seen.add(sym); out.push(sym); }
+  }
+  return out;
+}
+
+/** TradingView "Import list" format: .txt, comma-separated symbols with exchange prefix. */
+function exportTVWatchlist() {
+  const syms = tvSymbolsForRows(currentRows);
+  if (!syms.length) return;
+  const blob = new Blob([syms.join(",") + "\n"], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `scanner_${currentReportDate}_${syms.length}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+function updateExportButton(n) {
+  const b = document.getElementById("btnExportTV");
+  b.textContent = `Export TV watchlist (${n})`;
+  b.disabled = n === 0;
+}
+
 function refresh(persist = true) {
   if (persist) saveState();
   const rows = filteredRows().slice().sort(compareRows);
+  currentRows = rows;
+  updateExportButton(rows.length);
   renderFilterBox();
   const m = allRows.length, n = rows.length;
   document.getElementById("matchCount").innerHTML = `<b>${n}</b> of ${m} stocks`;
@@ -623,6 +659,7 @@ function refresh(persist = true) {
 }
 
 async function loadReport(path, dateLabel) {
+  currentReportDate = String(dateLabel || "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest";
   document.getElementById("tableMeta").textContent = "Loading " + path + "…";
   const res = await fetch(path + "?t=" + Date.now());
   if (!res.ok) throw new Error("Failed to load " + path + " (" + res.status + ")");
@@ -667,6 +704,7 @@ async function init() {
     });
   });
   document.getElementById("searchBox").addEventListener("input", refresh);
+  document.getElementById("btnExportTV").addEventListener("click", exportTVWatchlist);
   document.getElementById("btnClear").addEventListener("click", () => {
     checked = new Set();
     document.getElementById("searchBox").value = "";
