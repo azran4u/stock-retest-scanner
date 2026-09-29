@@ -217,7 +217,7 @@
 const FILTERS = [
   { col: "f_dollar_vol",      label: "$vol ≥ $50M (30d)",     core: true,  tip: "30-day average dollar volume ≥ $50M (dollar_vol_30d)" },
   { col: "f_short_float",     label: "short float < 5%",      core: true,  tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
-  { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days of the report date. Unknown → false" },
+  { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
   { col: "f_history",         label: "history ≥ 3y",          core: true,  tip: "≥ 150 weekly bars (weekly_bars)" },
   { col: "f_rr",              label: "R:R ≥ 2 (retest setup)", core: true, tip: "Whole retest pipeline as ONE filter: breakout-retest zone → entry / SL (0.5–1×ATR) / TP computed AND R:R ≥ 2. Zone columns are informational only" },
   { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
@@ -229,7 +229,7 @@ const CORE = FILTERS.filter(f => f.core).map(f => f.col);
 const PREFERRED_COLS = [
   "ticker","status","failed_filters",
   ...FILTERS.map(f => f.col),
-  "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings","days_to_earnings_live",
+  "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
   "weekly_bars","rr","entry","sl","tp","zone_lo","zone_hi","sl_atr_mult","atr","atrs_from_entry",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
@@ -239,7 +239,7 @@ const HIDDEN_COLS = new Set(["tradingview_url"]);
 const NUM_COLS = new Set([
   "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
-  "weekly_bars","days_to_earnings","days_to_earnings_live","smooth_streak_weeks"
+  "weekly_bars","days_to_earnings","smooth_streak_weeks"
 ]);
 const BOOL_COLS = new Set([
   ...FILTERS.map(f => f.col), "smooth_pullback","earnings_known","earnings_blackout",
@@ -282,12 +282,19 @@ function liveDaysToEarnings(earningsDate) {
   return Math.round((b - a) / 86400000);
 }
 
-/** Adds days_to_earnings_live (vs today). Filters keep the report-date values. */
+/** Earnings are evaluated LIVE from the stored absolute earnings_date (Asia/Jerusalem today):
+ *  days_to_earnings, earnings_blackout and f_no_earnings_14d are recomputed; a date already
+ *  in the past counts as unknown (false). `status` stays as of the report date. */
 function enrichEarningsLive(rows) {
   return rows.map(r => {
     const out = Object.assign({}, r);
     const days = liveDaysToEarnings(out.earnings_date);
-    out.days_to_earnings_live = days === null ? "" : days;
+    if (days !== null) {
+      out.days_to_earnings = days >= 0 ? days : "";
+      out.earnings_known = days >= 0;
+      out.earnings_blackout = days >= 0 && days < EARNINGS_BLACKOUT_DAYS;
+      if ("f_no_earnings_14d" in out) out.f_no_earnings_14d = days >= EARNINGS_BLACKOUT_DAYS;
+    }
     return out;
   });
 }
@@ -581,7 +588,7 @@ async function loadReport(path, dateLabel) {
   if (!res.ok) throw new Error("Failed to load " + path + " (" + res.status + ")");
   const text = await res.text();
   allRows = enrichEarningsLive(parseCSV(text));
-  const hdr = new Set([...headers, "days_to_earnings_live"]);
+  const hdr = new Set(headers);
   available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c)));
   COLS = PREFERRED_COLS.filter(c => hdr.has(c) && !HIDDEN_COLS.has(c))
     .concat(headers.filter(c => !PREFERRED_COLS.includes(c) && !HIDDEN_COLS.has(c)));
@@ -602,7 +609,7 @@ async function loadReport(path, dateLabel) {
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
   refresh();
   document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} FinViz tickers · status=PASS = all core filters · Chart.js CDN · historical-reports/`;
+    `Report ${dateLabel} · ${allRows.length} FinViz tickers · status=PASS = all core filters as of the report date · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
 }
 
 async function init() {

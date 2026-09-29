@@ -355,10 +355,20 @@ def apply_filters_to_report(
             sf = _pct(uni.get("short_float"))
         if sf is None:
             sf = _pct(fv.get("short_float"))
-        ed = src.get("earnings_date")
-        ed = str(ed)[:10] if ed is not None and str(ed).strip() not in ("", "nan", "None") else None
-        if ed is None:
-            ed = uni.get("earnings_date") or earn_cached(t)
+        # Earnings: the earnings cache (absolute next date, kept until it passes)
+        # is the source of truth; then universe json; then the screen row.
+        ed, stale = None, None
+        for cand in (earn_cached(t), uni.get("earnings_date"), src.get("earnings_date")):
+            if cand is None or str(cand).strip() in ("", "nan", "None"):
+                continue
+            try:
+                if date.fromisoformat(str(cand)[:10]) >= report_date:
+                    ed = str(cand)[:10]
+                    break
+                stale = stale or str(cand)[:10]
+            except Exception:
+                continue
+        ed = ed or stale  # a stale date is kept only so compute_row can note it
         tv = src.get("tradingview_url")
         r = compute_row(t, hist_map.get(t), report_date, sf, ed, _exchange_from_tv(tv))
         inst = _num(src.get("inst_own_pct"))

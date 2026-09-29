@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-29 (standalone ANDed report filters: f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr, f_smooth_streak, f_weekly_reversal, f_daily_reversal)
+Last updated: 2026-09-29 (standalone ANDed report filters; earnings cache-until-past for every FinViz ticker)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -55,8 +55,10 @@ The screen (`stock_screen.py`) still applies these cheap-first for its `reason` 
 - ≥ 5% → **FAIL**
 
 ### 2.4 Earnings blackout
-- Persist absolute `earnings_date` (YYYY-MM-DD, next **unreported** date from yfinance).
-- `days_to_earnings` is derived at screen time for the 14-day blackout; the Pages dashboard **recomputes** days-left live from `earnings_date` (Asia/Jerusalem).
+- Runs for **every** FinViz ticker (not only survivors of other rules) — `stock_screen.write_universe_data` → `get_next_earnings`.
+- Source: TradingView symbol page HTML (`earnings_release_next_date_fq`, retry/backoff on 429/503) primary; Yahoo/yfinance fallback.
+- **Earnings cache `cache/earn_{TICKER}.json` stores the absolute next earnings DATE** (YYYY-MM-DD, never days). It is **reused until that date has passed**; a past or missing date is refetched. A “no date found” result is cached as a miss and retried after `EARN_MISS_TTL_HOURS` (20h); TradingView rate-limit failures are not cached.
+- `days_to_earnings` in the CSV is as of the report date (drives `status`); the Pages dashboard **recomputes** days-left, `earnings_blackout` and the **no earnings ≤14d** checkbox live from `earnings_date` (Asia/Jerusalem); a date already passed counts as unknown.
 - If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip — it must **not** get `status=PASS` (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
 
@@ -296,7 +298,7 @@ Rows = **every** ticker the FinViz screener returned for the report day; no row 
 |---|---|---|
 | `f_dollar_vol` | 30-day average **dollar** volume (30d avg volume × last close) **≥ $50M** | `dollar_vol_30d`, `avg_vol_30d` |
 | `f_short_float` | FinViz short float **< 5%** (missing → False) | `short_float_pct` |
-| `f_no_earnings_14d` | next earnings **not** within 14 days of the report date (`days_to_earnings ≥ 14`). Unknown or stale date → False | `earnings_date`, `days_to_earnings` |
+| `f_no_earnings_14d` | next earnings **not** within 14 days (`days_to_earnings ≥ 14`). CSV = as of the report date; dashboard re-evaluates live from `earnings_date`. Unknown or stale date → False | `earnings_date`, `days_to_earnings` |
 | `f_history` | **≥ 150 weekly bars** (~3y) | `weekly_bars` |
 | `f_rr` | The **whole retest pipeline is ONE filter**: weekly breakout-retest zone found (§3) → entry / SL / TP placed (§4; SL clamped to 0.5–1.0×ATR is part of the calc, **not** a filter) → **R:R ≥ 2**. No setup → False, rr blank. Zone detection is not accurate enough to be its own filter, so it never filters anything implicitly. Computed for any ticker with ≥ 30 weekly bars, independent of `f_history`. | `rr`, informational `zone_lo`, `zone_hi`, `entry`, `sl`, `tp`, `sl_atr_mult`, `atr`, `atrs_from_entry` |
 | `f_smooth_streak` | `smooth_streak_weeks ≥ 5` — pure candle rule (no short float / $vol / history gate; those are separate filters) | `smooth_streak_weeks` |
@@ -309,7 +311,7 @@ Rows = **every** ticker the FinViz screener returned for the report day; no row 
 
 **Smooth week** (streak): green, OR red with weekly vol < 30-week SMA of weekly vol, OR a reversal shape, OR a doji (body ≤ 10% of range and close ≥ low + 40% of range, any volume). Counted back from the most recent **completed** W-FRI week; cap 104.
 
-**Informational:** `smooth_pullback` (zone-based STRONG pullback, only when a setup exists), `inst_own_pct`, `current_price`, `earnings_known`, `earnings_blackout`, TV/FinViz links. Dashboard adds `days_to_earnings_live` (vs today); the filter uses the report-date value.
+**Informational:** `smooth_pullback` (zone-based STRONG pullback, only when a setup exists), `inst_own_pct`, `current_price`, `earnings_known`, `earnings_blackout`, TV/FinViz links. Dashboard recomputes `days_to_earnings` / `earnings_blackout` / `f_no_earnings_14d` live from `earnings_date`; `status` stays as of the report date.
 
 **Parameters — one place: `report_filters.py` `CONFIG`** (core screen numbers are read from `stock_screen.py` so they have one definition). Every key is a CLI flag on both `export_daily_report.py` and `report_filters.py`:
 
@@ -331,7 +333,7 @@ Rows = **every** ticker the FinViz screener returned for the report day; no row 
 
 SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of the R:R calc, not filters.
 
-**Data sources (cache-first):** price history `/workspace/hist_cache.pkl` (refreshed by `stock_screen.py`); short float / inst own: screen row → `/workspace/stock_screen_universe.json` (written by `stock_screen.py` for **all** tickers) → FinViz quote cache `cache/fv_{T}.json`; earnings: screen/verify row → universe json → `cache/earn_{T}.json`.
+**Data sources (cache-first):** price history `/workspace/hist_cache.pkl` (refreshed by `stock_screen.py`); short float / inst own: screen row → `/workspace/stock_screen_universe.json` (written by `stock_screen.py` for **all** tickers) → FinViz quote cache `cache/fv_{T}.json`; earnings: `cache/earn_{T}.json` (date kept until it passes) → universe json → screen/verify row; only dates ≥ report date count.
 
 **Backfill / recompute** an existing report (cache only, no network):
 `python report_filters.py --report historical-reports/latest.csv --report historical-reports/YYYY-MM-DD.csv --date YYYY-MM-DD [--min-smooth-streak-weeks 6 …]`
@@ -343,3 +345,4 @@ SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of
 
 - **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
 - **Quote fundamentals** (short float, inst own): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries are re-fetched.
+- **Earnings**: `cache/earn_{TICKER}.json` = `{earnings_date, source, fetched_at}`; the date is reused until it has passed, then refetched (TradingView → Yahoo). Misses retried after 20h (`EARN_MISS_TTL_HOURS`).
