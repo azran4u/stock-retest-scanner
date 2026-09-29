@@ -6,16 +6,17 @@ Nothing short-circuits: a ticker that fails $vol still gets short float,
 earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
-`status` = PASS iff ALL core filters are true (back-compat for the Grok
-watchlist sync): f_dollar_vol, f_short_float, f_no_earnings_14d, f_history,
-f_rr. The smooth/reversal filters never change PASS.
+`status` = PASS iff ALL core filters are true (drives the Grok watchlist
+sync): f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr.
+The smooth/reversal filters never change PASS.
 
-The whole retest pipeline (zone detection -> entry / SL / TP -> R:R) is ONE
-filter, f_rr = setup computed AND R:R >= RR_MIN. Zone detection is not
-accurate enough to be a filter on its own, so it never implicitly filters
-anything else; zone_lo/zone_hi/entry/sl/tp/rr are informational columns.
-The 0.5-1.0 x ATR SL clamp is NOT a filter — it is only how the setup places
-the SL (stock_screen.SL_ATR_MIN / SL_ATR_MAX).
+f_rr = the user's TradingView drawing (latest stored reading in
+stock-screener/tv_drawings.json) found AND its TradingView R:R >= RR_MIN.
+A missing / not-found drawing is an R:R failure. tv_* columns carry the
+reading (zone top/bottom, entry, SL, TP, R:R, read date).
+The scanner's own retest geometry (zone_lo/zone_hi/entry/sl/tp/rr) is still
+computed as internal, never-displayed info; its old flag is f_rr_computed
+(setup computed AND computed R:R >= RR_MIN) and is NOT part of status.
 
 All thresholds / lookbacks live in CONFIG below (core screen numbers come from
 stock_screen.py so there is one definition). Override per run on the CLI,
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -82,12 +84,15 @@ CORE_FILTERS = [  # status=PASS iff all true
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
 ALL_FILTERS = CORE_FILTERS + EXTRA_FILTERS
 
+TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date"]
+
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
-    *ALL_FILTERS,
+    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS,
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
+    *TV_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "daily_reversal_kind", "daily_reversal_date",
@@ -196,14 +201,19 @@ def compute_row(
     short_float_pct: Optional[float] = None,
     earnings_date: Optional[str] = None,
     exchange: str = "UNKNOWN",
+    tv_rec: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Compute every filter + value for one ticker independently."""
+    """Compute every filter + value for one ticker independently.
+
+    tv_rec = latest stored TradingView drawing reading for the ticker (or None).
+    """
     C = CONFIG
     notes: List[str] = []
     r: Dict[str, Any] = {c: None for c in REPORT_COLS}
     r["ticker"] = ticker
     for f in ALL_FILTERS:
         r[f] = False
+    r["f_rr_computed"] = False
     r["smooth_pullback"] = False
     r["weekly_reversal_kind"] = r["daily_reversal_kind"] = ""
     r["weekly_reversal_date"] = r["daily_reversal_date"] = ""
@@ -273,17 +283,22 @@ def compute_row(
         except Exception as e:  # pragma: no cover
             notes.append(f"retest error: {e}")
     else:
-        notes.append(f"too few weekly bars for retest ({len(weekly)}; f_rr False)")
+        notes.append(f"too few weekly bars for computed retest ({len(weekly)})")
     if setup is not None:
         for k in ("zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "atr"):
             r[k] = float(setup[k])
         atr = r["atr"]
         r["atrs_from_entry"] = (last_close - r["entry"]) / atr if atr else None
-        r["f_rr"] = bool(r["rr"] >= C["rr_min"])
+        r["f_rr_computed"] = bool(r["rr"] >= C["rr_min"])
         if atr and atr > 0:  # informational: SL distance in ATR (setup clamps to 0.5-1.0)
             r["sl_atr_mult"] = (r["entry"] - r["sl"]) / atr
     elif len(weekly) >= C["retest_min_weekly_bars"]:
-        notes.append("no weekly retest setup (f_rr False)")
+        notes.append("no computed weekly retest setup")
+
+    # --- f_rr: the user's TradingView drawing (read-only) ------------------
+    apply_tv(r, tv_rec)
+    if not r["f_rr"]:
+        notes.append(tv_note(r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
     as_of = _as_of_ts(report_date)
@@ -317,11 +332,71 @@ def compute_row(
     return r
 
 
+def apply_tv(r: Dict[str, Any], rec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Fill tv_* from a stored reading and set f_rr = found AND tv_rr >= rr_min."""
+    for c in TV_COLS:
+        r[c] = ""
+    if rec:
+        r["tv_read_date"] = rec.get("read_date") or ""
+        if rec.get("found"):
+            r["tv_found"] = "yes"
+            for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
+                v = _num(rec.get(k))
+                r[f"tv_{k}"] = "" if v is None else f"{v:g}"
+        else:
+            r["tv_found"] = "no"
+    rr = _num(rec.get("rr")) if rec and rec.get("found") else None
+    r["f_rr"] = bool(rr is not None and rr >= CONFIG["rr_min"])
+    return r
+
+
+def tv_note(r: Dict[str, Any]) -> str:
+    """filter_notes entry explaining a False f_rr."""
+    return ({"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}", "no": "TV drawing not found"}
+            .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
+
+
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
-    failed = [f for f in CORE_FILTERS if not bool(r.get(f))]
+    failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
     r["status"] = "PASS" if not failed else "FAIL"
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
+
+
+def _truthy(v: Any) -> bool:
+    return v is True or (not isinstance(v, str) and bool(v) and v == v) or str(v).strip().lower() in ("true", "1", "yes")
+
+
+_FAIL_SUFFIX = re.compile(r"\s*\|?\s*FAIL: .*$")
+_PASS_PREFIX = "PASS (all core filters) | screen: "
+# screen reasons that describe the old computed geometry / R:R: never shown any more
+_COMPUTED_REASON = re.compile(r"^(PASS\b|R:R\b|no weekly retest setup)")
+
+
+def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
+    """Idempotent reason text built from status + the TV reading.
+
+    PASS -> "PASS (TV) entry=… SL=… TP=… R:R=… zone=[…]".
+    FAIL -> "<screen reason, if it is not about the computed setup> | FAIL: <core filters>"
+            with the TradingView detail when rr failed.
+    """
+    base = "" if screen_reason is None or (isinstance(screen_reason, float) and np.isnan(screen_reason)) else str(screen_reason)
+    base = _FAIL_SUFFIX.sub("", base).strip()
+    if base.startswith(_PASS_PREFIX):
+        base = base[len(_PASS_PREFIX):]
+    if _COMPUTED_REASON.match(base):
+        base = ""
+    if r["status"] == "PASS":
+        return (f"PASS (TV) entry={r['tv_entry']} SL={r['tv_sl']} TP={r['tv_tp']} "
+                f"R:R={r['tv_rr']} zone=[{r['tv_zone_bottom']}-{r['tv_zone_top']}]")
+    fails = []
+    for f in r["failed_filters"].split(","):
+        if f == "rr":
+            rec_note = {"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}",
+                        "no": "TV drawing not found"}.get(str(r.get("tv_found")), "no TV drawing read")
+            f = f"rr ({rec_note})"
+        fails.append(f)
+    return f"{base} | FAIL: {', '.join(fails)}".strip(" |")
 
 
 # ---------------------------------------------------------------------------
@@ -332,6 +407,7 @@ def apply_filters_to_report(
     report_date: date,
     hist_map: Optional[Dict[str, pd.DataFrame]] = None,
     universe: Optional[Dict[str, Dict[str, Any]]] = None,
+    tv_store: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> pd.DataFrame:
     """
     Recompute the full filter schema for every row of `df` (needs `ticker`;
@@ -345,6 +421,8 @@ def apply_filters_to_report(
         hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     if universe is None:
         universe = _read_json(UNIVERSE_JSON).get("tickers", {}) if UNIVERSE_JSON.exists() else {}
+    if tv_store is None:
+        tv_store = ss.load_tv_drawings()
     rows = []
     for _, src in df.iterrows():
         t = str(src["ticker"]).strip()
@@ -370,7 +448,8 @@ def apply_filters_to_report(
                 continue
         ed = ed or stale  # a stale date is kept only so compute_row can note it
         tv = src.get("tradingview_url")
-        r = compute_row(t, hist_map.get(t), report_date, sf, ed, _exchange_from_tv(tv))
+        r = compute_row(t, hist_map.get(t), report_date, sf, ed, _exchange_from_tv(tv),
+                        tv_rec=tv_store.get(t.upper()))
         inst = _num(src.get("inst_own_pct"))
         if inst is None:
             inst = _pct(uni.get("inst_own"))
@@ -380,15 +459,8 @@ def apply_filters_to_report(
         r["tradingview_url"] = tv if isinstance(tv, str) else ""
         fz = src.get("finviz_url")
         r["finviz_url"] = fz if isinstance(fz, str) and fz else f"https://finviz.com/quote.ashx?t={t}"
-        old_status = str(src.get("status") or "")
-        reason = src.get("reason")
-        reason = "" if reason is None or (isinstance(reason, float) and np.isnan(reason)) else str(reason)
         finalize_status(r)
-        if old_status == "PASS" and r["status"] != "PASS":
-            reason = f"{reason} | FAIL: {r['failed_filters']}".strip(" |")
-        elif r["status"] == "PASS" and old_status and old_status != "PASS":
-            reason = f"PASS (all core filters) | screen: {reason}"
-        r["reason"] = reason
+        r["reason"] = status_reason(r, src.get("reason"))
         rows.append(r)
     out = pd.DataFrame(rows)[REPORT_COLS]
     out["smooth_streak_weeks"] = pd.array(out["smooth_streak_weeks"], dtype="Int64")
@@ -397,7 +469,7 @@ def apply_filters_to_report(
 
     def key(i: int):
         s = 0 if out.at[i, "status"] == "PASS" else 1
-        rr = _num(out.at[i, "rr"])
+        rr = _num(out.at[i, "tv_rr"])
         return (s, -(rr if rr is not None else -999.0), out.at[i, "ticker"])
 
     order = sorted(range(len(out)), key=key)
@@ -438,7 +510,6 @@ def main() -> None:
                     help="report CSV to recompute in place (repeatable)")
     ap.add_argument("--date", required=True, help="report date YYYY-MM-DD (as-of for history/earnings)")
     ap.add_argument("--out", type=Path, default=None, help="write here instead of in place (single --report)")
-    ap.add_argument("--no-tv-merge", action="store_true", help="skip tv_drawings.merge_df")
     add_cli_overrides(ap)
     args = ap.parse_args()
     changed = apply_cli_overrides(args)
@@ -448,14 +519,7 @@ def main() -> None:
     hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     for p in args.report:
         df = pd.read_csv(p)
-        out = apply_filters_to_report(df, rd, hist_map=hist_map)
-        if not args.no_tv_merge:
-            try:
-                import tv_drawings  # TradingView drawing levels for today's targets
-
-                out = tv_drawings.merge_df(out)
-            except Exception as e:
-                print(f"tv_drawings merge skipped: {e}")
+        out = apply_filters_to_report(df, rd, hist_map=hist_map)  # includes TV drawings (f_rr)
         dest = args.out if args.out else p
         out.to_csv(dest, index=False)
         print(f"{dest}: {summarize(out)}")

@@ -46,6 +46,9 @@ OUT_VERIFY_HTML = Path("/workspace/stock_screen_verify.html")
 TICKERS_JSON = Path("/workspace/screener_tickers.json")
 HIST_CACHE = Path("/workspace/hist_cache.pkl")
 UNIVERSE_JSON = Path("/workspace/stock_screen_universe.json")  # all-ticker short float / earnings
+# User's TradingView drawings (read-only daily reads): source of zone / entry / SL / TP / R:R.
+# status' R:R gate = latest stored reading found AND its TradingView R:R >= RR_MIN.
+TV_DRAWINGS_JSON = Path("/workspace/stock-screener/tv_drawings.json")
 GROK_LIST = Path("/workspace/Grok.txt")  # optional EXCHANGE:TICKER hints
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -633,11 +636,8 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
         return out
 
     setup = weekly_retest_setup(weekly)
-    if setup is None:
-        out["reason"] = "no weekly retest setup / geometry"
-        if short_flag:
-            out["reason"] += " | short float N/A"
-        return out
+    if setup is None:  # computed geometry is internal only; status still gated by the TV drawing
+        return _apply_tv_rr_gate(ticker, out, short, short_flag, dollar_vol)
 
     out["detail"].update({
         "entry": setup["entry"], "sl": setup["sl"], "tp": setup["tp"], "rr": setup["rr"],
@@ -651,18 +651,27 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
     if out["detail"].get("atrs_from_entry") is None and setup.get("atr"):
         out["detail"]["atrs_from_entry"] = (last_close - setup["entry"]) / setup["atr"]
 
-    if not setup["pass_rr"]:
-        reason = f"R:R {setup['rr']:.2f} < {RR_MIN}"
-        if short_flag:
-            reason += " | short float N/A"
-        out["reason"] = reason
-        return out
+    # R:R gate = the user's TradingView drawing (latest stored reading), NOT the computed
+    # geometry above (kept only as internal detail; computed pass_rr is ignored for status).
+    return _apply_tv_rr_gate(ticker, out, short, short_flag, dollar_vol)
 
+
+def _apply_tv_rr_gate(ticker: str, out: Dict[str, Any], short: Optional[float],
+                      short_flag: bool, dollar_vol: float) -> Dict[str, Any]:
+    rec = load_tv_drawings().get(ticker.strip().upper())
+    ok, why = tv_rr_check(rec)
+    out["detail"]["tv_found"] = None if rec is None else bool(rec.get("found"))
+    for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
+        out["detail"][f"tv_{k}"] = (rec or {}).get(k) if rec and rec.get("found") else None
+    if not ok:
+        out["reason"] = why + (" | short float N/A" if short_flag else "")
+        return out
     sf_str = f"{short*100:.2f}%" if short is not None else "N/A (flagged)"
     out["status"] = "PASS"
     out["reason"] = (
-        f"PASS entry={setup['entry']:.2f} SL={setup['sl']:.2f} TP={setup['tp']:.2f} "
-        f"R:R={setup['rr']:.2f} zone=[{setup['zone_lo']:.2f}-{setup['zone_hi']:.2f}] "
+        f"PASS (TV) entry={float(rec['entry']):.2f} SL={float(rec['sl']):.2f} "
+        f"TP={float(rec['tp']):.2f} R:R={float(rec['rr']):.2f} "
+        f"zone=[{float(rec['zone_bottom']):.2f}-{float(rec['zone_top']):.2f}] "
         f"short={sf_str} $vol=${dollar_vol/1e6:.1f}M"
     )
     if short_flag:
@@ -1043,6 +1052,33 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
         "earnings_cache": "fetched",
         "earnings_error": err,
     }
+
+
+def load_tv_drawings(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """Latest stored TradingView drawing reading per ticker ({} if the store is missing)."""
+    try:
+        data = json.loads((path or TV_DRAWINGS_JSON).read_text())
+        return {str(k).strip().upper(): v for k, v in data.items() if isinstance(v, dict)}
+    except Exception:
+        return {}
+
+
+def tv_rr_check(rec: Optional[Dict[str, Any]]) -> Tuple[bool, str]:
+    """(passes, reason) for the R:R gate from a TradingView drawing reading.
+
+    Missing reading / not found / no R:R -> fail (a missing drawing is an R:R failure).
+    """
+    if not rec:
+        return False, "R:R: no TradingView drawing read"
+    if not rec.get("found"):
+        return False, f"R:R: TradingView drawing not found ({rec.get('read_date') or '?'})"
+    try:
+        rr = float(rec.get("rr"))
+    except (TypeError, ValueError):
+        return False, "R:R: TradingView drawing has no R:R"
+    if rr < RR_MIN:
+        return False, f"R:R (TV) {rr:.2f} < {RR_MIN}"
+    return True, f"R:R (TV) {rr:.2f}"
 
 
 def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:

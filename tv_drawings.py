@@ -21,10 +21,11 @@ Usage:
   python tv_drawings.py upsert ST --zone-top 41.96 --zone-bottom 41.31 \\
         --entry 42.11 --sl 38.46 --tp 51.55 --rr 2.59 [--read-at ISO]
   python tv_drawings.py upsert XYZ --not-found
-  python tv_drawings.py merge [--report CSV ...] [--today YYYY-MM-DD]
-        -> adds tv_found, tv_zone_top, tv_zone_bottom, tv_entry, tv_sl, tv_tp, tv_rr,
-           tv_read_date to latest.csv + the dated copy (default: latest.csv and the
-           dated CSV identical to it)
+  python tv_drawings.py merge [--report CSV ...] [--no-grok-target]
+        -> writes tv_found, tv_zone_top, tv_zone_bottom, tv_entry, tv_sl, tv_tp, tv_rr,
+           tv_read_date (latest stored reading per ticker) into latest.csv + its dated
+           twin, sets f_rr = found AND tv_rr >= 2, recomputes status / failed_filters /
+           reason, and regenerates /workspace/stock-screener/grok_sync_target.{json,txt}
   python tv_drawings.py show [TICKER]
 """
 from __future__ import annotations
@@ -51,6 +52,7 @@ REPO = Path("/workspace/publish-stock-retest-scanner")
 LATEST = REPO / "historical-reports" / "latest.csv"
 TARGETS_TXT = Path("/workspace/tv_read_targets.txt")
 TARGETS_JSON = Path("/workspace/tv_read_targets.json")
+GROK_TARGET_DIR = Path("/workspace/stock-screener")  # grok_sync_target.{json,txt}
 TZ = ZoneInfo("Asia/Jerusalem")
 
 TARGET_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_smooth_streak"]
@@ -148,52 +150,44 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
 
 def merge_df(df: pd.DataFrame, today: Optional[date] = None,
              store: Optional[Dict[str, Dict[str, Any]]] = None) -> pd.DataFrame:
-    """Add TV_COLS: filled only for today's target set; found=yes/no; '' = not checked."""
-    today = today or _today()
+    """Apply the store to a report frame and recompute status.
+
+    tv_* = the latest stored reading for each ticker (any ticker with a reading;
+    tv_found yes / no, '' = never read). f_rr = found AND tv_rr >= rr_min, then
+    status / failed_filters / reason are recomputed from the core filters
+    (report_filters.finalize_status / status_reason). `today` is unused (kept for
+    backwards-compatible calls).
+    """
+    import report_filters as rf
+
     store = load_store() if store is None else store
+    store = {str(k).strip().upper(): v for k, v in store.items()}
     df = df.copy()
+    if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag
+        df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
     for c in TV_COLS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
-    targets = set(target_rows(df, today)["ticker"].astype(str))
-    for i, r in df.iterrows():
-        t = str(r["ticker"])
-        rec = store.get(t)
-        if t not in targets or not rec:
-            continue
-        df.at[i, "tv_read_date"] = rec.get("read_date") or ""
-        if not rec.get("found"):
-            df.at[i, "tv_found"] = "no"
-            continue
-        df.at[i, "tv_found"] = "yes"
-        for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
-            v = rec.get(k)
-            df.at[i, f"tv_{k}"] = "" if v is None else f"{float(v):g}"
-    return place_tv_cols(apply_tv_rr_filter(df))
-
-
-def apply_tv_rr_filter(df: pd.DataFrame) -> pd.DataFrame:
-    """f_rr now = TradingView drawing found AND TV R:R >= RR_MIN ("not found" fails).
-
-    The scanner-computed value is preserved as f_rr_computed (internal only).
-    `status` is NOT recomputed here: it was set by report_filters from the computed
-    rr (f_rr_computed) and stays that way until the user approves the switch.
-    """
-    if "f_rr_computed" not in df.columns:
-        src = df["f_rr"] if "f_rr" in df.columns else pd.Series([False] * len(df), index=df.index)
-        df["f_rr_computed"] = src.map(_truthy)
-    def tv_ok(r: pd.Series) -> bool:
-        if str(r.get("tv_found")) != "yes":
-            return False
-        try:
-            return float(r.get("tv_rr")) >= RR_MIN
-        except (TypeError, ValueError):
-            return False
-    df["f_rr"] = df.apply(tv_ok, axis=1)
-    return df
+    for c in ("f_rr", "status", "failed_filters", "reason"):
+        df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
+    for i, row in df.iterrows():
+        r = {k: row[k] for k in df.columns}
+        rf.apply_tv(r, store.get(str(row["ticker"]).strip().upper()))
+        rf.finalize_status(r)
+        reason = rf.status_reason(r, row.get("reason"))
+        for c in TV_COLS + ["f_rr", "status", "failed_filters"]:
+            df.at[i, c] = r[c]
+        notes = [n for n in str(row.get("filter_notes") or "").split("; ")
+                 if n and "(f_rr False)" not in n]
+        if not r["f_rr"]:
+            notes.append(rf.tv_note(r))
+        if "filter_notes" in df.columns:
+            df.at[i, "filter_notes"] = "; ".join(notes)
+        df.at[i, "reason"] = reason
+    return place_tv_cols(df)
 
 
 def place_tv_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """tv_* columns go right before smooth_streak_weeks (after the computed levels)."""
+    """Column order: f_rr_computed right after f_rr; tv_* before smooth_streak_weeks."""
     cols = [c for c in df.columns if c not in TV_COLS and c != "f_rr_computed"]
     if "f_rr_computed" in df.columns:
         cols.insert(cols.index("f_rr") + 1 if "f_rr" in cols else len(cols), "f_rr_computed")
@@ -215,17 +209,32 @@ def _default_reports() -> List[Path]:
     return out
 
 
-def merge_files(paths: List[Path], today: date) -> None:
+def _report_date(paths: List[Path]) -> str:
+    for p in paths:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem):
+            return p.stem
+    return _today().isoformat()
+
+
+def merge_files(paths: List[Path], grok_target: bool = True) -> None:
+    """Merge the store into each CSV, recompute status, then regenerate grok_sync_target
+    from the first (latest) report's status=PASS rows."""
+    first = None
     for p in paths:
         df = pd.read_csv(p, dtype=str, keep_default_na=False)
         base = df[[c for c in df.columns if c not in TV_COLS]]
-        if "f_rr_computed" in base.columns:  # re-merge: restore the computed flag first
-            base = base.assign(f_rr=base["f_rr_computed"]).drop(columns=["f_rr_computed"])
-        out = merge_df(base, today)
+        out = merge_df(base)
         out.to_csv(p, index=False)
+        first = out if first is None else first
         n_yes = int((out["tv_found"] == "yes").sum())
         n_no = int((out["tv_found"] == "no").sum())
-        print(f"merged {p}: tv_found yes={n_yes} no={n_no}")
+        n_pass = int((out["status"] == "PASS").sum())
+        print(f"merged {p}: tv_found yes={n_yes} no={n_no}; status PASS={n_pass}")
+    if grok_target and first is not None:
+        from export_daily_report import write_grok_target
+
+        gp = write_grok_target(first, _report_date(paths), GROK_TARGET_DIR)
+        print(f"grok target {gp}: {json.loads(gp.read_text())['symbols']}")
 
 
 def main() -> None:
@@ -244,7 +253,8 @@ def main() -> None:
     u.add_argument("--read-at", default=None, help="ISO datetime of the read (default now, Asia/Jerusalem)")
     m = sub.add_parser("merge", help="merge store into report CSV(s)")
     m.add_argument("--report", type=Path, action="append", default=None)
-    m.add_argument("--today", default=None)
+    m.add_argument("--today", default=None, help="ignored (kept for compatibility)")
+    m.add_argument("--no-grok-target", action="store_true", help="don't regenerate grok_sync_target")
     s = sub.add_parser("show")
     s.add_argument("ticker", nargs="?")
     args = ap.parse_args()
@@ -278,8 +288,7 @@ def main() -> None:
             rec = upsert(args.ticker, True, read_at=args.read_at, **vals)
         print(json.dumps({args.ticker.upper(): rec}, indent=2))
     elif args.cmd == "merge":
-        today = date.fromisoformat(args.today) if args.today else _today()
-        merge_files(args.report or _default_reports(), today)
+        merge_files(args.report or _default_reports(), grok_target=not args.no_grok_target)
     elif args.cmd == "show":
         st = load_store()
         print(json.dumps(st.get(args.ticker.upper()) if args.ticker else st, indent=2))

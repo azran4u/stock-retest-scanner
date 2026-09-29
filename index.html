@@ -171,7 +171,7 @@
     <label>Search
       <input type="search" id="searchBox" placeholder="Ticker, kind, note…"/>
     </label>
-    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). status=PASS / Grok sync still uses the computed R:R, so this can differ from the status column">PASS-equivalent</button>
+    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). = exactly status=PASS (Grok watchlist)">PASS-equivalent</button>
     <button type="button" class="btn" id="btnClear">Clear filters</button>
     <button type="button" class="btn" id="btnExportTV" title="Download the rows shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <div class="matchcount" id="matchCount">—</div>
@@ -221,7 +221,7 @@ const FILTERS = [
   { col: "f_short_float",     label: "short float < 5%",      core: true,  tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
   { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
   { col: "f_history",         label: "history ≥ 3y",          core: true,  tip: "≥ 150 weekly bars (weekly_bars)" },
-  { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, tip: "TradingView drawing found AND TradingView Long Position R:R ≥ 2. No drawing / not checked → fails. NOTE: status=PASS (Grok sync) still uses the old computed R:R until the switch is approved" },
+  { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, tip: "TradingView drawing found AND TradingView Long Position R:R ≥ 2. No drawing / not checked → fails.. Part of status=PASS (Grok sync)" },
   { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
   { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
@@ -241,7 +241,7 @@ const PREFERRED_COLS = [
 ];
 // Scanner-computed geometry (zone_lo/zone_hi/entry/sl/tp/rr, and values derived from it) is
 // never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
-// (tv_*). The computed values stay in the CSV only because status=PASS still uses them.
+// (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
   "tradingview_url",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
@@ -712,7 +712,7 @@ async function loadReport(path, dateLabel) {
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
   refresh(false);  // restoring on load must not rewrite storage
   document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS (Grok sync) still uses the computed R:R pending approval · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
+    `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS = all core filters incl. TV R:R ≥ 2 · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
 }
 
 async function init() {

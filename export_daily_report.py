@@ -16,7 +16,8 @@ Writes:
 Every row then gets the standalone filter schema from report_filters.py
 (f_* booleans + value columns, computed independently for ALL rows from
 /workspace/hist_cache.pkl + FinViz/earnings caches + stock_screen_universe.json).
-`status` = PASS iff all core filters pass. Threshold overrides: any
+`status` = PASS iff all core filters pass (f_rr = TradingView drawing found AND
+TV R:R >= 2, from /workspace/stock-screener/tv_drawings.json). Threshold overrides: any
 report_filters CONFIG key as a flag, e.g. --min-smooth-streak-weeks 6.
 
 Also writes the Grok watchlist target (status=PASS) to
@@ -259,7 +260,7 @@ def build_report(
 
     def sort_key(i: int):
         status_rank = 0 if df.at[i, "status"] == "PASS" else 1
-        rr = df.at[i, "rr"]
+        rr = df.at[i, "tv_rr"] if "tv_rr" in df.columns else None
         try:
             rr_val = -float(rr) if pd.notna(rr) else 999.0
         except Exception:
@@ -369,13 +370,8 @@ def main() -> None:
 
     base = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
     df = rf.apply_filters_to_report(base, date.fromisoformat(args.date))
-    # TradingView drawing levels (read-only source of zone/entry/SL/TP/R:R) for the day's targets
-    try:
-        import tv_drawings  # noqa: E402
-
-        df = tv_drawings.merge_df(df)
-    except Exception as e:  # never block the report
-        print(f"[export] tv_drawings merge skipped: {e}")
+    # TradingView drawings (read-only; stock-screener/tv_drawings.json, latest reading per ticker)
+    # are applied inside apply_filters_to_report: tv_* columns, f_rr and therefore status.
     paths = write_reports(df, args.out_dir, args.date)
     if not args.no_grok_target:
         gp = write_grok_target(df, args.date, args.grok_target_dir)
