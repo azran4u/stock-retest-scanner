@@ -96,6 +96,8 @@ Prefer common stocks over ETFs / CEFs / leveraged products unless the user says 
 
 ## 4. Trade geometry (Long Position — drawing only)
 
+> **Source of truth (2026-09-29): the user's TradingView drawings.** Zone, entry, SL, TP and R:R are **read** from the user's own drawings on the weekly chart — the **Rectangle** = zone (`tv_zone_top` / `tv_zone_bottom`) and the **Long Position** tool = entry / stop / target and TradingView's own **R:R** (`tv_entry`, `tv_sl`, `tv_tp`, `tv_rr`). A browser agent reads them daily, **read-only**. **The drawings must never be modified** — no moving, resizing, re-drawing, deleting or restyling of any rectangle / Long Position / other drawing; the agent only opens the chart and reads values. The scanner-computed geometry below (§4.1–4.4) is legacy: it is still computed internally (only because `status=PASS` still uses it, see §12) and is **never displayed** on the dashboard. See §12 “TradingView drawings”.
+
 **Never place a live / broker order.** Only draw TradingView’s **Long Position** panel.
 
 ### 4.1 Entry
@@ -256,7 +258,7 @@ Every daily screen produces a **full-universe** CSV of **all** FinViz-returned t
 ### Columns
 Same spirit as the verify table, for every ticker:
 
-`ticker, status, failed_filters, f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr, f_smooth_streak, f_weekly_reversal, f_daily_reversal, current_price, dollar_vol_30d, avg_vol_30d, short_float_pct, inst_own_pct, earnings_date, days_to_earnings, weekly_bars, zone_lo, zone_hi, entry, sl, tp, rr, sl_atr_mult, atr, atrs_from_entry, smooth_streak_weeks, weekly_reversal_kind, weekly_reversal_date, daily_reversal_kind, daily_reversal_date, smooth_pullback, earnings_known, earnings_blackout, filter_notes, tradingview_url, finviz_url, reason` (see “Report filters — standalone, ANDed”). Reports before 2026-09-28 use the older schema.
+`ticker, status, failed_filters, f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr, f_rr_computed, f_smooth_streak, f_weekly_reversal, f_daily_reversal, current_price, dollar_vol_30d, avg_vol_30d, short_float_pct, inst_own_pct, earnings_date, days_to_earnings, weekly_bars, zone_lo, zone_hi, entry, sl, tp, rr, sl_atr_mult, atr, atrs_from_entry, tv_found, tv_zone_top, tv_zone_bottom, tv_entry, tv_sl, tv_tp, tv_rr, tv_read_date, smooth_streak_weeks, weekly_reversal_kind, weekly_reversal_date, daily_reversal_kind, daily_reversal_date, smooth_pullback, earnings_known, earnings_blackout, filter_notes, tradingview_url, finviz_url, reason` (see “Report filters — standalone, ANDed”). Reports before 2026-09-28 use the older schema.
 
 - Prefer verify-enrichment (earnings / TV URL / pct fields) where tickers overlap.
 - Remaining names get pct conversion from `short_float` / `inst_own`, best-effort `tradingview_url`, and blank/false earnings fields when unknown.
@@ -278,7 +280,7 @@ Call this at the end of the daily routine after `stock_screen.py` finishes, then
 
 
 ### After each report — sync `Grok` watchlist
-1. From the new report CSV, take every ticker with **`status=PASS`** = `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr` (earnings blackout / unknown earnings, R:R, short float N/A all block PASS). `export_daily_report.py` writes this set to `/workspace/stock-screener/grok_sync_target.{json,txt}`.
+1. From the new report CSV, take every ticker with **`status=PASS`** = `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr_computed` (computed R:R; unchanged pending approval — see “TradingView drawings”) (earnings blackout / unknown earnings, R:R, short float N/A all block PASS). `export_daily_report.py` writes this set to `/workspace/stock-screener/grok_sync_target.{json,txt}`.
 2. Build the target set as `EXCHANGE:TICKER` using FinViz-resolved US exchanges (same as `tradingview_url`).
 3. **Grok Bot** syncs TradingView watchlist **`Grok`** to that exact set on **this** desktop:
    - **Add** any PASS missing from `Grok`
@@ -291,6 +293,17 @@ Call this at the end of the daily routine after `stock_screen.py` finishes, then
 https://azran4u.github.io/stock-retest-scanner/
 
 
+### TradingView drawings — zone / entry / SL / TP / R:R (2026-09-29)
+
+- **Source of truth:** the user's TradingView drawings, **read-only**. Rectangle = zone; Long Position tool = entry, stop, target and TradingView's R:R. **Never modify the drawings** (no move / resize / redraw / delete / restyle; never place orders). The scanner's own computed zone/entry/SL/TP/R:R are inaccurate and are **never shown** on the dashboard.
+- **Daily read targets:** report rows passing `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_smooth_streak`, with `f_no_earnings_14d` evaluated **live vs today** from the cached earnings date (same as the dashboard). `python tv_drawings.py targets` → `/workspace/tv_read_targets.txt` (`EXCHANGE:TICKER` per line, exchange from `tradingview_url`) + `/workspace/tv_read_targets.json`.
+- **Store:** `/workspace/stock-screener/tv_drawings.json`, keyed by ticker: `found, zone_top, zone_bottom, entry, sl, tp, rr, read_at (ISO), read_date` (+ `symbol`).
+- **Record a read:** `python tv_drawings.py upsert NYSE:ST --zone-top 41.96 --zone-bottom 41.31 --entry 42.11 --sl 38.46 --tp 51.55 --rr 2.59` · no drawing on the chart: `python tv_drawings.py upsert NYSE:XYZ --not-found`.
+- **Merge:** `python tv_drawings.py merge` writes `tv_found, tv_zone_top, tv_zone_bottom, tv_entry, tv_sl, tv_tp, tv_rr, tv_read_date` into `latest.csv` + its dated twin (also runs automatically in `export_daily_report.py` and `report_filters.py`). Filled only for today's target set; `tv_found` = `yes` / `no` / empty (not checked).
+- **`f_rr` = TradingView drawing found AND `tv_rr ≥ 2`**; not found / not checked → False. The old computed flag is kept as `f_rr_computed` (internal, hidden).
+- **`status` is unchanged for now:** `status=PASS` (and therefore `grok_sync_target` / the `Grok` watchlist sync) is still `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr_computed` (the computed R:R), and `failed_filters` explains that status. Switching status to the TV R:R needs the user's explicit approval (it would cut PASS to the tickers with a TV drawing R:R ≥ 2).
+- **Dashboard:** zone / entry / SL / TP / R:R columns show only TV values (“zone top (TV)”, “entry (TV)”, “SL (TV)”, “TP (TV)”, “TV R:R”); no drawing → the text **“not found”**; these rows always sort to the end in both directions. Default sort: TV R:R desc. Optional filter “TV drawing found” (`tv_found = yes`). The “PASS-equivalent” preset uses `f_rr` (TV), so it can differ from the `status` column until the switch.
+
 ### Report filters — standalone, ANDed (2026-09-29 restructure)
 Rows = **every** ticker the FinViz screener returned for the report day; no row is ever dropped. Every rule is computed for **every** row independently (no short-circuit: a `$vol` fail still gets short float, earnings, R:R, streak, reversals). Missing data → `False` plus a note in `filter_notes`. Code: `report_filters.py` (repo root; copy in `/workspace/stock-screener/`), called by `export_daily_report.py`.
 
@@ -300,12 +313,12 @@ Rows = **every** ticker the FinViz screener returned for the report day; no row 
 | `f_short_float` | FinViz short float **< 5%** (missing → False) | `short_float_pct` |
 | `f_no_earnings_14d` | next earnings **not** within 14 days (`days_to_earnings ≥ 14`). CSV = as of the report date; dashboard re-evaluates live from `earnings_date`. Unknown or stale date → False | `earnings_date`, `days_to_earnings` |
 | `f_history` | **≥ 150 weekly bars** (~3y) | `weekly_bars` |
-| `f_rr` | The **whole retest pipeline is ONE filter**: weekly breakout-retest zone found (§3) → entry / SL / TP placed (§4; SL clamped to 0.5–1.0×ATR is part of the calc, **not** a filter) → **R:R ≥ 2**. No setup → False, rr blank. Zone detection is not accurate enough to be its own filter, so it never filters anything implicitly. Computed for any ticker with ≥ 30 weekly bars, independent of `f_history`. | `rr`, informational `zone_lo`, `zone_hi`, `entry`, `sl`, `tp`, `sl_atr_mult`, `atr`, `atrs_from_entry` |
+| `f_rr` | **Now: TradingView drawing found AND `tv_rr ≥ 2`** (see “TradingView drawings”). Legacy, kept as internal `f_rr_computed` (used by `status`): the **whole retest pipeline is ONE filter**: weekly breakout-retest zone found (§3) → entry / SL / TP placed (§4; SL clamped to 0.5–1.0×ATR is part of the calc, **not** a filter) → **R:R ≥ 2**. No setup → False, rr blank. Zone detection is not accurate enough to be its own filter, so it never filters anything implicitly. Computed for any ticker with ≥ 30 weekly bars, independent of `f_history`. | `rr`, informational `zone_lo`, `zone_hi`, `entry`, `sl`, `tp`, `sl_atr_mult`, `atr`, `atrs_from_entry` |
 | `f_smooth_streak` | `smooth_streak_weeks ≥ 5` — pure candle rule (no short float / $vol / history gate; those are separate filters) | `smooth_streak_weeks` |
 | `f_weekly_reversal` | reversal-shape candle on **any of the last 5 completed weekly bars**, shape-only (no zone gate) | `weekly_reversal_kind`, `weekly_reversal_date` (most recent hit) |
 | `f_daily_reversal` | reversal-shape candle on **any of the last 10 completed daily bars**, shape-only (no zone gate) | `daily_reversal_kind`, `daily_reversal_date` (most recent hit) |
 
-**`status` (back-compat, Grok watchlist):** `PASS` iff `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr`. `failed_filters` lists the core filters that failed. Smooth/reversal filters never change PASS. `reason` keeps the screen's text (appended `| FAIL: …` if the filters demote a screen PASS).
+**`status` (back-compat, Grok watchlist):** `PASS` iff `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr_computed` (the computed R:R — unchanged until the user approves switching to TV R:R). `failed_filters` lists the core filters that failed. Smooth/reversal filters never change PASS. `reason` keeps the screen's text (appended `| FAIL: …` if the filters demote a screen PASS).
 
 **Reversal shapes** (`weekly_reversal_shapes`, same thresholds on daily bars vs daily ATR14): hammer/pin (lower wick ≥ 0.9×body, close in upper half, lower wick ≥ upper wick, not doji junk); bullish engulfing (green body engulfs prior red body); strong_close (green, close ≥ open+0.5×range or top 40% of range — the old “prior bar near zone” context is dropped in shape-only mode); rejection (lower wick ≥ max(body, 0.35×ATR)). Kind preference per bar: hammer → engulfing → strong_close → rejection. ⚠ Shape-only with these lookbacks is very permissive (2026-09-28: weekly 360/379, daily 377/379); tighten via `--reversal-kinds` or shorter lookbacks.
 

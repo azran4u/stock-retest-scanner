@@ -438,6 +438,7 @@ def main() -> None:
                     help="report CSV to recompute in place (repeatable)")
     ap.add_argument("--date", required=True, help="report date YYYY-MM-DD (as-of for history/earnings)")
     ap.add_argument("--out", type=Path, default=None, help="write here instead of in place (single --report)")
+    ap.add_argument("--no-tv-merge", action="store_true", help="skip tv_drawings.merge_df")
     add_cli_overrides(ap)
     args = ap.parse_args()
     changed = apply_cli_overrides(args)
@@ -448,6 +449,13 @@ def main() -> None:
     for p in args.report:
         df = pd.read_csv(p)
         out = apply_filters_to_report(df, rd, hist_map=hist_map)
+        if not args.no_tv_merge:
+            try:
+                import tv_drawings  # TradingView drawing levels for today's targets
+
+                out = tv_drawings.merge_df(out)
+            except Exception as e:
+                print(f"tv_drawings merge skipped: {e}")
         dest = args.out if args.out else p
         out.to_csv(dest, index=False)
         print(f"{dest}: {summarize(out)}")

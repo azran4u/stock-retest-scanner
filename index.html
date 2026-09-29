@@ -32,6 +32,7 @@
     background: linear-gradient(180deg, #12181f 0%, var(--bg) 100%);
   }
   header h1 { margin: 0 0 4px; font-size: 1.35rem; font-weight: 650; }
+  .muted { color: var(--muted); font-style: italic; }
   header .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 14px; }
   .controls {
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
@@ -170,7 +171,7 @@
     <label>Search
       <input type="search" id="searchBox" placeholder="Ticker, kind, note…"/>
     </label>
-    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters that define status=PASS (Grok watchlist)">PASS-equivalent</button>
+    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). status=PASS / Grok sync still uses the computed R:R, so this can differ from the status column">PASS-equivalent</button>
     <button type="button" class="btn" id="btnClear">Clear filters</button>
     <button type="button" class="btn" id="btnExportTV" title="Download the rows shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <div class="matchcount" id="matchCount">—</div>
@@ -192,7 +193,7 @@
       <div class="chart-wrap"><canvas id="chartFilters"></canvas></div>
     </div>
     <div class="chart-box">
-      <h2>R:R distribution (current selection)</h2>
+      <h2>TV R:R distribution (current selection)</h2>
       <div class="chart-wrap"><canvas id="chartRR"></canvas></div>
     </div>
     <div class="chart-box">
@@ -220,10 +221,11 @@ const FILTERS = [
   { col: "f_short_float",     label: "short float < 5%",      core: true,  tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
   { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
   { col: "f_history",         label: "history ≥ 3y",          core: true,  tip: "≥ 150 weekly bars (weekly_bars)" },
-  { col: "f_rr",              label: "R:R ≥ 2 (retest setup)", core: true, tip: "Whole retest pipeline as ONE filter: breakout-retest zone → entry / SL (0.5–1×ATR) / TP computed AND R:R ≥ 2. Zone columns are informational only" },
+  { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, tip: "TradingView drawing found AND TradingView Long Position R:R ≥ 2. No drawing / not checked → fails. NOTE: status=PASS (Grok sync) still uses the old computed R:R until the switch is approved" },
   { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
   { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
+  { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
 
@@ -231,19 +233,28 @@ const PREFERRED_COLS = [
   "ticker","status","failed_filters",
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
-  "weekly_bars","rr","entry","sl","tp","zone_lo","zone_hi","sl_atr_mult","atr","atrs_from_entry",
+  "weekly_bars",
+  "tv_found","tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom","tv_read_date","atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
   "filter_notes","finviz_url","reason"
 ];
-const HIDDEN_COLS = new Set(["tradingview_url"]);
+// Scanner-computed geometry (zone_lo/zone_hi/entry/sl/tp/rr, and values derived from it) is
+// never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
+// (tv_*). The computed values stay in the CSV only because status=PASS still uses them.
+const HIDDEN_COLS = new Set([
+  "tradingview_url",
+  "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
+]);
+const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom"]);
 const NUM_COLS = new Set([
   "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
+  "tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
   "weekly_bars","days_to_earnings","smooth_streak_weeks"
 ]);
 const BOOL_COLS = new Set([
-  ...FILTERS.map(f => f.col), "smooth_pullback","earnings_known","earnings_blackout",
+  ...FILTERS.map(f => f.col).filter(c => c !== "tv_found"), "smooth_pullback","earnings_known","earnings_blackout",
   "weekly_reversal","daily_reversal","smooth_and_reversal","smooth_streak"
 ]);
 const EARNINGS_BLACKOUT_DAYS = 14;
@@ -263,7 +274,7 @@ let headers = [];
 let COLS = [];
 let available = new Set();      // filter cols present in the loaded CSV
 let checked = new Set();
-let sortCol = "rr", sortDir = "desc", sortCol2 = "ticker", sortDir2 = "asc";
+let sortCol = "tv_rr", sortDir = "desc", sortCol2 = "ticker", sortDir2 = "asc";
 let charts = { filters: null, rr: null, streak: null };
 
 function todayJerusalemISO() {
@@ -340,8 +351,16 @@ function toNum(v) {
 }
 
 
+// Display names; zone / entry / SL / TP / R:R come from the user's TradingView drawings (tv_*).
+const COL_LABELS = {
+  tv_found: "TV drawing", tv_rr: "TV R:R", tv_entry: "entry (TV)", tv_sl: "SL (TV)", tv_tp: "TP (TV)",
+  tv_zone_top: "zone top (TV)", tv_zone_bottom: "zone bottom (TV)", tv_read_date: "TV read date",
+  f_rr: "f_rr (TV R:R ≥ 2)",
+};
+const colLabel = c => COL_LABELS[c] || c;
+
 function isTrueFlag(val) {
-  return val === true || String(val).toLowerCase() === "true" || val === "1";
+  return val === true || ["true", "1", "yes"].includes(String(val).toLowerCase());
 }
 
 /** Parse EXCHANGE:TICKER from tradingview_url (https or tradingview://). */
@@ -397,6 +416,10 @@ function fmt(col, val, row) {
     const tv = row && row.tradingview_url ? row.tradingview_url : "";
     return tv ? tvLinksHtml(name, tv) : name;
   }
+  // zone / entry / SL / TP / R:R: TradingView drawing values only; no drawing -> "not found"
+  if (TV_LEVEL_COLS.has(col) && !(row && row.tv_found === "yes" && toNum(val) !== null))
+    return '<span class="muted">not found</span>';
+  if (col === "tv_found") return val === "yes" ? "yes" : val === "no" ? "no" : '<span class="muted">not checked</span>';
   if (val === null || val === undefined || val === "") return "";
   if (col === "finviz_url") return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
   if (col === "status") {
@@ -407,7 +430,7 @@ function fmt(col, val, row) {
   if (NUM_COLS.has(col)) {
     const n = toNum(val);
     if (n === null) return "";
-    if (col === "rr" || col === "atrs_from_entry" || col === "sl_atr_mult") return n.toFixed(2);
+    if (col === "tv_rr") return n.toFixed(2);
     if (col === "dollar_vol_30d") return "$" + (n / 1e6).toFixed(1) + "M";
     if (col === "avg_vol_30d" || col === "weekly_bars" || col.startsWith("days_to_earnings")
         || col === "smooth_streak_weeks") return String(Math.round(n));
@@ -460,7 +483,11 @@ function filteredRows() {
 
 function renderFilterBox() {
   const box = document.getElementById("filterBox");
-  const groups = [["Core (PASS)", FILTERS.filter(f => f.core)], ["Extra", FILTERS.filter(f => !f.core)]];
+  const groups = [
+    ["Core (PASS)", FILTERS.filter(f => f.core)],
+    ["Extra", FILTERS.filter(f => !f.core && !f.group)],
+    ["TradingView", FILTERS.filter(f => f.group === "TradingView")],
+  ];
   box.innerHTML = groups.map(([name, fs]) =>
     `<span class="grp">${name}</span>` + fs.map(f => {
       const avail = available.has(f.col);
@@ -487,7 +514,7 @@ function renderTable(rows) {
     let mark = "";
     if (sortCol === c) mark = `<span class="sort">1${sortDir === "asc" ? "▲" : "▼"}</span>`;
     else if (sortCol2 === c) mark = `<span class="sort">2${sortDir2 === "asc" ? "▲" : "▼"}</span>`;
-    return `<th data-col="${c}" title="Click: primary sort · Shift+click: secondary sort">${c}${mark}</th>`;
+    return `<th data-col="${c}" title="${c} — click: primary sort · Shift+click: secondary sort (empty values always last)">${colLabel(c)}${mark}</th>`;
   }).join("") + "</tr>";
   tbody.innerHTML = rows.map(r => {
     const cls = String(r.status).toUpperCase() === "PASS" ? "pass" : "fail";
@@ -531,7 +558,7 @@ function renderCharts(rows) {
   const fLabels = availF.map(f => f.label);
   const fAll = availF.map(f => allRows.filter(r => isTrueFlag(r[f.col])).length);
   const fSel = availF.map(f => rows.filter(r => isTrueFlag(r[f.col])).length);
-  const rrVals = rows.map(r => toNum(r.rr)).filter(n => n !== null);
+  const rrVals = rows.filter(r => r.tv_found === "yes").map(r => toNum(r.tv_rr)).filter(n => n !== null);
   const stVals = rows.map(r => toNum(r.smooth_streak_weeks)).filter(n => n !== null);
   const rrCounts = binCounts(rrVals, RR_BINS), stCounts = binCounts(stVals, STREAK_BINS);
   if (charts.filters) {
@@ -595,7 +622,7 @@ function clearSavedState() {
 }
 
 function defaultSort(hdr) {
-  sortCol = hdr.has("rr") ? "rr" : "ticker"; sortDir = sortCol === "rr" ? "desc" : "asc";
+  sortCol = hdr.has("tv_rr") ? "tv_rr" : "ticker"; sortDir = sortCol === "tv_rr" ? "desc" : "asc";
   sortCol2 = "ticker"; sortDir2 = "asc";
 }
 
@@ -608,8 +635,8 @@ function applySavedState(hdr) {
   if (Array.isArray(st.checked)) st.checked.forEach(c => { if (available.has(c)) checked.add(c); });
   if (typeof st.search === "string") document.getElementById("searchBox").value = st.search;
   const okDir = d => d === "asc" || d === "desc";
-  if (st.sortCol && hdr.has(st.sortCol)) { sortCol = st.sortCol; if (okDir(st.sortDir)) sortDir = st.sortDir; }
-  if (st.sortCol2 && hdr.has(st.sortCol2)) { sortCol2 = st.sortCol2; if (okDir(st.sortDir2)) sortDir2 = st.sortDir2; }
+  if (st.sortCol && hdr.has(st.sortCol) && !HIDDEN_COLS.has(st.sortCol)) { sortCol = st.sortCol; if (okDir(st.sortDir)) sortDir = st.sortDir; }
+  if (st.sortCol2 && hdr.has(st.sortCol2) && !HIDDEN_COLS.has(st.sortCol2)) { sortCol2 = st.sortCol2; if (okDir(st.sortDir2)) sortDir2 = st.sortDir2; }
 }
 
 let currentRows = [];
@@ -666,7 +693,8 @@ async function loadReport(path, dateLabel) {
   const text = await res.text();
   allRows = enrichEarningsLive(parseCSV(text));
   const hdr = new Set(headers);
-  available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c)));
+  // f_rr means TV R:R only in reports that carry the TradingView columns (older CSVs: computed → disabled)
+  available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c) && (c !== "f_rr" || hdr.has("tv_found"))));
   COLS = PREFERRED_COLS.filter(c => hdr.has(c) && !HIDDEN_COLS.has(c))
     .concat(headers.filter(c => !PREFERRED_COLS.includes(c) && !HIDDEN_COLS.has(c)));
   applySavedState(hdr);
@@ -684,7 +712,7 @@ async function loadReport(path, dateLabel) {
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
   refresh(false);  // restoring on load must not rewrite storage
   document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} FinViz tickers · status=PASS = all core filters as of the report date · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
+    `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS (Grok sync) still uses the computed R:R pending approval · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
 }
 
 async function init() {

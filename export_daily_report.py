@@ -369,6 +369,13 @@ def main() -> None:
 
     base = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
     df = rf.apply_filters_to_report(base, date.fromisoformat(args.date))
+    # TradingView drawing levels (read-only source of zone/entry/SL/TP/R:R) for the day's targets
+    try:
+        import tv_drawings  # noqa: E402
+
+        df = tv_drawings.merge_df(df)
+    except Exception as e:  # never block the report
+        print(f"[export] tv_drawings merge skipped: {e}")
     paths = write_reports(df, args.out_dir, args.date)
     if not args.no_grok_target:
         gp = write_grok_target(df, args.date, args.grok_target_dir)
