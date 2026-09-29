@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-29 (smooth_pullback / weekly_reversal / daily_reversal / smooth_streak report filters)
+Last updated: 2026-09-29 (smooth_pullback / weekly_reversal / daily_reversal / smooth_streak report filters; smooth_streak doji condition)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -319,11 +319,11 @@ Computed for **every** report row (PASS **and** FAIL) at export time by `export_
 | `smooth_streak_weeks` | Consecutive **smooth** weekly candles counting back from the most recent **completed** W-FRI week (incomplete current week and today's unfinished session excluded), stopping at the first non-smooth week; cap 104. Filled for every ticker with history (even if short float fails). |
 | `smooth_streak` | `True` iff short float **< 5%** (same rule as the screen) **and** `smooth_streak_weeks ≥ MIN_SMOOTH_STREAK_WEEKS`. Missing short float → `False`. |
 
-**Smooth week** = ANY of: (1) green (`Close ≥ Open`); (2) red **and** weekly volume **<** 30-week SMA of weekly volume (weekly vol vs SMA30 of weekly vol — **not** daily_eq); (3) reversal-shape candle, green or red, using the weekly_reversal shapes **without** the support-zone gate (`weekly_reversal_shapes`): hammer/pin, bullish engulfing, strong_close shape (green, close ≥ open+0.5×range or top 40%), long-lower-wick rejection shape (lower wick ≥ max(body, 0.35×weekly ATR14)). So the streak breaks only on a **loud red** week (red, vol ≥ SMA30) that is not a hammer/long-lower-wick candle.
+**Smooth week** = ANY of: (1) green (`Close ≥ Open`); (2) red **and** weekly volume **<** 30-week SMA of weekly volume (weekly vol vs SMA30 of weekly vol — **not** daily_eq); (3) reversal-shape candle, green or red, using the weekly_reversal shapes **without** the support-zone gate (`weekly_reversal_shapes`): hammer/pin, bullish engulfing, strong_close shape (green, close ≥ open+0.5×range or top 40%), long-lower-wick rejection shape (lower wick ≥ max(body, 0.35×weekly ATR14)); (4) **doji**, green or red, **any volume**: range > 0, body ≤ `DOJI_MAX_BODY_FRAC` (0.10) × range, and close ≥ low + `DOJI_MIN_CLOSE_POS` (0.40) × range (close in the middle/upper part of the week). So the streak breaks only on a **loud red** week (red, vol ≥ SMA30) that is neither a hammer/long-lower-wick candle nor a mid/upper-close doji.
 
 **Short float source:** the row's `short_float_pct`; when blank (e.g. names that failed `$vol` before the short-float step) it is filled from the FinViz quote cache `cache/fv_{TICKER}.json` (no extra network).
 
-**Threshold parameter:** `MIN_SMOOTH_STREAK_WEEKS = 5` in `/workspace/smooth_support_analysis.py` (single source of truth). Per-run override: `export_daily_report.py … --min-smooth-streak-weeks N`. Backfill/recompute an existing CSV in place: `python /workspace/smooth_support_analysis.py --smooth-streak historical-reports/latest.csv historical-reports/YYYY-MM-DD.csv [--min-smooth-streak-weeks N]`. Dashboard checkbox **smooth_streak (≥Nw)** filters all rows (Status=All shows FAIL rows too); `smooth_streak_weeks` sorts numerically.
+**Threshold parameters:** `MIN_SMOOTH_STREAK_WEEKS = 5`, `DOJI_MAX_BODY_FRAC = 0.10`, `DOJI_MIN_CLOSE_POS = 0.40` in `/workspace/smooth_support_analysis.py` (single source of truth). Per-run override: `export_daily_report.py … --min-smooth-streak-weeks N`. Backfill/recompute an existing CSV in place: `python /workspace/smooth_support_analysis.py --smooth-streak historical-reports/latest.csv historical-reports/YYYY-MM-DD.csv [--min-smooth-streak-weeks N]`. Dashboard checkbox **smooth_streak (≥Nw)** filters all rows (Status=All shows FAIL rows too); `smooth_streak_weeks` sorts numerically.
 
 ### Fail-reason buckets (dashboard)
 Normalize free-text reasons into: `$vol`, `short float`, `history`, `R:R`, `no retest`, `earnings`, `other`.
