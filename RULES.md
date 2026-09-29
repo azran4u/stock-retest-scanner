@@ -1,6 +1,6 @@
 # Stock retest screener — rules
 
-Last updated: 2026-09-29 (smooth_pullback / weekly_reversal / daily_reversal / smooth_streak report filters; smooth_streak doji condition)
+Last updated: 2026-09-29 (smooth_pullback / weekly_reversal / daily_reversal / smooth_streak report filters; smooth_streak doji + $vol/history gates)
 Owner: Eyal  
 Watchlist: TradingView `Grok`  
 Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawings (no live orders)
@@ -311,13 +311,13 @@ Dashboard / CSV flags (computed on **PASS** setups after the daily screen; FAIL 
 
 Dashboard checkboxes filter to rows where the chosen flag is true. Future `export_daily_report.py` runs always emit these columns (blank/`False` until the smooth/reversal pass fills them).
 
-### Report filter — smooth_streak (all rows, short float < 5%)
+### Report filter — smooth_streak (all rows; short float, $vol & history gates)
 Computed for **every** report row (PASS **and** FAIL) at export time by `export_daily_report.py` → `smooth_support_analysis.add_smooth_streak_columns` using the cached daily history (`/workspace/hist_cache.pkl`, refreshed by `stock_screen.py` earlier in the same run). Report filter only — does **not** change PASS/FAIL.
 
 | Column | Meaning |
 |--------|---------|
-| `smooth_streak_weeks` | Consecutive **smooth** weekly candles counting back from the most recent **completed** W-FRI week (incomplete current week and today's unfinished session excluded), stopping at the first non-smooth week; cap 104. Filled for every ticker with history (even if short float fails). |
-| `smooth_streak` | `True` iff short float **< 5%** (same rule as the screen) **and** `smooth_streak_weeks ≥ MIN_SMOOTH_STREAK_WEEKS`. Missing short float → `False`. |
+| `smooth_streak_weeks` | Consecutive **smooth** weekly candles counting back from the most recent **completed** W-FRI week (incomplete current week and today's unfinished session excluded), stopping at the first non-smooth week; cap 104. Filled for every ticker with history (informational, even if a gate fails). |
+| `smooth_streak` | `True` iff **all** of: short float **< 5%** (`SHORT_FLOAT_MAX`); 30d dollar volume **≥ $50M** (`DOLLAR_VOL_MIN`, 30d avg volume × last close); history **≥ 150 weekly bars (~3y)** (`MIN_WEEKLY_BARS`); and `smooth_streak_weeks ≥ MIN_SMOOTH_STREAK_WEEKS`. The three gates import the screen's own constants from `stock_screen.py` (no separate numbers). Uses the row's `dollar_vol_30d` / `weekly_bars`; blanks are recomputed from the cache with the screen's formulas. Missing data → `False`. |
 
 **Smooth week** = ANY of: (1) green (`Close ≥ Open`); (2) red **and** weekly volume **<** 30-week SMA of weekly volume (weekly vol vs SMA30 of weekly vol — **not** daily_eq); (3) reversal-shape candle, green or red, using the weekly_reversal shapes **without** the support-zone gate (`weekly_reversal_shapes`): hammer/pin, bullish engulfing, strong_close shape (green, close ≥ open+0.5×range or top 40%), long-lower-wick rejection shape (lower wick ≥ max(body, 0.35×weekly ATR14)); (4) **doji**, green or red, **any volume**: range > 0, body ≤ `DOJI_MAX_BODY_FRAC` (0.10) × range, and close ≥ low + `DOJI_MIN_CLOSE_POS` (0.40) × range (close in the middle/upper part of the week). So the streak breaks only on a **loud red** week (red, vol ≥ SMA30) that is neither a hammer/long-lower-wick candle nor a mid/upper-close doji.
 

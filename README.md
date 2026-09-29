@@ -35,6 +35,6 @@ python export_daily_report.py \
   --docs-dir ./
 ```
 
-The export also fills **`smooth_streak`** (short float < 5% AND ≥ `MIN_SMOOTH_STREAK_WEEKS` consecutive smooth weekly candles; default **5**; smooth week = green, red with weekly vol < 30w SMA, a weekly reversal shape, or a doji with body ≤ 10% of range and close ≥ low + 40% of range) and **`smooth_streak_weeks`** for every row from `/workspace/hist_cache.pkl`. Change the threshold in `/workspace/smooth_support_analysis.py` (`MIN_SMOOTH_STREAK_WEEKS`) or per run with `--min-smooth-streak-weeks N`. Backfill an existing CSV: `python /workspace/smooth_support_analysis.py --smooth-streak historical-reports/latest.csv`.
+The export also fills **`smooth_streak`** (short float < 5% AND 30d dollar vol ≥ $50M AND ≥ 150 weekly bars — same constants as `stock_screen.py` — AND ≥ `MIN_SMOOTH_STREAK_WEEKS` consecutive smooth weekly candles; default **5**; smooth week = green, red with weekly vol < 30w SMA, a weekly reversal shape, or a doji with body ≤ 10% of range and close ≥ low + 40% of range) and **`smooth_streak_weeks`** for every row from `/workspace/hist_cache.pkl`. Change the threshold in `/workspace/smooth_support_analysis.py` (`MIN_SMOOTH_STREAK_WEEKS`) or per run with `--min-smooth-streak-weeks N`. Backfill an existing CSV: `python /workspace/smooth_support_analysis.py --smooth-streak historical-reports/latest.csv`.
 
 See `RULES.md` § Reports for the full process.
