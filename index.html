@@ -226,6 +226,7 @@ const FILTERS = [
   { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
+  { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
 
@@ -234,7 +235,8 @@ const PREFERRED_COLS = [
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
   "weekly_bars",
-  "tv_found","tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom","tv_read_date","atr",
+  "tv_found","tv_rr","tv_zone_dist_atr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
+  "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
   "filter_notes","finviz_url","reason"
@@ -246,10 +248,12 @@ const HIDDEN_COLS = new Set([
   "tradingview_url",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
-const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom"]);
+const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
+  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist"]);
 const NUM_COLS = new Set([
   "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
   "tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
+  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
   "weekly_bars","days_to_earnings","smooth_streak_weeks"
 ]);
@@ -355,6 +359,8 @@ function toNum(v) {
 const COL_LABELS = {
   tv_found: "TV drawing", tv_rr: "TV R:R", tv_entry: "entry (TV)", tv_sl: "SL (TV)", tv_tp: "TP (TV)",
   tv_zone_top: "zone top (TV)", tv_zone_bottom: "zone bottom (TV)", tv_read_date: "TV read date",
+  tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
+  tv_zone_dist: "dist to zone ($)", f_near_zone: "f_near_zone (≤1 ATR)",
   f_rr: "f_rr (TV R:R ≥ 2)",
 };
 const colLabel = c => COL_LABELS[c] || c;
@@ -431,6 +437,7 @@ function fmt(col, val, row) {
     const n = toNum(val);
     if (n === null) return "";
     if (col === "tv_rr") return n.toFixed(2);
+    if (col === "tv_zone_dist_atr") return n === 0 ? "in zone" : n.toFixed(2) + " ATR";
     if (col === "dollar_vol_30d") return "$" + (n / 1e6).toFixed(1) + "M";
     if (col === "avg_vol_30d" || col === "weekly_bars" || col.startsWith("days_to_earnings")
         || col === "smooth_streak_weeks") return String(Math.round(n));

@@ -76,6 +76,9 @@ CONFIG: Dict[str, Any] = {
     "daily_reversal_lookback_days": 10,                  # f_daily_reversal
     "weekly_reversal_lookback_weeks": 5,                 # f_weekly_reversal
     "reversal_kinds": ("hammer", "engulfing", "strong_close", "rejection"),
+    # price near the TradingView support zone (TV drawings only; NOT part of status)
+    "near_zone_atr_mult": 1.0,                           # f_near_zone: distance <= 1 x weekly ATR
+    "near_zone_atr_period": 14,                          # weekly ATR(14), same ATR as the retest scan
 }
 
 CORE_FILTERS = [  # status=PASS iff all true
@@ -85,14 +88,17 @@ EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
 ALL_FILTERS = CORE_FILTERS + EXTRA_FILTERS
 
 TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date"]
+# price vs the TradingView zone (only for tv_found=yes; otherwise all empty, f_near_zone empty too)
+NEAR_ZONE_COLS = ["tv_price", "tv_weekly_atr", "tv_zone_dist", "tv_zone_dist_atr"]
+INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in status)
 
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
-    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS,
+    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS,
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
-    *TV_COLS,
+    *TV_COLS, *NEAR_ZONE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "daily_reversal_kind", "daily_reversal_date",
@@ -261,6 +267,7 @@ def compute_row(
         hist = None
     if hist is None or len(hist) < 2:
         notes.append("no price history")
+        apply_tv(r, tv_rec)
         r["filter_notes"] = "; ".join(notes)
         return r
 
@@ -299,6 +306,7 @@ def compute_row(
     apply_tv(r, tv_rec)
     if not r["f_rr"]:
         notes.append(tv_note(r))
+    r.update(compute_near_zone(hist, r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
     as_of = _as_of_ts(report_date)
@@ -348,6 +356,40 @@ def apply_tv(r: Dict[str, Any], rec: Optional[Dict[str, Any]]) -> Dict[str, Any]
     rr = _num(rec.get("rr")) if rec and rec.get("found") else None
     r["f_rr"] = bool(rr is not None and rr >= CONFIG["rr_min"])
     return r
+
+
+def compute_near_zone(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, Any]:
+    """Price vs the TradingView zone (tv_found=yes rows only; else every value is None).
+
+    price = latest daily close in `hist` (daily bars already cut at the report date);
+    weekly ATR = stock_screen.atr_series(to_weekly(hist), 14) last value (W-FRI bars,
+    the same weekly ATR(14) the retest scan uses; the report-date week may be partial);
+    dist = 0 inside [zone_bottom, zone_top], else distance to the nearest edge;
+    f_near_zone = dist <= near_zone_atr_mult x weekly ATR.
+    """
+    out: Dict[str, Any] = {c: None for c in NEAR_ZONE_COLS + ["f_near_zone"]}
+    if str(r.get("tv_found")) != "yes" or hist is None or len(hist) == 0:
+        return out
+    top, bot = _num(r.get("tv_zone_top")), _num(r.get("tv_zone_bottom"))
+    if top is None or bot is None:
+        return out
+    if bot > top:
+        top, bot = bot, top
+    price = float(hist["Close"].iloc[-1])
+    out["tv_price"] = round(price, 4)
+    atr = None
+    try:
+        a = ss.atr_series(ss.to_weekly(hist), int(CONFIG["near_zone_atr_period"])).dropna()
+        atr = float(a.iloc[-1]) if len(a) else None
+    except Exception:
+        atr = None
+    dist = 0.0 if bot <= price <= top else (price - top if price > top else bot - price)
+    out["tv_zone_dist"] = round(dist, 4)
+    if atr and atr > 0:
+        out["tv_weekly_atr"] = round(atr, 4)
+        out["tv_zone_dist_atr"] = round(dist / atr, 4)
+        out["f_near_zone"] = bool(dist <= float(CONFIG["near_zone_atr_mult"]) * atr)
+    return out
 
 
 def tv_note(r: Dict[str, Any]) -> str:
@@ -478,6 +520,9 @@ def apply_filters_to_report(
 
 def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     s = {f: int(df[f].astype(bool).sum()) for f in ALL_FILTERS}
+    for f in INFO_FILTERS:
+        if f in df.columns:
+            s[f] = int(df[f].map(lambda v: v is True or str(v) == "True").sum())
     s["rows"] = int(len(df))
     s["pass"] = int((df["status"] == "PASS").sum())
     return s

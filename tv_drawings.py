@@ -148,24 +148,62 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
     return rec
 
 
+def _hist_upto(hist_map: Dict[str, Any], ticker: str, report_date: Optional[date]) -> Optional[pd.DataFrame]:
+    """Cached daily OHLCV for `ticker` cut at report_date (same prep as report_filters)."""
+    import stock_screen as ss
+
+    raw = hist_map.get(ticker) if hist_map else None
+    need = ["Open", "High", "Low", "Close", "Volume"]
+    if raw is None or getattr(raw, "empty", True):
+        return None
+    try:
+        d = ss._normalize_ohlcv_index(raw)
+        if not all(c in d.columns for c in need):
+            return None
+        if report_date is not None:
+            d = d[d.index.normalize() <= pd.Timestamp(report_date)]
+        d = d[need].dropna()
+        return d if len(d) else None
+    except Exception:
+        return None
+
+
+def _csv_val(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "True" if v else "False"
+    return str(v)
+
+
 def merge_df(df: pd.DataFrame, today: Optional[date] = None,
-             store: Optional[Dict[str, Dict[str, Any]]] = None) -> pd.DataFrame:
+             store: Optional[Dict[str, Dict[str, Any]]] = None,
+             report_date: Optional[date] = None,
+             hist_map: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
     """Apply the store to a report frame and recompute status.
 
     tv_* = the latest stored reading for each ticker (any ticker with a reading;
     tv_found yes / no, '' = never read). f_rr = found AND tv_rr >= rr_min, then
     status / failed_filters / reason are recomputed from the core filters
     (report_filters.finalize_status / status_reason). `today` is unused (kept for
-    backwards-compatible calls).
+    backwards-compatible calls). Also refreshes the price-vs-zone columns
+    (tv_price, tv_weekly_atr, tv_zone_dist, tv_zone_dist_atr, f_near_zone) from the
+    cached daily history (`hist_map`, default /workspace/hist_cache.pkl) as of
+    `report_date` (default: the report's own date column is absent -> today).
     """
     import report_filters as rf
+    import stock_screen as ss
+
+    if hist_map is None:
+        hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
+    report_date = report_date or _today()
 
     store = load_store() if store is None else store
     store = {str(k).strip().upper(): v for k, v in store.items()}
     df = df.copy()
     if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
-    for c in TV_COLS:
+    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
     for c in ("f_rr", "status", "failed_filters", "reason"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
@@ -176,6 +214,9 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         reason = rf.status_reason(r, row.get("reason"))
         for c in TV_COLS + ["f_rr", "status", "failed_filters"]:
             df.at[i, c] = r[c]
+        nz = rf.compute_near_zone(_hist_upto(hist_map, str(row["ticker"]).strip(), report_date), r)
+        for c, v in nz.items():
+            df.at[i, c] = _csv_val(v)
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
                  if n and "(f_rr False)" not in n]
         if not r["f_rr"]:
@@ -187,14 +228,12 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
 
 
 def place_tv_cols(df: pd.DataFrame) -> pd.DataFrame:
-    """Column order: f_rr_computed right after f_rr; tv_* before smooth_streak_weeks."""
-    cols = [c for c in df.columns if c not in TV_COLS and c != "f_rr_computed"]
-    if "f_rr_computed" in df.columns:
-        cols.insert(cols.index("f_rr") + 1 if "f_rr" in cols else len(cols), "f_rr_computed")
-    anchor = "smooth_streak_weeks" if "smooth_streak_weeks" in cols else "tradingview_url"
-    pos = cols.index(anchor) if anchor in cols else len(cols)
-    cols[pos:pos] = [c for c in TV_COLS if c in df.columns]
-    return df[cols]
+    """Column order = report_filters.REPORT_COLS for known columns, extras kept after."""
+    import report_filters as rf
+
+    known = [c for c in rf.REPORT_COLS if c in df.columns]
+    extra = [c for c in df.columns if c not in rf.REPORT_COLS]
+    return df[known + extra]
 
 
 def _default_reports() -> List[Path]:
@@ -219,17 +258,24 @@ def _report_date(paths: List[Path]) -> str:
 def merge_files(paths: List[Path], grok_target: bool = True) -> None:
     """Merge the store into each CSV, recompute status, then regenerate grok_sync_target
     from the first (latest) report's status=PASS rows."""
+    import stock_screen as ss
+
     first = None
+    rd = date.fromisoformat(_report_date(paths))
+    hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     for p in paths:
         df = pd.read_csv(p, dtype=str, keep_default_na=False)
         base = df[[c for c in df.columns if c not in TV_COLS]]
-        out = merge_df(base)
+        out = merge_df(base, report_date=rd, hist_map=hist_map)
         out.to_csv(p, index=False)
         first = out if first is None else first
         n_yes = int((out["tv_found"] == "yes").sum())
         n_no = int((out["tv_found"] == "no").sum())
         n_pass = int((out["status"] == "PASS").sum())
-        print(f"merged {p}: tv_found yes={n_yes} no={n_no}; status PASS={n_pass}")
+        n_near = int((out["f_near_zone"] == "True").sum())
+        n_near_pass = int(((out["f_near_zone"] == "True") & (out["status"] == "PASS")).sum())
+        print(f"merged {p} (as of {rd}): tv_found yes={n_yes} no={n_no}; status PASS={n_pass}; "
+              f"f_near_zone={n_near} (PASS {n_near_pass})")
     if grok_target and first is not None:
         from export_daily_report import write_grok_target
 

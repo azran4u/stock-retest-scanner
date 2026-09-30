@@ -36,6 +36,7 @@ Every FinViz row, every filter computed independently (`report_filters.py`):
 | `f_smooth_streak` | ≥ 5 consecutive smooth weekly candles |
 | `f_weekly_reversal` | reversal-shape weekly candle in last 5 completed weeks |
 | `f_daily_reversal` | reversal-shape daily candle in last 10 completed sessions |
+| `f_near_zone` | TV drawings only (else empty): latest daily close within 1 × weekly ATR(14) of the TV zone (0 inside it); values `tv_price`, `tv_weekly_atr`, `tv_zone_dist`, `tv_zone_dist_atr`. Informational — not part of status / Grok target; refreshed by the nightly export and `tv_drawings.py merge` |
 
 `status=PASS` = `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr` (Grok watchlist), with `f_rr` = TradingView drawing found AND TV R:R ≥ 2 — a missing drawing fails.
 
