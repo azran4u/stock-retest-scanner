@@ -4,6 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Stock Retest Scanner — TradingView charts</title>
+<script src="sizing.js"></script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
           --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
@@ -40,6 +41,12 @@
   dt { color:var(--muted); } dd { margin:0; font-variant-numeric:tabular-nums; }
   .near { color:var(--pass); } .far { color:var(--muted); }
   .empty { color:var(--muted); padding:30px 0; }
+  .sizing-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:10px 0 0; padding:8px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+  .sizing-bar .sz-title { font-weight:600; font-size:.85rem; align-self:center; margin-right:4px; }
+  .sizing-bar label.sz { flex-direction:column; }
+  .sizing-bar input { width:96px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; }
+  .btn { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  .pos { margin-top:8px; padding-top:6px; border-top:1px solid var(--border); }
   #lb { position:fixed; inset:0; background:rgba(0,0,0,.88); display:none; align-items:center; justify-content:center; z-index:10; cursor:zoom-out; padding:20px; }
   #lb.open { display:flex; }
   #lb img { max-width:100%; max-height:100%; box-shadow:0 0 40px #000; }
@@ -57,6 +64,7 @@
     <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
     <span id="count"></span>
   </div>
+  <div id="sizingBar"></div>
 </header>
 <main>
   <div class="grid" id="grid"></div>
@@ -129,7 +137,17 @@ function card(r) {
       <dt>SL</dt><dd>${f2(r.tv_sl)}</dd>
       <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
       <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
-    </dl></div></div>`;
+    </dl>${posHtml(r)}</div></div>`;
+}
+
+function posHtml(r) {
+  const z = Sizing.compute(r);
+  if (!z) return "";
+  return `<dl class="pos" title="limited by ${z.cap} cap">
+      <dt>Shares</dt><dd>${z.shares} <span class="far" style="font-size:.75rem">(${z.cap} cap)</span></dd>
+      <dt>Cost</dt><dd>${Sizing.money(z.cost)}</dd>
+      <dt>Risk $</dt><dd>${Sizing.money(z.risk)}</dd>
+      <dt>Profit at TP</dt><dd class="near">${Sizing.money(z.profit)}</dd></dl>`;
 }
 
 function tkHtml(r) {
@@ -175,6 +193,7 @@ async function loadReport(path) {
 }
 
 async function init() {
+  Sizing.mount(document.getElementById("sizingBar"), () => render());
   try {
     const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
     document.getElementById("fPass").checked = !!st.pass;

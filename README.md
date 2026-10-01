@@ -61,3 +61,7 @@ See `RULES.md` § Reports for the full process.
 ## TradingView chart gallery (`charts.html`)
 
 Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus read-but-not-found tickers that have a screenshot (badge "needs drawing", no R:R): chart screenshot (click to enlarge), status, TV R:R, zone, entry / SL / TP, distance to zone (ATR), read date; sort R:R desc; toggles PASS only / near zone only (saved in localStorage). Screenshots: `python tv_drawings.py upsert NYSE:ST …values… --screenshot /workspace/tv_shots/ST.png` → `charts/latest/ST.webp` (≤1280px, <300KB, overwritten each read; CSV column `tv_screenshot`); not-found reads too: `upsert NYSE:XYZ --not-found --screenshot /workspace/tv_shots/XYZ.png`. Cards without an image show "screenshot after next nightly read".
+
+## Position sizing (client-side)
+
+Main dashboard and `charts.html` share a settings bar (Account $, Max risk %, Max position %; defaults 5000 / 1 / 15; saved in localStorage). For tickers with a TradingView drawing: `shares = floor(min(account·risk%/(entry−SL), account·pos%/entry))` (0 if entry ≤ SL) → columns Shares, Cost, Risk $, Profit at TP $ (+ limiting cap); blank without a drawing; recalculated live (`sizing.js`).
