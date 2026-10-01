@@ -56,3 +56,7 @@ python export_daily_report.py \
 The export computes all filter columns for every row, sets `status`, and writes the Grok target (`/workspace/stock-screener/grok_sync_target.{json,txt}`). All thresholds/lookbacks are in `report_filters.py` `CONFIG`; each is a CLI flag on the export and on `report_filters.py` (e.g. `--min-smooth-streak-weeks 6`, `--daily-reversal-lookback-days 5`). Recompute an existing report from cache: `python report_filters.py --report historical-reports/latest.csv --date YYYY-MM-DD`.
 
 See `RULES.md` § Reports for the full process.
+
+## TradingView chart gallery (`charts.html`)
+
+Cards for every ticker with a read TradingView drawing (`tv_found=yes`): chart screenshot (click to enlarge), status, TV R:R, zone, entry / SL / TP, distance to zone (ATR), read date; sort R:R desc; toggles PASS only / near zone only (saved in localStorage). Screenshots: `python tv_drawings.py upsert NYSE:ST …values… --screenshot /workspace/tv_shots/ST.png` → `charts/latest/ST.webp` (≤1280px, <300KB, overwritten each read; CSV column `tv_screenshot`). Cards without an image show "screenshot after next nightly read".

@@ -87,7 +87,8 @@ CORE_FILTERS = [  # status=PASS iff all true
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
 ALL_FILTERS = CORE_FILTERS + EXTRA_FILTERS
 
-TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date"]
+TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date",
+           "tv_screenshot"]  # tv_screenshot = repo-relative chart image (charts/latest/<TICKER>.webp)
 # price vs the TradingView zone (only for tv_found=yes; otherwise all empty, f_near_zone empty too)
 NEAR_ZONE_COLS = ["tv_price", "tv_weekly_atr", "tv_zone_dist", "tv_zone_dist_atr"]
 INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in status)
@@ -106,6 +107,7 @@ REPORT_COLS = [
     "filter_notes", "tradingview_url", "finviz_url", "reason",
 ]
 
+_REPO_DIR = Path("/workspace/publish-stock-retest-scanner")  # charts/latest/ lives here
 FV_CACHE_DIR = Path("/workspace/cache")
 UNIVERSE_JSON = Path("/workspace/stock_screen_universe.json")  # written by stock_screen.py
 _KIND_KEY = {
@@ -351,6 +353,8 @@ def apply_tv(r: Dict[str, Any], rec: Optional[Dict[str, Any]]) -> Dict[str, Any]
             for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
                 v = _num(rec.get(k))
                 r[f"tv_{k}"] = "" if v is None else f"{v:g}"
+            shot = rec.get("screenshot") or ""
+            r["tv_screenshot"] = shot if shot and (_REPO_DIR / shot).exists() else ""
         else:
             r["tv_found"] = "no"
     rr = _num(rec.get("rr")) if rec and rec.get("found") else None

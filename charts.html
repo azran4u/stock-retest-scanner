@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Stock Retest Scanner — TradingView charts</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+          --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:18px 24px 12px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#12181f 0%,var(--bg) 100%); }
+  h1 { margin:0 0 4px; font-size:1.35rem; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:12px; }
+  nav a, a { color:var(--accent); text-decoration:none; }
+  nav { margin-bottom:10px; font-size:.9rem; }
+  .controls { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  .controls label { color:var(--text); display:flex; gap:6px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .controls select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; }
+  #count { color:var(--accent); font-weight:600; }
+  main { padding:18px 24px 40px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .shot { aspect-ratio:16/9; background:#0b0f14; display:flex; align-items:center; justify-content:center; cursor:zoom-in; }
+  .shot img { width:100%; height:100%; object-fit:contain; display:block; }
+  .shot.ph { cursor:default; color:var(--muted); font-style:italic; text-align:center; padding:12px; border-bottom:1px dashed var(--border); }
+  .body { padding:10px 14px 12px; }
+  .top { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+  .tk { font-size:1.15rem; font-weight:700; }
+  .tk a.tv-web { font-size:.75rem; font-weight:400; margin-left:6px; color:var(--muted); }
+  .pill { padding:2px 9px; border-radius:999px; font-size:.75rem; font-weight:700; }
+  .pill.pass { background:rgba(63,185,80,.15); color:var(--pass); border:1px solid rgba(63,185,80,.4); }
+  .pill.fail { background:rgba(248,81,73,.12); color:var(--fail); border:1px solid rgba(248,81,73,.4); }
+  .rr { font-size:2rem; font-weight:800; line-height:1; text-align:right; }
+  .rr small { display:block; font-size:.7rem; color:var(--muted); font-weight:500; }
+  .rr.good { color:var(--pass); } .rr.bad { color:var(--warn); }
+  dl { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:3px 10px; margin:10px 0 0; font-size:.85rem; }
+  dt { color:var(--muted); } dd { margin:0; font-variant-numeric:tabular-nums; }
+  .near { color:var(--pass); } .far { color:var(--muted); }
+  .empty { color:var(--muted); padding:30px 0; }
+  #lb { position:fixed; inset:0; background:rgba(0,0,0,.88); display:none; align-items:center; justify-content:center; z-index:10; cursor:zoom-out; padding:20px; }
+  #lb.open { display:flex; }
+  #lb img { max-width:100%; max-height:100%; box-shadow:0 0 40px #000; }
+  #lb .cap { position:fixed; top:12px; left:20px; color:#fff; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <nav><a href="index.html">← Main dashboard</a> · <strong>TradingView charts</strong></nav>
+  <h1>TradingView charts — read drawings</h1>
+  <div class="sub">One card per ticker whose TradingView drawings were read (tv_found = yes) · zone / entry / SL / TP / R:R from the user's drawings (read-only) · screenshot from the nightly read · sorted by R:R desc</div>
+  <div class="controls">
+    <span>Report <select id="reportSel"></select></span>
+    <label><input type="checkbox" id="fPass"/> PASS only</label>
+    <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
+    <span id="count"></span>
+  </div>
+</header>
+<main>
+  <div class="grid" id="grid"></div>
+</main>
+<div id="lb" title="Click or Esc to close"><span class="cap" id="lbCap"></span><img id="lbImg" alt=""/></div>
+<script>
+const STATE_KEY = "srs_charts_state_v1";
+let rows = [];
+
+function parseCSV(text) {
+  const out = []; let i = 0, field = "", row = [], inQ = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQ) { if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; } else field += c; }
+    else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(field); field = ""; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i+1] === '\n') i++; row.push(field); field = ""; if (row.length > 1 || row[0] !== "") out.push(row); row = []; }
+    else field += c;
+    i++;
+  }
+  if (field.length || row.length) { row.push(field); out.push(row); }
+  if (!out.length) return [];
+  const h = out[0].map(x => x.trim());
+  return out.slice(1).map(r => Object.fromEntries(h.map((k, j) => [k, r[j] ?? ""])));
+}
+const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f2 = v => { const n = num(v); return n === null ? "—" : n.toFixed(2); };
+
+function tvSymbolFromUrl(url) {
+  const m = String(url || "").match(/[?&]symbol=([^&]+)/i);
+  return m ? decodeURIComponent(m[1]) : "";
+}
+const tvAppHref = (s, cb) => s ? `tradingview://chart?symbol=${s}` + (cb ? `&t=${cb}` : "") : "";
+const tvWebHref = s => s ? `https://www.tradingview.com/chart/?symbol=${s}` : "";
+function openTradingViewApp(symbol) {
+  if (!symbol) return;
+  try { navigator.clipboard && navigator.clipboard.writeText(symbol).catch(() => {}); } catch (_) {}
+  window.location.href = tvAppHref(symbol, Date.now());
+}
+
+function distLabel(r) {
+  const d = num(r.tv_zone_dist_atr);
+  if (d === null) return "—";
+  return d === 0 ? "in zone" : d.toFixed(2) + " ATR";
+}
+
+function card(r) {
+  const sym = tvSymbolFromUrl(r.tradingview_url);
+  const pass = String(r.status).toUpperCase() === "PASS";
+  const rr = num(r.tv_rr);
+  const near = r.f_near_zone === "True";
+  const ver = encodeURIComponent(r.tv_read_date || "");
+  const shot = r.tv_screenshot
+    ? `<div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)}"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>`
+    : `<div class="shot ph">screenshot after next nightly read</div>`;
+  const tk = sym
+    ? `<a class="tv-app" href="${tvAppHref(sym)}" data-tv-symbol="${esc(sym)}" title="Opens the TradingView app (symbol also copied)">${esc(r.ticker)}</a><a class="tv-web" href="${tvWebHref(sym)}" target="_blank" rel="noopener">web</a>`
+    : esc(r.ticker);
+  return `<div class="card">${shot}<div class="body">
+    <div class="top"><div><div class="tk">${tk}</div><span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span>
+      ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}</div>
+      <div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div>
+    <dl>
+      <dt>Zone</dt><dd>${f2(r.tv_zone_bottom)}–${f2(r.tv_zone_top)}</dd>
+      <dt>To zone</dt><dd class="${near ? "near" : "far"}">${distLabel(r)}</dd>
+      <dt>Entry</dt><dd>${f2(r.tv_entry)}</dd>
+      <dt>Close</dt><dd>${f2(r.tv_price || r.current_price)}</dd>
+      <dt>SL</dt><dd>${f2(r.tv_sl)}</dd>
+      <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
+      <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
+    </dl></div></div>`;
+}
+
+function render() {
+  const onlyPass = document.getElementById("fPass").checked;
+  const onlyNear = document.getElementById("fNear").checked;
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear })); } catch (_) {}
+  const drawn = rows.filter(r => r.tv_found === "yes");
+  const sel = drawn
+    .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
+    .filter(r => !onlyNear || r.f_near_zone === "True")
+    .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
+  document.getElementById("count").textContent = `${sel.length} of ${drawn.length} drawn tickers`;
+  document.getElementById("grid").innerHTML = sel.length ? sel.map(card).join("")
+    : `<div class="empty">No drawn tickers match${drawn.length ? " the selected toggles" : " (no TradingView drawings in this report)"}.</div>`;
+}
+
+async function loadReport(path) {
+  const res = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
+  rows = parseCSV(await res.text());
+  render();
+}
+
+async function init() {
+  try {
+    const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+    document.getElementById("fPass").checked = !!st.pass;
+    document.getElementById("fNear").checked = !!st.near;
+  } catch (_) {}
+  let reports = [];
+  try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}
+  const sel = document.getElementById("reportSel");
+  sel.innerHTML = reports.length
+    ? reports.map(r => `<option value="${esc(r.path)}">${esc(r.date)}</option>`).join("")
+    : `<option value="historical-reports/latest.csv">latest</option>`;
+  sel.addEventListener("change", () => loadReport(sel.value));
+  document.getElementById("fPass").addEventListener("change", render);
+  document.getElementById("fNear").addEventListener("change", render);
+  document.addEventListener("click", ev => {
+    const a = ev.target.closest && ev.target.closest("a.tv-app");
+    if (a) { ev.preventDefault(); openTradingViewApp(a.getAttribute("data-tv-symbol")); return; }
+    const s = ev.target.closest && ev.target.closest(".shot[data-full]");
+    if (s) {
+      document.getElementById("lbImg").src = s.dataset.full;
+      document.getElementById("lbCap").textContent = s.dataset.cap;
+      document.getElementById("lb").classList.add("open");
+      return;
+    }
+    if (ev.target.closest && ev.target.closest("#lb")) document.getElementById("lb").classList.remove("open");
+  });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") document.getElementById("lb").classList.remove("open"); });
+  await loadReport(sel.value);
+}
+init();
+</script>
+</body>
+</html>

@@ -162,7 +162,7 @@
 </head>
 <body>
 <header>
-  <h1>Stock Retest Scanner</h1>
+  <h1>Stock Retest Scanner <a href="charts.html" style="font-size:.9rem;font-weight:500;margin-left:14px;color:var(--accent);text-decoration:none">TradingView charts →</a></h1>
   <div class="sub">Full FinViz screener list · every filter computed independently for every stock · checked filters are ANDed · Asia/Jerusalem · no live orders</div>
   <div class="controls">
     <label>Report date
@@ -245,7 +245,7 @@ const PREFERRED_COLS = [
 // never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
 // (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
-  "tradingview_url",
+  "tradingview_url", "tv_screenshot",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
 const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",

@@ -21,6 +21,10 @@ Usage:
   python tv_drawings.py upsert ST --zone-top 41.96 --zone-bottom 41.31 \\
         --entry 42.11 --sl 38.46 --tp 51.55 --rr 2.59 [--read-at ISO]
   python tv_drawings.py upsert XYZ --not-found
+  python tv_drawings.py upsert NYSE:ST ...values... --screenshot /workspace/tv_shots/ST.png
+        -> charts/latest/ST.webp in the repo (<=1280px, <300KB, overwritten) + store
+           fields screenshot / screenshot_at / screenshot_date
+  python tv_drawings.py screenshot NYSE:ST /workspace/tv_shots/ST.png   (image only)
   python tv_drawings.py merge [--report CSV ...] [--no-grok-target]
         -> writes tv_found, tv_zone_top, tv_zone_bottom, tv_entry, tv_sl, tv_tp, tv_rr,
            tv_read_date (latest stored reading per ticker) into latest.csv + its dated
@@ -53,10 +57,15 @@ LATEST = REPO / "historical-reports" / "latest.csv"
 TARGETS_TXT = Path("/workspace/tv_read_targets.txt")
 TARGETS_JSON = Path("/workspace/tv_read_targets.json")
 GROK_TARGET_DIR = Path("/workspace/stock-screener")  # grok_sync_target.{json,txt}
+# Chart screenshots: ONE current image per ticker, overwritten on each read (no history).
+CHARTS_DIR = REPO / "charts" / "latest"
+SHOT_MAX_WIDTH = 1280
+SHOT_MAX_BYTES = 300_000
 TZ = ZoneInfo("Asia/Jerusalem")
 
 TARGET_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_smooth_streak"]
-TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date"]
+TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date",
+           "tv_screenshot"]
 EARNINGS_BLACKOUT_DAYS = 14  # same as stock_screen.EARNINGS_BLACKOUT_DAYS / dashboard
 RR_MIN = 2.0  # same as stock_screen.RR_MIN / report_filters CONFIG["rr_min"]
 try:
@@ -127,11 +136,54 @@ def save_store(store: Dict[str, Dict[str, Any]]) -> None:
     STORE.write_text(json.dumps(dict(sorted(store.items())), indent=2) + "\n")
 
 
-def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Optional[str] = None,
-           **vals: Optional[float]) -> Dict[str, Any]:
+def csv_ticker(ticker: str) -> str:
+    """Store / CSV / filename spelling: 'NYSE:MOG.A' -> 'MOG-A'."""
     t = ticker.strip().upper()
     if ":" in t:
-        symbol, t = t, t.split(":", 1)[1]
+        t = t.split(":", 1)[1]
+    return t.replace(".", "-")
+
+
+def save_screenshot(ticker: str, src: Path) -> str:
+    """Resize (<= SHOT_MAX_WIDTH px wide) + compress `src` into CHARTS_DIR/<TICKER>.webp
+    (overwrites; removes any other-format copy of the same ticker). Returns the
+    repo-relative path, e.g. 'charts/latest/MOG-A.webp'."""
+    from PIL import Image
+
+    src = Path(src)
+    if not src.is_file():
+        raise FileNotFoundError(f"screenshot not found: {src}")
+    t = csv_ticker(ticker)
+    CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = CHARTS_DIR / f"{t}.webp"
+    with Image.open(src) as im:
+        im = im.convert("RGB")
+        if im.width > SHOT_MAX_WIDTH:
+            im = im.resize((SHOT_MAX_WIDTH, round(im.height * SHOT_MAX_WIDTH / im.width)), Image.LANCZOS)
+        for q in (80, 70, 60, 50, 40):
+            im.save(dest, "WEBP", quality=q, method=6)
+            if dest.stat().st_size <= SHOT_MAX_BYTES:
+                break
+        while dest.stat().st_size > SHOT_MAX_BYTES and im.width > 640:
+            im = im.resize((int(im.width * 0.85), int(im.height * 0.85)), Image.LANCZOS)
+            im.save(dest, "WEBP", quality=50, method=6)
+    for old in CHARTS_DIR.glob(f"{t}.*"):
+        if old != dest:
+            old.unlink()
+    return dest.relative_to(REPO).as_posix()
+
+
+def remove_screenshot(ticker: str) -> None:
+    for old in CHARTS_DIR.glob(f"{csv_ticker(ticker)}.*"):
+        old.unlink()
+
+
+def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Optional[str] = None,
+           screenshot: Optional[Path] = None, **vals: Optional[float]) -> Dict[str, Any]:
+    t = ticker.strip().upper()
+    if ":" in t:
+        symbol = t
+    t = csv_ticker(t)
     ts = datetime.fromisoformat(read_at) if read_at else datetime.now(TZ)
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=TZ)
@@ -143,6 +195,17 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
     if symbol:
         rec["symbol"] = symbol
     store = load_store()
+    prev = store.get(t) or {}
+    if not found:
+        remove_screenshot(t)  # no drawing -> no card -> keep the repo small
+    elif screenshot is not None:
+        rec["screenshot"] = save_screenshot(t, screenshot)
+        rec["screenshot_at"] = rec["read_at"]
+        rec["screenshot_date"] = rec["read_date"]
+    elif prev.get("screenshot") and (REPO / prev["screenshot"]).exists():
+        for k in ("screenshot", "screenshot_at", "screenshot_date"):  # keep the last image
+            if k in prev:
+                rec[k] = prev[k]
     store[t] = rec
     save_store(store)
     return rec
@@ -297,6 +360,12 @@ def main() -> None:
     for k in ("zone-top", "zone-bottom", "entry", "sl", "tp", "rr"):
         u.add_argument(f"--{k}", type=float, default=None)
     u.add_argument("--read-at", default=None, help="ISO datetime of the read (default now, Asia/Jerusalem)")
+    u.add_argument("--screenshot", type=Path, default=None,
+                   help="chart screenshot (PNG/JPG/WebP on the box); resized <=1280px, WebP <300KB, "
+                        "stored as charts/latest/<TICKER>.webp in the repo (overwritten each read)")
+    sc = sub.add_parser("screenshot", help="attach/replace only the chart screenshot (values unchanged)")
+    sc.add_argument("ticker")
+    sc.add_argument("path", type=Path)
     m = sub.add_parser("merge", help="merge store into report CSV(s)")
     m.add_argument("--report", type=Path, action="append", default=None)
     m.add_argument("--today", default=None, help="ignored (kept for compatibility)")
@@ -325,14 +394,27 @@ def main() -> None:
     elif args.cmd == "upsert":
         if args.not_found:
             rec = upsert(args.ticker, False, read_at=args.read_at)
+            if args.screenshot:
+                print("note: --screenshot ignored for --not-found (no card without a drawing)")
         else:
             vals = {"zone_top": args.zone_top, "zone_bottom": args.zone_bottom, "entry": args.entry,
                     "sl": args.sl, "tp": args.tp, "rr": args.rr}
             missing = [k for k, v in vals.items() if v is None]
             if missing:
                 ap.error(f"missing values: {', '.join(missing)} (or pass --not-found)")
-            rec = upsert(args.ticker, True, read_at=args.read_at, **vals)
-        print(json.dumps({args.ticker.upper(): rec}, indent=2))
+            rec = upsert(args.ticker, True, read_at=args.read_at, screenshot=args.screenshot, **vals)
+        print(json.dumps({csv_ticker(args.ticker): rec}, indent=2))
+    elif args.cmd == "screenshot":
+        t = csv_ticker(args.ticker)
+        store = load_store()
+        if not (store.get(t) or {}).get("found"):
+            ap.error(f"{t}: no found drawing in the store; upsert the values first")
+        rel = save_screenshot(t, args.path)
+        now = datetime.now(TZ)
+        store[t].update({"screenshot": rel, "screenshot_at": now.isoformat(timespec="seconds"),
+                         "screenshot_date": now.date().isoformat()})
+        save_store(store)
+        print(json.dumps({t: store[t]}, indent=2))
     elif args.cmd == "merge":
         merge_files(args.report or _default_reports(), grok_target=not args.no_grok_target)
     elif args.cmd == "show":
