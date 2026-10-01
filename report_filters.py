@@ -353,10 +353,10 @@ def apply_tv(r: Dict[str, Any], rec: Optional[Dict[str, Any]]) -> Dict[str, Any]
             for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
                 v = _num(rec.get(k))
                 r[f"tv_{k}"] = "" if v is None else f"{v:g}"
-            shot = rec.get("screenshot") or ""
-            r["tv_screenshot"] = shot if shot and (_REPO_DIR / shot).exists() else ""
         else:
             r["tv_found"] = "no"
+        shot = rec.get("screenshot") or ""  # found or not-found reads both keep a screenshot
+        r["tv_screenshot"] = shot if shot and (_REPO_DIR / shot).exists() else ""
     rr = _num(rec.get("rr")) if rec and rec.get("found") else None
     r["f_rr"] = bool(rr is not None and rr >= CONFIG["rr_min"])
     return r
@@ -402,12 +402,12 @@ def tv_note(r: Dict[str, Any]) -> str:
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
 
-NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_smooth_streak"]
+NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]
 
 
 def compute_needs_drawing(r: Dict[str, Any]) -> bool:
-    """needs_drawing = TV read-target filters all true AND no TradingView drawing
-    (tv_found != yes). Informational (Grok "needs drawing" list); NOT part of status."""
+    """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
+    AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status."""
     return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes")
 
 

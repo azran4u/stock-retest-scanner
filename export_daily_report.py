@@ -299,7 +299,7 @@ def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path
     jp = out_dir / "grok_needs_drawing_target.json"
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
-                                      "AND f_smooth_streak AND no TradingView drawing"}, indent=2) + "\n")
+                                      "AND no TradingView drawing (never read counts)"}, indent=2) + "\n")
     (out_dir / "grok_needs_drawing_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp
 

@@ -227,7 +227,7 @@ const FILTERS = [
   { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
-  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history + smooth streak all pass, but no TradingView drawing yet (grok_needs_drawing_target). Not part of status" },
+  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
   { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
@@ -433,7 +433,7 @@ function fmt(col, val, row) {
   if (col === "status") {
     const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";
     const nd = row && isTrueFlag(row.needs_drawing)
-      ? ` <span class="pill draw" title="Read-target filters pass, no TradingView drawing yet">needs drawing</span>` : "";
+      ? ` <span class="pill draw" title="$vol / short float / earnings / history pass, no TradingView drawing yet">needs drawing</span>` : "";
     return `<span class="pill ${cls}">${val}</span>${nd}`;
   }
   if (BOOL_COLS.has(col)) return isTrueFlag(val) ? "✓" : "·";

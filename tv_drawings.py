@@ -13,7 +13,8 @@ Store: /workspace/stock-screener/tv_drawings.json, keyed by ticker:
 
 Daily target set = report rows passing f_dollar_vol AND f_short_float AND
 f_no_earnings_14d (evaluated LIVE vs today from the cached earnings date, same as
-the dashboard) AND f_history AND f_smooth_streak.
+the dashboard) AND f_history (no smooth-streak requirement: covers every stock that
+could PASS or needs a drawing).
 
 Usage:
   python tv_drawings.py targets [--report CSV] [--today YYYY-MM-DD]
@@ -63,7 +64,7 @@ SHOT_MAX_WIDTH = 1280
 SHOT_MAX_BYTES = 300_000
 TZ = ZoneInfo("Asia/Jerusalem")
 
-TARGET_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_smooth_streak"]
+TARGET_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]
 TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date",
            "tv_screenshot"]
 EARNINGS_BLACKOUT_DAYS = 14  # same as stock_screen.EARNINGS_BLACKOUT_DAYS / dashboard
@@ -196,9 +197,8 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
         rec["symbol"] = symbol
     store = load_store()
     prev = store.get(t) or {}
-    if not found:
-        remove_screenshot(t)  # no drawing -> no card -> keep the repo small
-    elif screenshot is not None:
+    # every read gets a screenshot, found or not (not-found charts show as "needs drawing" cards)
+    if screenshot is not None:
         rec["screenshot"] = save_screenshot(t, screenshot)
         rec["screenshot_at"] = rec["read_at"]
         rec["screenshot_date"] = rec["read_date"]
@@ -397,9 +397,7 @@ def main() -> None:
         print(f"{len(syms)} targets -> {args.out_txt}, {args.out_json}")
     elif args.cmd == "upsert":
         if args.not_found:
-            rec = upsert(args.ticker, False, read_at=args.read_at)
-            if args.screenshot:
-                print("note: --screenshot ignored for --not-found (no card without a drawing)")
+            rec = upsert(args.ticker, False, read_at=args.read_at, screenshot=args.screenshot)
         else:
             vals = {"zone_top": args.zone_top, "zone_bottom": args.zone_bottom, "entry": args.entry,
                     "sl": args.sl, "tp": args.tp, "rr": args.rr}
@@ -411,8 +409,8 @@ def main() -> None:
     elif args.cmd == "screenshot":
         t = csv_ticker(args.ticker)
         store = load_store()
-        if not (store.get(t) or {}).get("found"):
-            ap.error(f"{t}: no found drawing in the store; upsert the values first")
+        if t not in store:
+            ap.error(f"{t}: not in the store; upsert the read (values or --not-found) first")
         rel = save_screenshot(t, args.path)
         now = datetime.now(TZ)
         store[t].update({"screenshot": rel, "screenshot_at": now.isoformat(timespec="seconds"),
