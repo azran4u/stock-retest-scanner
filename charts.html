@@ -62,6 +62,8 @@
     <span>Report <select id="reportSel"></select></span>
     <label><input type="checkbox" id="fPass"/> PASS only</label>
     <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
+    <label title="Drawn tickers with shares ≥ 1 under the position-sizing settings"><input type="checkbox" id="fTrad"/> tradable with account</label>
+    <label title="Drawn tickers where the sizing gives 0 shares"><input type="checkbox" id="fNoTrad"/> not tradable (account limits)</label>
     <span id="count"></span>
   </div>
   <div id="sizingBar"></div>
@@ -172,12 +174,18 @@ function ndCard(r) {
 function render() {
   const onlyPass = document.getElementById("fPass").checked;
   const onlyNear = document.getElementById("fNear").checked;
-  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear })); } catch (_) {}
+  const onlyTrad = document.getElementById("fTrad").checked;
+  const onlyNoTrad = document.getElementById("fNoTrad").checked;
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad })); } catch (_) {}
+  const sz = Sizing.load();
+  const shares = r => { const z = Sizing.compute(r, sz); return z ? z.shares : null; };
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
   const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot));
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
     .filter(r => !onlyNear || r.f_near_zone === "True")
+    .filter(r => !onlyTrad || (shares(r) ?? 0) >= 1)
+    .filter(r => !onlyNoTrad || shares(r) === 0)
     .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
   const nDrawn = drawn.filter(r => r.tv_found === "yes").length;
   document.getElementById("count").textContent =
@@ -198,6 +206,8 @@ async function init() {
     const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
     document.getElementById("fPass").checked = !!st.pass;
     document.getElementById("fNear").checked = !!st.near;
+    document.getElementById("fTrad").checked = !!st.trad;
+    document.getElementById("fNoTrad").checked = !!st.notrad;
   } catch (_) {}
   let reports = [];
   try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}
@@ -208,6 +218,8 @@ async function init() {
   sel.addEventListener("change", () => loadReport(sel.value));
   document.getElementById("fPass").addEventListener("change", render);
   document.getElementById("fNear").addEventListener("change", render);
+  document.getElementById("fTrad").addEventListener("change", render);
+  document.getElementById("fNoTrad").addEventListener("change", render);
   document.addEventListener("click", ev => {
     const a = ev.target.closest && ev.target.closest("a.tv-app");
     if (a) { ev.preventDefault(); openTradingViewApp(a.getAttribute("data-tv-symbol")); return; }

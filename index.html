@@ -234,6 +234,8 @@ const FILTERS = [
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
+  { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Not part of status" },
+  { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
   { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
@@ -253,7 +255,7 @@ const PREFERRED_COLS = [
 // never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
 // (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
-  "tradingview_url", "tv_screenshot",
+  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
 const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
@@ -738,13 +740,15 @@ async function loadReport(path, dateLabel) {
 }
 
 // Position sizing (client-side; settings bar shared with charts.html via localStorage)
-const POS_COLS = ["pos_shares", "pos_cost", "pos_risk", "pos_profit", "pos_cap"];
+const POS_COLS = ["pos_shares", "pos_cost", "pos_risk", "pos_profit", "pos_cap", "f_tradable", "f_not_tradable"];
 function applySizing() {
   const st = Sizing.load();
   for (const r of allRows) {
     const z = Sizing.compute(r, st);
     r.pos_shares = z ? z.shares : ""; r.pos_cost = z ? z.cost : ""; r.pos_risk = z ? z.risk : "";
     r.pos_profit = z ? z.profit : ""; r.pos_cap = z ? z.cap : "";
+    r.f_tradable = z ? (z.shares >= 1 ? "True" : "False") : "";      // drawn only
+    r.f_not_tradable = z ? (z.shares === 0 ? "True" : "False") : "";
   }
 }
 

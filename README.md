@@ -64,4 +64,4 @@ Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus re
 
 ## Position sizing (client-side)
 
-Main dashboard and `charts.html` share a settings bar (Account $, Max risk %, Max position %; defaults 5000 / 1 / 15; saved in localStorage). For tickers with a TradingView drawing: `shares = floor(min(account·risk%/(entry−SL), account·pos%/entry))` (0 if entry ≤ SL) → columns Shares, Cost, Risk $, Profit at TP $ (+ limiting cap); blank without a drawing; recalculated live (`sizing.js`).
+Main dashboard and `charts.html` share a settings bar (Account $, Max risk %, Max position %; defaults 5000 / 1 / 15; saved in localStorage). For tickers with a TradingView drawing: `shares = floor(min(account·risk%/(entry−SL), account·pos%/entry))` (0 if entry ≤ SL) → columns Shares, Cost, Risk $, Profit at TP $ (+ limiting cap); blank without a drawing; recalculated live (`sizing.js`). Filters "tradable with account" (shares ≥ 1) / "not tradable (account limits)" (drawn, shares = 0) on both pages.
