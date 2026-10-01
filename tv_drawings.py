@@ -268,7 +268,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
     for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
-    for c in ("f_rr", "status", "failed_filters", "reason"):
+    for c in ("f_rr", "status", "failed_filters", "reason", "needs_drawing"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
     for i, row in df.iterrows():
         r = {k: row[k] for k in df.columns}
@@ -277,6 +277,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         reason = rf.status_reason(r, row.get("reason"))
         for c in TV_COLS + ["f_rr", "status", "failed_filters"]:
             df.at[i, c] = r[c]
+        df.at[i, "needs_drawing"] = _csv_val(rf.compute_needs_drawing(r))
         nz = rf.compute_near_zone(_hist_upto(hist_map, str(row["ticker"]).strip(), report_date), r)
         for c, v in nz.items():
             df.at[i, c] = _csv_val(v)
@@ -337,13 +338,16 @@ def merge_files(paths: List[Path], grok_target: bool = True) -> None:
         n_pass = int((out["status"] == "PASS").sum())
         n_near = int((out["f_near_zone"] == "True").sum())
         n_near_pass = int(((out["f_near_zone"] == "True") & (out["status"] == "PASS")).sum())
+        n_nd = int((out["needs_drawing"] == "True").sum())
         print(f"merged {p} (as of {rd}): tv_found yes={n_yes} no={n_no}; status PASS={n_pass}; "
-              f"f_near_zone={n_near} (PASS {n_near_pass})")
+              f"f_near_zone={n_near} (PASS {n_near_pass}); needs_drawing={n_nd}")
     if grok_target and first is not None:
-        from export_daily_report import write_grok_target
+        from export_daily_report import write_grok_target, write_needs_drawing_target
 
         gp = write_grok_target(first, _report_date(paths), GROK_TARGET_DIR)
         print(f"grok target {gp}: {json.loads(gp.read_text())['symbols']}")
+        np_ = write_needs_drawing_target(first, _report_date(paths), GROK_TARGET_DIR)
+        print(f"needs-drawing target {np_}: {json.loads(np_.read_text())['symbols']}")
 
 
 def main() -> None:

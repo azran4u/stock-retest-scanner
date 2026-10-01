@@ -95,7 +95,7 @@ INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in stat
 
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
-    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS,
+    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS, "needs_drawing",
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
@@ -402,6 +402,15 @@ def tv_note(r: Dict[str, Any]) -> str:
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
 
+NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_smooth_streak"]
+
+
+def compute_needs_drawing(r: Dict[str, Any]) -> bool:
+    """needs_drawing = TV read-target filters all true AND no TradingView drawing
+    (tv_found != yes). Informational (Grok "needs drawing" list); NOT part of status."""
+    return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes")
+
+
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
     r["status"] = "PASS" if not failed else "FAIL"
@@ -507,6 +516,7 @@ def apply_filters_to_report(
         r["finviz_url"] = fz if isinstance(fz, str) and fz else f"https://finviz.com/quote.ashx?t={t}"
         finalize_status(r)
         r["reason"] = status_reason(r, src.get("reason"))
+        r["needs_drawing"] = compute_needs_drawing(r)
         rows.append(r)
     out = pd.DataFrame(rows)[REPORT_COLS]
     out["smooth_streak_weeks"] = pd.array(out["smooth_streak_weeks"], dtype="Int64")
@@ -524,6 +534,8 @@ def apply_filters_to_report(
 
 def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     s = {f: int(df[f].astype(bool).sum()) for f in ALL_FILTERS}
+    if "needs_drawing" in df.columns:
+        s["needs_drawing"] = int(df["needs_drawing"].map(lambda v: v is True or str(v) == "True").sum())
     for f in INFO_FILTERS:
         if f in df.columns:
             s[f] = int(df[f].map(lambda v: v is True or str(v) == "True").sum())

@@ -285,6 +285,25 @@ def write_grok_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path
     return jp
 
 
+def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path:
+    """grok_needs_drawing_target.{json,txt}: EXCHANGE:TICKER (TV spelling) for every
+    needs_drawing row (read-target filters pass, no TradingView drawing yet)."""
+    nd = df["needs_drawing"].map(lambda v: v is True or str(v) == "True") if "needs_drawing" in df.columns \
+        else pd.Series(False, index=df.index)
+    syms = []
+    for _, r in df[nd].iterrows():
+        m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
+        syms.append(m.group(1) if m else str(r["ticker"]).replace("-", "."))
+    syms = sorted(set(syms))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jp = out_dir / "grok_needs_drawing_target.json"
+    jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
+                              "rule": "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
+                                      "AND f_smooth_streak AND no TradingView drawing"}, indent=2) + "\n")
+    (out_dir / "grok_needs_drawing_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
+    return jp
+
+
 def write_reports(df: pd.DataFrame, out_dir: Path, report_date: str) -> Dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     dated = out_dir / f"{report_date}.csv"
@@ -376,6 +395,8 @@ def main() -> None:
     if not args.no_grok_target:
         gp = write_grok_target(df, args.date, args.grok_target_dir)
         print(f"  grok target {gp}")
+        np_ = write_needs_drawing_target(df, args.date, args.grok_target_dir)
+        print(f"  needs-drawing target {np_}")
 
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
