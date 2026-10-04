@@ -314,7 +314,7 @@ def write_reports(df: pd.DataFrame, out_dir: Path, report_date: str) -> Dict[str
 
 
 def update_manifest(repo_root: Path, report_date: str, filename: str, out_dir: Path) -> Path:
-    """Write reports.json next to index.html. CSVs live only in historical-reports/ (Pages source=/)."""
+    """Write reports.json next to index.html / table.html. CSVs live only in historical-reports/ (Pages source=/)."""
     repo_root.mkdir(parents=True, exist_ok=True)
     manifest_path = repo_root / "reports.json"
     found = []

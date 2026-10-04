@@ -3,751 +3,179 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Stock Retest Scanner — Daily Reports</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<title>Stock Retest Scanner — TradingView charts</title>
 <script src="sizing.js"></script>
 <style>
-  :root {
-    --bg: #0d1117;
-    --panel: #161b22;
-    --border: #30363d;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --accent: #58a6ff;
-    --pass: #3fb950;
-    --fail: #f85149;
-    --warn: #d29922;
-    --card: #1c2128;
-  }
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
+          --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
   * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.45;
-  }
-  header {
-    padding: 20px 24px 8px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(180deg, #12181f 0%, var(--bg) 100%);
-  }
-  header h1 { margin: 0 0 4px; font-size: 1.35rem; font-weight: 650; }
-  .muted { color: var(--muted); font-style: italic; }
-  header .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 14px; }
-  .controls {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-  }
-  label { color: var(--muted); font-size: 0.8rem; display: flex; flex-direction: column; gap: 4px; }
-  label.chk { flex-direction: row; align-items: center; gap: 6px; align-self: end; padding-bottom: 6px; cursor: pointer; user-select: none; }
-  label.chk input { accent-color: var(--accent, #58a6ff); width: 14px; height: 14px; }
-  select, input[type="search"], input[type="text"] {
-    background: var(--panel);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 10px;
-    min-width: 160px;
-    font-size: 0.9rem;
-  }
-  input[type="search"] { min-width: 220px; }
-  main { padding: 20px 24px 40px; max-width: 1400px; margin: 0 auto; }
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px 16px;
-  }
-  .card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  .card .value { font-size: 1.75rem; font-weight: 700; margin-top: 4px; }
-  .card.pass .value { color: var(--pass); }
-  .card.fail .value { color: var(--fail); }
-  .card.warn .value { color: var(--warn); }
-  .charts {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 14px;
-    margin-bottom: 22px;
-  }
-  .chart-box {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 14px;
-    min-height: 260px;
-  }
-  .chart-box h2 { margin: 0 0 10px; font-size: 0.95rem; color: var(--muted); font-weight: 600; }
-  .chart-wrap { position: relative; height: 210px; }
-  .toolbar {
-    display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
-    margin-bottom: 10px;
-  }
-  .table-wrap {
-    overflow: auto;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--panel);
-    max-height: 70vh;
-  }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td {
-    border-bottom: 1px solid var(--border);
-    padding: 6px 8px;
-    text-align: left;
-    white-space: nowrap;
-  }
-  th {
-    background: #1c2128;
-    position: sticky; top: 0;
-    cursor: pointer;
-    user-select: none;
-    z-index: 1;
-  }
-  th:hover { color: var(--accent); }
-  th .sort { color: var(--accent); margin-left: 4px; font-size: 0.7rem; }
-  tr.pass { background: rgba(63, 185, 80, 0.08); }
-  tr.fail { background: transparent; }
-  tr:hover { background: rgba(88, 166, 255, 0.08); }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  a.tv-web {
-    margin-left: 6px;
-    font-size: 0.75em;
-    color: var(--muted, #8b949e);
-    opacity: 0.85;
-  }
-  a.tv-web:hover { opacity: 1; }
-  .pill {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 650;
-  }
-  .pill.pass { background: rgba(63,185,80,0.2); color: var(--pass); }
-  .pill.fail { background: rgba(248,81,73,0.2); color: var(--fail); }
-  .sizing-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:10px 0 4px; padding:8px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:18px 24px 12px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#12181f 0%,var(--bg) 100%); }
+  h1 { margin:0 0 4px; font-size:1.35rem; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:12px; }
+  nav a, a { color:var(--accent); text-decoration:none; }
+  nav { margin-bottom:10px; font-size:.9rem; }
+  .controls { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  .controls label { color:var(--text); display:flex; gap:6px; align-items:center; background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:4px 12px; cursor:pointer; }
+  .controls select { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; }
+  #count { color:var(--accent); font-weight:600; }
+  main { padding:18px 24px 40px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .shot { aspect-ratio:16/9; background:#0b0f14; display:flex; align-items:center; justify-content:center; cursor:zoom-in; }
+  .shot img { width:100%; height:100%; object-fit:contain; display:block; }
+  .shot.ph { cursor:default; color:var(--muted); font-style:italic; text-align:center; padding:12px; border-bottom:1px dashed var(--border); }
+  .body { padding:10px 14px 12px; }
+  .top { display:flex; align-items:center; gap:10px; justify-content:space-between; }
+  .tk { font-size:1.15rem; font-weight:700; }
+  .tk a.tv-web { font-size:.75rem; font-weight:400; margin-left:6px; color:var(--muted); }
+  .pill { padding:2px 9px; border-radius:999px; font-size:.75rem; font-weight:700; }
+  .pill.pass { background:rgba(63,185,80,.15); color:var(--pass); border:1px solid rgba(63,185,80,.4); }
+  .pill.fail { background:rgba(248,81,73,.12); color:var(--fail); border:1px solid rgba(248,81,73,.4); }
+  .pill.draw { background:rgba(210,153,34,.15); color:var(--warn); border:1px solid rgba(210,153,34,.45); }
+  .card.nd { border-style:dashed; }
+  .muted { color:var(--muted); font-style:italic; }
+  .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
+  .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
+
+  .rr { font-size:2rem; font-weight:800; line-height:1; text-align:right; }
+  .rr small { display:block; font-size:.7rem; color:var(--muted); font-weight:500; }
+  .rr.good { color:var(--pass); } .rr.bad { color:var(--warn); }
+  dl { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:3px 10px; margin:10px 0 0; font-size:.85rem; }
+  dt { color:var(--muted); } dd { margin:0; font-variant-numeric:tabular-nums; }
+  .near { color:var(--pass); } .far { color:var(--muted); }
+  .empty { color:var(--muted); padding:30px 0; }
+  .sizing-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin:10px 0 0; padding:8px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
   .sizing-bar .sz-title { font-weight:600; font-size:.85rem; align-self:center; margin-right:4px; }
   .sizing-bar label.sz { flex-direction:column; }
   .sizing-bar input { width:96px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; }
-  .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
-  .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
-  .pill.draw { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.45); white-space: nowrap; }
-  .err { color: var(--fail); padding: 12px; }
-  .chart-filter {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: #21262d; border: 1px solid var(--accent);
-    border-radius: 999px; padding: 4px 10px; font-size: 0.85rem;
-  }
-  .chart-filter button {
-    background: transparent; border: 0; color: var(--muted);
-    cursor: pointer; font-size: 1rem; line-height: 1;
-  }
-  .chart-filter button:hover { color: var(--text); }
-  canvas { cursor: pointer; }
-  footer { color: var(--muted); font-size: 0.8rem; margin-top: 18px; }
-  .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-top:12px; }
-  .filters .grp { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
-  label.fchk { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; user-select: none;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px; color: var(--text); font-size: 0.82rem; }
-  label.fchk.on { border-color: var(--accent); background: rgba(88,166,255,0.12); }
-  label.fchk.disabled { opacity: 0.4; cursor: not-allowed; }
-  label.fchk input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
-  label.fchk .cnt { color: var(--muted); font-size: 0.75rem; }
-  button.btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 0.82rem; }
-  button.btn:hover { border-color: var(--accent); }
-  .matchcount { font-size: 1.05rem; font-weight: 650; margin-left: 6px; }
-  .matchcount b { color: var(--accent); }
-  .schema-note { color: var(--warn); font-size: 0.82rem; margin-top: 6px; }
-  td.ft { color: var(--pass); } td.ff { color: var(--muted); }
+  .btn { background:var(--panel); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 10px; cursor:pointer; }
+  .pos { margin-top:8px; padding-top:6px; border-top:1px solid var(--border); }
+  #lb { position:fixed; inset:0; background:rgba(0,0,0,.88); display:none; align-items:center; justify-content:center; z-index:10; cursor:zoom-out; padding:20px; }
+  #lb.open { display:flex; }
+  #lb img { max-width:100%; max-height:100%; box-shadow:0 0 40px #000; }
+  #lb .cap { position:fixed; top:12px; left:20px; color:#fff; font-weight:600; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Stock Retest Scanner <a href="charts.html" style="font-size:.9rem;font-weight:500;margin-left:14px;color:var(--accent);text-decoration:none">TradingView charts →</a></h1>
-  <div class="sub">Full FinViz screener list · every filter computed independently for every stock · checked filters are ANDed · Asia/Jerusalem · no live orders</div>
+  <nav><strong>TradingView charts (main dashboard)</strong> · <a href="table.html">Full report table →</a></nav>
+  <h1>Stock Retest Scanner — TradingView charts</h1>
+  <div class="sub">One card per ticker read from TradingView: drawn (tv_found = yes) and, after them, read-but-no-drawing charts ("needs drawing") · zone / entry / SL / TP / R:R from the user's drawings (read-only) · screenshot from the nightly read · sorted by R:R desc</div>
   <div class="controls">
-    <label>Report date
-      <select id="reportSelect"></select>
-    </label>
-    <label>Search
-      <input type="search" id="searchBox" placeholder="Ticker, kind, note…"/>
-    </label>
-    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). = exactly status=PASS (Grok watchlist)">PASS-equivalent</button>
-    <button type="button" class="btn" id="btnClear">Clear filters</button>
-    <button type="button" class="btn" id="btnExportTV" title="Download the rows shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
-    <div class="matchcount" id="matchCount">—</div>
+    <span>Report <select id="reportSel"></select></span>
+    <label><input type="checkbox" id="fPass"/> PASS only</label>
+    <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
+    <label title="broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR)"><input type="checkbox" id="fStale"/> drawing may be obsolete</label>
+    <label title="Drawn tickers with shares ≥ 1 under the position-sizing settings"><input type="checkbox" id="fTrad"/> tradable with account</label>
+    <label title="Drawn tickers where the sizing gives 0 shares"><input type="checkbox" id="fNoTrad"/> not tradable (account limits)</label>
+    <span id="count"></span>
   </div>
   <div id="sizingBar"></div>
   <div id="staleBanner" class="stale-banner"></div>
-  <div class="filters" id="filterBox"></div>
-  <div class="schema-note" id="schemaNote" style="display:none"></div>
 </header>
 <main>
-  <div class="cards">
-    <div class="card"><div class="label">FinViz list</div><div class="value" id="cScanned">—</div></div>
-    <div class="card"><div class="label">Matching filters</div><div class="value" id="cMatch" style="color:var(--accent)">—</div></div>
-    <div class="card pass"><div class="label">status = PASS</div><div class="value" id="cPass">—</div></div>
-    <div class="card warn"><div class="label">Earnings ≤14d</div><div class="value" id="cBlackout">—</div></div>
-  </div>
-
-  <div class="charts">
-    <div class="chart-box">
-      <h2>Stocks passing each filter (click to toggle)</h2>
-      <div class="chart-wrap"><canvas id="chartFilters"></canvas></div>
-    </div>
-    <div class="chart-box">
-      <h2>TV R:R distribution (current selection)</h2>
-      <div class="chart-wrap"><canvas id="chartRR"></canvas></div>
-    </div>
-    <div class="chart-box">
-      <h2>smooth_streak_weeks (current selection)</h2>
-      <div class="chart-wrap"><canvas id="chartStreak"></canvas></div>
-    </div>
-  </div>
-
-  <div class="toolbar">
-    <div style="color:var(--muted);font-size:0.85rem" id="tableMeta">Loading…</div>
-  </div>
-  <div class="table-wrap">
-    <table id="dataTable">
-      <thead></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-  <footer id="footerNote"></footer>
+  <div class="grid" id="grid"></div>
 </main>
-
+<div id="lb" title="Click or Esc to close"><span class="cap" id="lbCap"></span><img id="lbImg" alt=""/></div>
 <script>
-// Filter definitions (thresholds documented in RULES.md; values set in report_filters.py CONFIG)
-const FILTERS = [
-  { col: "f_dollar_vol",      label: "$vol ≥ $50M (30d)",     core: true,  tip: "30-day average dollar volume ≥ $50M (dollar_vol_30d)" },
-  { col: "f_short_float",     label: "short float < 5%",      core: true,  tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
-  { col: "f_no_earnings_14d", label: "no earnings ≤14d",      core: true,  tip: "Next earnings NOT within 14 days — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
-  { col: "f_history",         label: "history ≥ 3y",          core: true,  tip: "≥ 150 weekly bars (weekly_bars)" },
-  { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, tip: "TradingView drawing found AND TradingView Long Position R:R ≥ 2. No drawing / not checked → fails.. Part of status=PASS (Grok sync)" },
-  { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
-  { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
-  { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
-  { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
-  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
-  { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Not part of status" },
-  { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
-  { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
-  { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
-];
-const CORE = FILTERS.filter(f => f.core).map(f => f.col);
-
-const PREFERRED_COLS = [
-  "ticker","status","failed_filters",
-  ...FILTERS.map(f => f.col),
-  "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
-  "weekly_bars",
-  "tv_found","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
-  "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
-  "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
-  "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
-  "filter_notes","finviz_url","reason"
-];
-// Scanner-computed geometry (zone_lo/zone_hi/entry/sl/tp/rr, and values derived from it) is
-// never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
-// (tv_*). The computed values stay in the CSV as internal info only (not part of status).
-const HIDDEN_COLS = new Set([
-  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable", "f_tv_stale", "tv_stale_detail",
-  "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
-]);
-const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
-  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist"]);
-const NUM_COLS = new Set([
-  "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
-  "tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
-  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist",
-  "pos_shares","pos_cost","pos_risk","pos_profit",
-  "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
-  "weekly_bars","days_to_earnings","smooth_streak_weeks"
-]);
-const BOOL_COLS = new Set([
-  ...FILTERS.map(f => f.col).filter(c => c !== "tv_found"), "smooth_pullback","earnings_known","earnings_blackout",
-  "weekly_reversal","daily_reversal","smooth_and_reversal","smooth_streak"
-]);
-const EARNINGS_BLACKOUT_DAYS = 14;
-const RR_BINS = [
-  { label: "<1", min: -Infinity, max: 1 }, { label: "1–2", min: 1, max: 2 },
-  { label: "2–2.5", min: 2, max: 2.5 }, { label: "2.5–3", min: 2.5, max: 3 },
-  { label: "3–4", min: 3, max: 4 }, { label: "4+", min: 4, max: Infinity },
-];
-const STREAK_BINS = [
-  { label: "0–4", min: 0, max: 5 }, { label: "5", min: 5, max: 6 }, { label: "6", min: 6, max: 7 },
-  { label: "7", min: 7, max: 8 }, { label: "8", min: 8, max: 9 }, { label: "9–12", min: 9, max: 13 },
-  { label: "13+", min: 13, max: Infinity },
-];
-
-let allRows = [];
-let headers = [];
-let COLS = [];
-let available = new Set();      // filter cols present in the loaded CSV
-let checked = new Set();
-let sortCol = "tv_rr", sortDir = "desc", sortCol2 = "ticker", sortDir2 = "asc";
-let charts = { filters: null, rr: null, streak: null };
-
-function todayJerusalemISO() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit"
-  }).format(new Date());
-}
-
-function liveDaysToEarnings(earningsDate) {
-  if (!earningsDate) return null;
-  const ed = String(earningsDate).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ed)) return null;
-  const today = todayJerusalemISO();
-  const a = Date.parse(today + "T00:00:00Z");
-  const b = Date.parse(ed + "T00:00:00Z");
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.round((b - a) / 86400000);
-}
-
-/** Earnings are evaluated LIVE from the stored absolute earnings_date (Asia/Jerusalem today):
- *  days_to_earnings, earnings_blackout and f_no_earnings_14d are recomputed; a date already
- *  in the past counts as unknown (false). `status` stays as of the report date. */
-function enrichEarningsLive(rows) {
-  return rows.map(r => {
-    const out = Object.assign({}, r);
-    const days = liveDaysToEarnings(out.earnings_date);
-    if (days !== null) {
-      out.days_to_earnings = days >= 0 ? days : "";
-      out.earnings_known = days >= 0;
-      out.earnings_blackout = days >= 0 && days < EARNINGS_BLACKOUT_DAYS;
-      if ("f_no_earnings_14d" in out) out.f_no_earnings_14d = days >= EARNINGS_BLACKOUT_DAYS;
-    }
-    return out;
-  });
-}
+const STATE_KEY = "srs_charts_state_v1";
+let rows = [];
 
 function parseCSV(text) {
-  headers = [];
-  const rows = [];
-  let i = 0, field = "", row = [], inQ = false;
+  const out = []; let i = 0, field = "", row = [], inQ = false;
   while (i < text.length) {
     const c = text[i];
-    if (inQ) {
-      if (c === '"') {
-        if (text[i+1] === '"') { field += '"'; i++; }
-        else inQ = false;
-      } else field += c;
-    } else {
-      if (c === '"') inQ = true;
-      else if (c === ',') { row.push(field); field = ""; }
-      else if (c === '\n' || c === '\r') {
-        if (c === '\r' && text[i+1] === '\n') i++;
-        row.push(field); field = "";
-        if (row.length > 1 || row[0] !== "") rows.push(row);
-        row = [];
-      } else field += c;
-    }
+    if (inQ) { if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; } else field += c; }
+    else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(field); field = ""; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i+1] === '\n') i++; row.push(field); field = ""; if (row.length > 1 || row[0] !== "") out.push(row); row = []; }
+    else field += c;
     i++;
   }
-  if (field.length || row.length) { row.push(field); rows.push(row); }
-  if (!rows.length) return [];
-  headers = rows[0].map(h => h.trim());
-  return rows.slice(1).filter(r => r.some(x => x !== "")).map(r => {
-    const obj = {};
-    headers.forEach((h, idx) => { obj[h] = r[idx] !== undefined ? r[idx] : ""; });
-    return obj;
-  });
+  if (field.length || row.length) { row.push(field); out.push(row); }
+  if (!out.length) return [];
+  const h = out[0].map(x => x.trim());
+  return out.slice(1).map(r => Object.fromEntries(h.map((k, j) => [k, r[j] ?? ""])));
 }
+const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f2 = v => { const n = num(v); return n === null ? "—" : n.toFixed(2); };
 
-function toNum(v) {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-
-// Display names; zone / entry / SL / TP / R:R come from the user's TradingView drawings (tv_*).
-const COL_LABELS = {
-  tv_found: "TV drawing", tv_rr: "TV R:R", tv_entry: "entry (TV)", tv_sl: "SL (TV)", tv_tp: "TP (TV)",
-  tv_zone_top: "zone top (TV)", tv_zone_bottom: "zone bottom (TV)", tv_read_date: "TV read date",
-  tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
-  tv_zone_dist: "dist to zone ($)",
-  tv_stale: "drawing obsolete?",
-  pos_shares: "Shares", pos_cost: "Cost", pos_risk: "Risk $", pos_profit: "Profit at TP $", pos_cap: "limited by", f_near_zone: "f_near_zone (≤1 ATR)",
-  f_rr: "f_rr (TV R:R ≥ 2)",
-};
-const colLabel = c => COL_LABELS[c] || c;
-
-function isTrueFlag(val) {
-  return val === true || ["true", "1", "yes"].includes(String(val).toLowerCase());
-}
-
-/** Parse EXCHANGE:TICKER from tradingview_url (https or tradingview://). */
 function tvSymbolFromUrl(url) {
-  if (!url) return "";
-  const s = String(url);
-  const m = s.match(/[?&]symbol=([^&]+)/i);
-  if (m) return decodeURIComponent(m[1]);
-  // bare EXCHANGE:TICKER fallback
-  const bare = s.match(/([A-Z0-9]+:[A-Z0-9.=\-]+)/i);
-  return bare ? bare[1] : "";
+  const m = String(url || "").match(/[?&]symbol=([^&]+)/i);
+  return m ? decodeURIComponent(m[1]) : "";
 }
-
-function tvAppHref(symbol, cacheBust) {
-  if (!symbol) return "";
-  const base = `tradingview://chart?symbol=${symbol}`;
-  return cacheBust ? `${base}&t=${cacheBust}` : base;
-}
-
-function tvWebHref(symbol) {
-  return symbol ? `https://www.tradingview.com/chart/?symbol=${symbol}` : "";
-}
-
-const TV_APP_TIP = "Opens TradingView app; if chart doesn't change, use web or paste the copied symbol.";
-
-/** Best-effort app open: clipboard + cache-busted tradingview:// via location.href. */
+const tvAppHref = (s, cb) => s ? `tradingview://chart?symbol=${s}` + (cb ? `&t=${cb}` : "") : "";
+const tvWebHref = s => s ? `https://www.tradingview.com/chart/?symbol=${s}` : "";
 function openTradingViewApp(symbol) {
   if (!symbol) return;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(symbol).catch(() => {});
-    }
-  } catch (_) { /* ignore */ }
-  // Cache-bust so a warm-started app may re-fire the deep link (plain scheme is often ignored).
+  try { navigator.clipboard && navigator.clipboard.writeText(symbol).catch(() => {}); } catch (_) {}
   window.location.href = tvAppHref(symbol, Date.now());
 }
 
-/** App deep link (click handler) + visible https "web" fallback (always correct chart). */
-function tvLinksHtml(label, tradingviewUrl) {
-  const symbol = tvSymbolFromUrl(tradingviewUrl);
-  if (!symbol) return label == null ? "" : String(label);
-  const app = tvAppHref(symbol);
-  const web = tvWebHref(symbol);
-  const tip = TV_APP_TIP.replace(/"/g, "&quot;");
-  return `<a class="tv-app" href="${app}" data-tv-symbol="${symbol}" title="${tip}">${label}</a><a class="tv-web" href="${web}" target="_blank" rel="noopener">web</a>`;
+function distLabel(r) {
+  const d = num(r.tv_zone_dist_atr);
+  if (d === null) return "—";
+  return d === 0 ? "in zone" : d.toFixed(2) + " ATR";
 }
 
-
-function fmt(col, val, row) {
-  if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
-  if (col === "ticker") {
-    const name = val == null ? "" : String(val);
-    const tv = row && row.tradingview_url ? row.tradingview_url : "";
-    return tv ? tvLinksHtml(name, tv) : name;
-  }
-  // zone / entry / SL / TP / R:R: TradingView drawing values only; no drawing -> "not found"
-  if (TV_LEVEL_COLS.has(col) && !(row && row.tv_found === "yes" && toNum(val) !== null))
-    return '<span class="muted">not found</span>';
-  if (col === "tv_stale") return val
-    ? `<span class="pill stale" title="${String((row && row.tv_stale_detail) || "").replace(/"/g, "&quot;")}">${val}</span>`
-    : (row && row.tv_found === "yes" ? '<span class="muted">ok</span>' : "");
-  if (col === "tv_found") return val === "yes" ? "yes" : val === "no" ? "no" : '<span class="muted">not checked</span>';
-  if (val === null || val === undefined || val === "") return "";
-  if (col === "finviz_url") return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
-  if (col === "status") {
-    const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";
-    const nd = row && isTrueFlag(row.needs_drawing)
-      ? ` <span class="pill draw" title="$vol / short float / earnings / history pass, no TradingView drawing yet">needs drawing</span>` : "";
-    const stl = row && row.tv_stale
-      ? ` <span class="pill stale" title="${String(row.tv_stale_detail || "").replace(/"/g, "&quot;")}">drawing may be obsolete: ${row.tv_stale}</span>` : "";
-    return `<span class="pill ${cls}">${val}</span>${nd}${stl}`;
-  }
-  if (BOOL_COLS.has(col)) return isTrueFlag(val) ? "✓" : "·";
-  if (NUM_COLS.has(col)) {
-    const n = toNum(val);
-    if (n === null) return "";
-    if (col === "tv_rr") return n.toFixed(2);
-    if (col === "tv_zone_dist_atr") return n === 0 ? "in zone" : n.toFixed(2) + " ATR";
-    if (col === "pos_shares") return String(Math.round(n));
-    if (col === "pos_cost" || col === "pos_risk" || col === "pos_profit") return Sizing.money(n);
-    if (col === "dollar_vol_30d") return "$" + (n / 1e6).toFixed(1) + "M";
-    if (col === "avg_vol_30d" || col === "weekly_bars" || col.startsWith("days_to_earnings")
-        || col === "smooth_streak_weeks") return String(Math.round(n));
-    if (col.endsWith("_pct")) return n.toFixed(2);
-    return n.toFixed(2);
-  }
-  return String(val);
+function card(r) {
+  if (r.tv_found !== "yes") return ndCard(r);
+  const sym = tvSymbolFromUrl(r.tradingview_url);
+  const pass = String(r.status).toUpperCase() === "PASS";
+  const rr = num(r.tv_rr);
+  const near = r.f_near_zone === "True";
+  const ver = encodeURIComponent(r.tv_read_date || "");
+  const shot = r.tv_screenshot
+    ? `<div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)}"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>`
+    : `<div class="shot ph">screenshot after next nightly read</div>`;
+  const tk = sym
+    ? `<a class="tv-app" href="${tvAppHref(sym)}" data-tv-symbol="${esc(sym)}" title="Opens the TradingView app (symbol also copied)">${esc(r.ticker)}</a><a class="tv-web" href="${tvWebHref(sym)}" target="_blank" rel="noopener">web</a>`
+    : esc(r.ticker);
+  return `<div class="card">${shot}<div class="body">
+    <div class="top"><div><div class="tk">${tk}</div><span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span>
+      ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}
+      ${r.tv_stale ? `<div style="margin-top:4px"><span class="pill stale" title="${esc(r.tv_stale_detail)}">drawing may be obsolete: ${esc(r.tv_stale)}</span></div>` : ""}</div>
+      <div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div>
+    <dl>
+      <dt>Zone</dt><dd>${f2(r.tv_zone_bottom)}–${f2(r.tv_zone_top)}</dd>
+      <dt>To zone</dt><dd class="${near ? "near" : "far"}">${distLabel(r)}</dd>
+      <dt>Entry</dt><dd>${f2(r.tv_entry)}</dd>
+      <dt>Close</dt><dd>${f2(r.tv_price || r.current_price)}</dd>
+      <dt>SL</dt><dd>${f2(r.tv_sl)}</dd>
+      <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
+      <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
+    </dl>${posHtml(r)}</div></div>`;
 }
 
-function cmpCol(a, b, col, dir) {
-  if (!col) return 0;
-  const av = a[col], bv = b[col];
-  if (NUM_COLS.has(col)) {
-    const an = toNum(av), bn = toNum(bv);
-    if (an === null && bn !== null) return 1;
-    if (an !== null && bn === null) return -1;
-    if (an !== null && bn !== null && an !== bn) return dir === "asc" ? an - bn : bn - an;
-    return 0;
-  }
-  if (BOOL_COLS.has(col)) {
-    const x = isTrueFlag(av) ? 1 : 0, y = isTrueFlag(bv) ? 1 : 0;
-    return dir === "asc" ? x - y : y - x;
-  }
-  const cmp = String(av ?? "").localeCompare(String(bv ?? ""));
-  return dir === "asc" ? cmp : -cmp;
+function posHtml(r) {
+  const z = Sizing.compute(r);
+  if (!z) return "";
+  return `<dl class="pos" title="limited by ${z.cap} cap">
+      <dt>Shares</dt><dd>${z.shares} <span class="far" style="font-size:.75rem">(${z.cap} cap)</span></dd>
+      <dt>Cost</dt><dd>${Sizing.money(z.cost)}</dd>
+      <dt>Risk $</dt><dd>${Sizing.money(z.risk)}</dd>
+      <dt>Profit at TP</dt><dd class="near">${Sizing.money(z.profit)}</dd></dl>`;
 }
 
-function compareRows(a, b) {
-  let c = cmpCol(a, b, sortCol, sortDir);
-  if (c !== 0) return c;
-  if (sortCol2 && sortCol2 !== sortCol) { c = cmpCol(a, b, sortCol2, sortDir2); if (c !== 0) return c; }
-  return String(a.ticker || "").localeCompare(String(b.ticker || ""));
+function tkHtml(r) {
+  const sym = tvSymbolFromUrl(r.tradingview_url);
+  return sym
+    ? `<a class="tv-app" href="${tvAppHref(sym)}" data-tv-symbol="${esc(sym)}" title="Opens the TradingView app (symbol also copied)">${esc(r.ticker)}</a><a class="tv-web" href="${tvWebHref(sym)}" target="_blank" rel="noopener">web</a>`
+    : esc(r.ticker);
 }
 
-function rowPasses(r, active) {
-  for (const col of active) if (!isTrueFlag(r[col])) return false;
-  return true;
-}
-
-function filteredRows() {
-  const q = document.getElementById("searchBox").value.trim().toLowerCase();
-  const active = [...checked].filter(c => available.has(c));
-  return allRows.filter(r => {
-    if (!rowPasses(r, active)) return false;
-    if (!q) return true;
-    const hay = `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.failed_filters || ""} ${r.filter_notes || ""} ${r.weekly_reversal_kind || ""} ${r.daily_reversal_kind || ""}`.toLowerCase();
-    return hay.includes(q);
-  });
-}
-
-function renderFilterBox() {
-  const box = document.getElementById("filterBox");
-  const groups = [
-    ["Core (PASS)", FILTERS.filter(f => f.core)],
-    ["Extra", FILTERS.filter(f => !f.core && !f.group)],
-    ["TradingView", FILTERS.filter(f => f.group === "TradingView")],
-  ];
-  box.innerHTML = groups.map(([name, fs]) =>
-    `<span class="grp">${name}</span>` + fs.map(f => {
-      const avail = available.has(f.col);
-      const n = avail ? allRows.filter(r => isTrueFlag(r[f.col])).length : null;
-      const on = checked.has(f.col) && avail;
-      return `<label class="fchk${on ? " on" : ""}${avail ? "" : " disabled"}" title="${f.tip}${avail ? "" : " — not in this report (older schema)"}">` +
-        `<input type="checkbox" data-fcol="${f.col}" ${on ? "checked" : ""} ${avail ? "" : "disabled"}/>` +
-        `${f.label} <span class="cnt">${n === null ? "n/a" : n}</span></label>`;
-    }).join("")
-  ).join("");
-  box.querySelectorAll("input[data-fcol]").forEach(inp => {
-    inp.addEventListener("change", () => {
-      const c = inp.getAttribute("data-fcol");
-      if (inp.checked) checked.add(c); else checked.delete(c);
-      refresh();
-    });
-  });
-}
-
-function renderTable(rows) {
-  const thead = document.querySelector("#dataTable thead");
-  const tbody = document.querySelector("#dataTable tbody");
-  thead.innerHTML = "<tr>" + COLS.map(c => {
-    let mark = "";
-    if (sortCol === c) mark = `<span class="sort">1${sortDir === "asc" ? "▲" : "▼"}</span>`;
-    else if (sortCol2 === c) mark = `<span class="sort">2${sortDir2 === "asc" ? "▲" : "▼"}</span>`;
-    return `<th data-col="${c}" title="${c} — click: primary sort · Shift+click: secondary sort (empty values always last)">${colLabel(c)}${mark}</th>`;
-  }).join("") + "</tr>";
-  tbody.innerHTML = rows.map(r => {
-    const cls = String(r.status).toUpperCase() === "PASS" ? "pass" : "fail";
-    return `<tr class="${cls}">` + COLS.map(c => {
-      const tdc = c.startsWith("f_") ? (isTrueFlag(r[c]) ? ' class="ft"' : ' class="ff"') : "";
-      return `<td${tdc}>${fmt(c, r[c], r)}</td>`;
-    }).join("") + "</tr>";
-  }).join("");
-  thead.querySelectorAll("th").forEach(th => {
-    th.addEventListener("click", (ev) => {
-      const c = th.getAttribute("data-col");
-      const defaultDir = (NUM_COLS.has(c) || BOOL_COLS.has(c)) ? "desc" : "asc";
-      if (ev.shiftKey) {
-        if (sortCol2 === c) sortDir2 = sortDir2 === "asc" ? "desc" : "asc";
-        else { sortCol2 = c; sortDir2 = defaultDir; }
-      } else if (sortCol === c) {
-        sortDir = sortDir === "asc" ? "desc" : "asc";
-      } else {
-        if (sortCol) { sortCol2 = sortCol; sortDir2 = sortDir; }
-        sortCol = c; sortDir = defaultDir;
-      }
-      refresh();
-    });
-  });
-  const s2 = (sortCol2 && sortCol2 !== sortCol) ? `, then ${sortCol2} ${sortDir2}` : "";
-  document.getElementById("tableMeta").textContent =
-    `Showing ${rows.length} of ${allRows.length} stocks · sort: ${sortCol} ${sortDir}${s2} · shift-click for 2nd`;
-}
-
-function binCounts(vals, bins) {
-  return bins.map(b => vals.filter(v => v >= b.min && v < b.max).length);
-}
-
-const axisOpts = {
-  x: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" } },
-  y: { ticks: { color: "#8b949e" }, grid: { color: "#21262d" }, beginAtZero: true }
-};
-
-function renderCharts(rows) {
-  const availF = FILTERS.filter(f => available.has(f.col));
-  const fLabels = availF.map(f => f.label);
-  const fAll = availF.map(f => allRows.filter(r => isTrueFlag(r[f.col])).length);
-  const fSel = availF.map(f => rows.filter(r => isTrueFlag(r[f.col])).length);
-  const rrVals = rows.filter(r => r.tv_found === "yes").map(r => toNum(r.tv_rr)).filter(n => n !== null);
-  const stVals = rows.map(r => toNum(r.smooth_streak_weeks)).filter(n => n !== null);
-  const rrCounts = binCounts(rrVals, RR_BINS), stCounts = binCounts(stVals, STREAK_BINS);
-  if (charts.filters) {
-    charts.filters.data.labels = fLabels;
-    charts.filters.data.datasets[0].data = fAll;
-    charts.filters.data.datasets[1].data = fSel;
-    charts.filters.data.datasets[0].backgroundColor = availF.map(f => checked.has(f.col) ? "#58a6ff" : "#30363d");
-    charts.filters.update("none");
-    charts.rr.data.datasets[0].data = rrCounts; charts.rr.update("none");
-    charts.streak.data.datasets[0].data = stCounts; charts.streak.update("none");
-    return;
-  }
-  charts.filters = new Chart(document.getElementById("chartFilters"), {
-    type: "bar",
-    data: { labels: fLabels, datasets: [
-      { label: "all stocks", data: fAll, backgroundColor: availF.map(f => checked.has(f.col) ? "#58a6ff" : "#30363d"), borderRadius: 4 },
-      { label: "in selection", data: fSel, backgroundColor: "#3fb950", borderRadius: 4 },
-    ]},
-    options: {
-      indexAxis: "y", maintainAspectRatio: false, scales: axisOpts,
-      plugins: { legend: { labels: { color: "#e6edf3" } } },
-      onClick: (evt, els) => {
-        if (!els.length) return;
-        const f = FILTERS.filter(x => available.has(x.col))[els[0].index];
-        if (checked.has(f.col)) checked.delete(f.col); else checked.add(f.col);
-        refresh();
-      }
-    }
-  });
-  charts.rr = new Chart(document.getElementById("chartRR"), {
-    type: "bar",
-    data: { labels: RR_BINS.map(b => b.label), datasets: [{ label: "stocks", data: rrCounts, backgroundColor: "#58a6ff", borderRadius: 6 }] },
-    options: { maintainAspectRatio: false, scales: axisOpts, plugins: { legend: { display: false } } }
-  });
-  charts.streak = new Chart(document.getElementById("chartStreak"), {
-    type: "bar",
-    data: { labels: STREAK_BINS.map(b => b.label), datasets: [{ label: "stocks", data: stCounts, backgroundColor: "#d29922", borderRadius: 6 }] },
-    options: { maintainAspectRatio: false, scales: axisOpts, plugins: { legend: { display: false } } }
-  });
-}
-
-// ---- persisted UI state (localStorage; report date intentionally NOT saved) ----
-const STATE_KEY = "srs_dashboard_state_v1";
-
-function saveState() {
-  try {
-    localStorage.setItem(STATE_KEY, JSON.stringify({
-      checked: [...checked],
-      search: document.getElementById("searchBox").value,
-      sortCol, sortDir, sortCol2, sortDir2,
-    }));
-  } catch (_) { /* storage unavailable */ }
-}
-
-function loadSavedState() {
-  try { return JSON.parse(localStorage.getItem(STATE_KEY) || "null"); } catch (_) { return null; }
-}
-
-function clearSavedState() {
-  try { localStorage.removeItem(STATE_KEY); } catch (_) { /* ignore */ }
-}
-
-function defaultSort(hdr) {
-  sortCol = hdr.has("tv_rr") ? "tv_rr" : "ticker"; sortDir = sortCol === "tv_rr" ? "desc" : "asc";
-  sortCol2 = "ticker"; sortDir2 = "asc";
-}
-
-/** Apply saved state to the loaded report; filters/sort cols missing here are ignored. */
-function applySavedState(hdr) {
-  const st = loadSavedState();
-  checked = new Set();
-  defaultSort(hdr);
-  if (!st) return;
-  if (Array.isArray(st.checked)) st.checked.forEach(c => { if (available.has(c)) checked.add(c); });
-  if (typeof st.search === "string") document.getElementById("searchBox").value = st.search;
-  const okDir = d => d === "asc" || d === "desc";
-  if (st.sortCol && hdr.has(st.sortCol) && !HIDDEN_COLS.has(st.sortCol)) { sortCol = st.sortCol; if (okDir(st.sortDir)) sortDir = st.sortDir; }
-  if (st.sortCol2 && hdr.has(st.sortCol2) && !HIDDEN_COLS.has(st.sortCol2)) { sortCol2 = st.sortCol2; if (okDir(st.sortDir2)) sortDir2 = st.sortDir2; }
-}
-
-let currentRows = [];
-let currentReportDate = "latest";
-
-/** EXCHANGE:TICKER exactly as used in the row's TradingView link (dedup, keep order). */
-function tvSymbolsForRows(rows) {
-  const seen = new Set(), out = [];
-  for (const r of rows) {
-    let sym = tvSymbolFromUrl(r.tradingview_url);
-    if (!sym) sym = String(r.ticker || "").trim().toUpperCase().replace(/-/g, ".");
-    if (sym && !seen.has(sym)) { seen.add(sym); out.push(sym); }
-  }
-  return out;
-}
-
-/** TradingView "Import list" format: .txt, comma-separated symbols with exchange prefix. */
-function exportTVWatchlist() {
-  const syms = tvSymbolsForRows(currentRows);
-  if (!syms.length) return;
-  const blob = new Blob([syms.join(",") + "\n"], { type: "text/plain" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `scanner_${currentReportDate}_${syms.length}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-}
-
-function updateExportButton(n) {
-  const b = document.getElementById("btnExportTV");
-  b.textContent = `Export TV watchlist (${n})`;
-  b.disabled = n === 0;
-}
-
-function refresh(persist = true) {
-  if (persist) saveState();
-  const rows = filteredRows().slice().sort(compareRows);
-  currentRows = rows;
-  updateExportButton(rows.length);
-  renderFilterBox();
-  const m = allRows.length, n = rows.length;
-  document.getElementById("matchCount").innerHTML = `<b>${n}</b> of ${m} stocks`;
-  document.getElementById("cMatch").textContent = n;
-  renderTable(rows);
-  try { if (window.Chart) renderCharts(rows); } catch (e) { console.warn("charts", e); }
-}
-
-async function loadReport(path, dateLabel) {
-  currentReportDate = String(dateLabel || "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest";
-  document.getElementById("tableMeta").textContent = "Loading " + path + "…";
-  const res = await fetch(path + "?t=" + Date.now());
-  if (!res.ok) throw new Error("Failed to load " + path + " (" + res.status + ")");
-  const text = await res.text();
-  allRows = enrichEarningsLive(parseCSV(text));
-  if (headers.includes("tv_entry")) { headers.push(...POS_COLS.filter(c => !headers.includes(c))); applySizing(); }
-  const hdr = new Set(headers);
-  // f_rr means TV R:R only in reports that carry the TradingView columns (older CSVs: computed → disabled)
-  available = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c) && (c !== "f_rr" || hdr.has("tv_found"))));
-  COLS = PREFERRED_COLS.filter(c => hdr.has(c) && !HIDDEN_COLS.has(c))
-    .concat(headers.filter(c => !PREFERRED_COLS.includes(c) && !HIDDEN_COLS.has(c)));
-  applySavedState(hdr);
-  const note = document.getElementById("schemaNote");
-  const missing = FILTERS.filter(f => !available.has(f.col)).map(f => f.label);
-  if (missing.length) {
-    note.style.display = "block";
-    note.textContent = `Older report schema — unavailable filters: ${missing.join(", ")}. Showing the columns this report has.`;
-  } else { note.style.display = "none"; }
-  const nPass = allRows.filter(r => String(r.status).toUpperCase() === "PASS").length;
-  const nBo = allRows.filter(r => isTrueFlag(r.earnings_blackout)).length;
-  document.getElementById("cScanned").textContent = allRows.length;
-  document.getElementById("cPass").textContent = nPass;
-  document.getElementById("cBlackout").textContent = nBo;
-  Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
-  refresh(false);  // restoring on load must not rewrite storage
-  loadStaleBanner(allRows.map(r => r.ticker));
-  document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS = all core filters incl. TV R:R ≥ 2 · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
+/** Read but no drawing found (needs drawing): screenshot + status, no levels / R:R. */
+function ndCard(r) {
+  const pass = String(r.status).toUpperCase() === "PASS";
+  const ver = encodeURIComponent(r.tv_read_date || "");
+  const nd = r.needs_drawing === "True" ? `<span class="pill draw">needs drawing</span>` : `<span class="pill draw">no drawing</span>`;
+  return `<div class="card nd"><div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)} · no drawing found"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>
+    <div class="body"><div class="top"><div><div class="tk">${tkHtml(r)}</div>
+      <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}</div>
+      <div class="rr bad">—<small>no drawing</small></div></div>
+    <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl></div></div>`;
 }
 
 
@@ -769,62 +197,76 @@ async function loadStaleBanner(reportTickers) {
   } catch (_) { el.style.display = "none"; }
 }
 
-// Position sizing (client-side; settings bar shared with charts.html via localStorage)
-const POS_COLS = ["pos_shares", "pos_cost", "pos_risk", "pos_profit", "pos_cap", "f_tradable", "f_not_tradable"];
-function applySizing() {
-  const st = Sizing.load();
-  for (const r of allRows) {
-    const z = Sizing.compute(r, st);
-    r.pos_shares = z ? z.shares : ""; r.pos_cost = z ? z.cost : ""; r.pos_risk = z ? z.risk : "";
-    r.pos_profit = z ? z.profit : ""; r.pos_cap = z ? z.cap : "";
-    r.f_tradable = z ? (z.shares >= 1 ? "True" : "False") : "";      // drawn only
-    r.f_not_tradable = z ? (z.shares === 0 ? "True" : "False") : "";
-  }
+function render() {
+  const onlyPass = document.getElementById("fPass").checked;
+  const onlyNear = document.getElementById("fNear").checked;
+  const onlyStale = document.getElementById("fStale").checked;
+  const onlyTrad = document.getElementById("fTrad").checked;
+  const onlyNoTrad = document.getElementById("fNoTrad").checked;
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad, stale: onlyStale })); } catch (_) {}
+  const sz = Sizing.load();
+  const shares = r => { const z = Sizing.compute(r, sz); return z ? z.shares : null; };
+  // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
+  const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot));
+  const sel = drawn
+    .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
+    .filter(r => !onlyNear || r.f_near_zone === "True")
+    .filter(r => !onlyStale || r.f_tv_stale === "True")
+    .filter(r => !onlyTrad || (shares(r) ?? 0) >= 1)
+    .filter(r => !onlyNoTrad || shares(r) === 0)
+    .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
+  const nDrawn = drawn.filter(r => r.tv_found === "yes").length;
+  document.getElementById("count").textContent =
+    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn, ${drawn.length - nDrawn} needs drawing)`;
+  document.getElementById("grid").innerHTML = sel.length ? sel.map(card).join("")
+    : `<div class="empty">No drawn tickers match${drawn.length ? " the selected toggles" : " (no TradingView drawings in this report)"}.</div>`;
+}
+
+async function loadReport(path) {
+  const res = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
+  rows = parseCSV(await res.text());
+  render();
+  loadStaleBanner(rows.map(r => r.ticker));
 }
 
 async function init() {
-  Sizing.mount(document.getElementById("sizingBar"), () => { applySizing(); refresh(false); });
-  let reports = [];
+  Sizing.mount(document.getElementById("sizingBar"), () => render());
   try {
-    const res = await fetch("reports.json?t=" + Date.now());
-    reports = await res.json();
-  } catch (e) {
-    reports = [{ date: "latest", file: "latest.csv", path: "historical-reports/latest.csv" }];
-  }
-  const sel = document.getElementById("reportSelect");
-  sel.innerHTML = reports.map((r, i) => `<option value="${r.path}" ${i === 0 ? "selected" : ""}>${r.date}</option>`).join("");
-  sel.addEventListener("change", () => {
-    const opt = sel.selectedOptions[0];
-    loadReport(opt.value, opt.textContent).catch(err => {
-      document.getElementById("tableMeta").innerHTML = `<span class="err">${err.message}</span>`;
-    });
+    const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+    document.getElementById("fPass").checked = !!st.pass;
+    document.getElementById("fNear").checked = !!st.near;
+    document.getElementById("fTrad").checked = !!st.trad;
+    document.getElementById("fStale").checked = !!st.stale;
+    document.getElementById("fNoTrad").checked = !!st.notrad;
+  } catch (_) {}
+  let reports = [];
+  try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}
+  const sel = document.getElementById("reportSel");
+  sel.innerHTML = reports.length
+    ? reports.map(r => `<option value="${esc(r.path)}">${esc(r.date)}</option>`).join("")
+    : `<option value="historical-reports/latest.csv">latest</option>`;
+  sel.addEventListener("change", () => loadReport(sel.value));
+  document.getElementById("fPass").addEventListener("change", render);
+  document.getElementById("fNear").addEventListener("change", render);
+  document.getElementById("fTrad").addEventListener("change", render);
+  document.getElementById("fStale").addEventListener("change", render);
+  document.getElementById("fNoTrad").addEventListener("change", render);
+  document.addEventListener("click", ev => {
+    const a = ev.target.closest && ev.target.closest("a.tv-app");
+    if (a) { ev.preventDefault(); openTradingViewApp(a.getAttribute("data-tv-symbol")); return; }
+    const s = ev.target.closest && ev.target.closest(".shot[data-full]");
+    if (s) {
+      document.getElementById("lbImg").src = s.dataset.full;
+      document.getElementById("lbCap").textContent = s.dataset.cap;
+      document.getElementById("lb").classList.add("open");
+      return;
+    }
+    if (ev.target.closest && ev.target.closest("#lb")) document.getElementById("lb").classList.remove("open");
   });
-  document.getElementById("searchBox").addEventListener("input", refresh);
-  document.getElementById("btnExportTV").addEventListener("click", exportTVWatchlist);
-  document.getElementById("btnClear").addEventListener("click", () => {
-    checked = new Set();
-    document.getElementById("searchBox").value = "";
-    defaultSort(new Set(headers));
-    clearSavedState();
-    refresh(false);
-  });
-  document.getElementById("btnPassPreset").addEventListener("click", () => {
-    checked = new Set(CORE.filter(c => available.has(c))); refresh();
-  });
-  document.addEventListener("click", (ev) => {
-    const a = ev.target && ev.target.closest && ev.target.closest("a.tv-app");
-    if (!a) return;
-    ev.preventDefault();
-    const symbol = a.getAttribute("data-tv-symbol") || tvSymbolFromUrl(a.getAttribute("href") || "");
-    openTradingViewApp(symbol);
-  });
-  const first = reports[0];
-  await loadReport(first ? first.path : "historical-reports/latest.csv", first ? first.date : "latest");
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape") document.getElementById("lb").classList.remove("open"); });
+  await loadReport(sel.value);
 }
-
-init().catch(err => {
-  document.getElementById("tableMeta").innerHTML = `<span class="err">${err.message}</span>`;
-});
+init();
 </script>
 </body>
 </html>

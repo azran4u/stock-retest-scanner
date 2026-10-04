@@ -1,4 +1,4 @@
-/* Client-side position sizing shared by index.html and charts.html.
+/* Client-side position sizing shared by index.html (charts) and table.html.
  * Settings persisted in localStorage (key srs_sizing_v1), shared by both pages.
  * shares = floor(min(account*risk%/(entry-sl), account*pos%/entry)); 0 if entry <= sl.
  * Only for rows with a TradingView drawing (tv_found = yes, tv_entry / tv_sl / tv_tp). */
