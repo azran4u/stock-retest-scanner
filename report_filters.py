@@ -639,6 +639,13 @@ def drawing_source(ticker: str, rec: Optional[Dict[str, Any]],
     found = bool(rec and rec.get("found"))
     override = str((rec or {}).get("source_override") or "")
     src, status, note = ("user" if found else ""), "", ""
+    if found:  # partial user drawings: no rectangle / no Long Position / short only / values pending
+        status, note = str(rec.get("drawing_status") or ""), str(rec.get("drawing_note") or "")
+    if rec and not found and rec.get("lines_only"):
+        # the user's own chart has only Fib / horizontal lines: not needs drawing, not a bot drawing
+        return {"tv_source": "user-lines", "f_bot_review": False,
+                "tv_bot_status": "user lines only, no zone/position",
+                "tv_bot_note": str(rec.get("drawing_note") or "user lines only (Fib / horizontal lines), no zone or position")}
     if b and not b.get("has_level", True):
         status = "needs manual drawing (data issue)"
         note = f"needs manual drawing (data issue): {b.get('reason') or 'no bot level'}"
@@ -697,9 +704,10 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
     """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
     AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
     Tickers with a bot drawing (tv_source bot / bot-approved, even before the nightly read
-    confirms it) are excluded: they show as "review needed" instead."""
+    confirms it) are excluded: they show as "review needed" instead; so are charts where the user
+    drew only Fib / horizontal lines (tv_source user-lines)."""
     return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes"
-                and str(r.get("tv_source") or "") not in ("bot", "bot-approved"))
+                and str(r.get("tv_source") or "") not in ("bot", "bot-approved", "user-lines"))
 
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:

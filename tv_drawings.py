@@ -44,7 +44,9 @@ Usage:
   python tv_drawings.py bot register [--csv /workspace/drawing-learn/bot_drawings.csv]
         -> /workspace/stock-screener/bot_drawings.json (levels the bot drew; no-level rows =
            "needs manual drawing (data issue)")
-  python tv_drawings.py bot approve T [T ...] | bot unapprove T [T ...] | bot list | bot shots
+  python tv_drawings.py upsert NYSE:FIVE --entry .. --sl .. --tp .. --rr .. --partial --drawing-status "user drawing (no rectangle)"
+  python tv_drawings.py upsert NYSE:J --not-found --lines-only   (user Fib / lines only: not needs drawing)
+  python tv_drawings.py bot approve T [T ...] | bot unapprove T [T ...] | bot unregister T [T ...] | bot list | bot shots
         -> approved_bot_drawings.json (approved bot drawings count like the user's own);
            shots = attach new /workspace/tv_shots/<T>*.png images of bot drawings
   python tv_drawings.py show [TICKER]
@@ -197,6 +199,7 @@ def remove_screenshot(ticker: str) -> None:
 
 def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Optional[str] = None,
            screenshot: Optional[Path] = None, source: Optional[str] = None, label: Optional[str] = None,
+           lines_only: bool = False, drawing_status: Optional[str] = None, drawing_note: Optional[str] = None,
            **vals: Optional[float]) -> Dict[str, Any]:
     t = ticker.strip().upper()
     if ":" in t:
@@ -216,6 +219,16 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
     prev = store.get(t) or {}
     if label:
         rec["label"] = label
+    if lines_only and not found:
+        rec["lines_only"] = True
+    elif not found and not lines_only and prev.get("lines_only") and drawing_status is None:
+        # a later "not found" read of a lines-only chart stays lines-only (no zone / position)
+        rec["lines_only"] = True
+        drawing_note = drawing_note or prev.get("drawing_note")
+    if drawing_status:
+        rec["drawing_status"] = drawing_status
+    if drawing_note:
+        rec["drawing_note"] = drawing_note
     _resolve_upsert_source(t, rec, prev, source, label)
     # every read gets a screenshot, found or not (not-found charts show as "needs drawing" cards)
     if screenshot is not None:
@@ -535,6 +548,17 @@ def bot_approve(tickers: List[str], approve: bool = True, note: str = "") -> Dic
     return appr
 
 
+def bot_unregister(tickers: List[str]) -> Dict[str, Any]:
+    """Remove tickers from the bot registry (e.g. the user drew them himself)."""
+    import report_filters as rf
+
+    reg = dict(rf.load_bot_registry())
+    for t in tickers:
+        reg.pop(csv_ticker(t), None)
+    _write_json_key(rf.BOT_REGISTRY, "tickers", reg, **_BOT_META)
+    return reg
+
+
 def bot_status_rows() -> List[Dict[str, Any]]:
     import report_filters as rf
 
@@ -632,8 +656,14 @@ def main() -> None:
     u.add_argument("--source", choices=["user", "bot"], default=None,
                    help="who drew it: bot = review needed (registered in bot_drawings.json), user = user-owned")
     u.add_argument("--label", default=None, help="rectangle text read on the chart ('BOT - review needed' = bot)")
+    u.add_argument("--partial", action="store_true",
+                   help="drawing found but some values missing (no rectangle / no Long Position / values pending)")
+    u.add_argument("--lines-only", action="store_true",
+                   help="with --not-found: the chart has only the user's Fib / horizontal lines (not needs drawing)")
+    u.add_argument("--drawing-status", default=None, help="short status, e.g. 'user drawing (no rectangle)'")
+    u.add_argument("--drawing-note", default=None, help="free-text note shown as tooltip")
     bp = sub.add_parser("bot", help="bot drawings: register / approve / unapprove / list / shots")
-    bp.add_argument("action", choices=["register", "approve", "unapprove", "list", "shots"])
+    bp.add_argument("action", choices=["register", "unregister", "approve", "unapprove", "list", "shots"])
     bp.add_argument("tickers", nargs="*")
     bp.add_argument("--csv", type=Path, default=BOT_CSV)
     bp.add_argument("--drawn-at", default=None, help="ISO time the bot drew them (default now)")
@@ -676,15 +706,17 @@ def main() -> None:
     elif args.cmd == "upsert":
         if args.not_found:
             rec = upsert(args.ticker, False, read_at=args.read_at, screenshot=args.screenshot,
-                         source=args.source, label=args.label)
+                         source=args.source, label=args.label, lines_only=args.lines_only,
+                         drawing_status=args.drawing_status, drawing_note=args.drawing_note)
         else:
             vals = {"zone_top": args.zone_top, "zone_bottom": args.zone_bottom, "entry": args.entry,
                     "sl": args.sl, "tp": args.tp, "rr": args.rr}
             missing = [k for k, v in vals.items() if v is None]
-            if missing:
+            if missing and not args.partial:
                 ap.error(f"missing values: {', '.join(missing)} (or pass --not-found)")
             rec = upsert(args.ticker, True, read_at=args.read_at, screenshot=args.screenshot,
-                         source=args.source, label=args.label, **vals)
+                         source=args.source, label=args.label, drawing_status=args.drawing_status,
+                         drawing_note=args.drawing_note, **vals)
         print(json.dumps({csv_ticker(args.ticker): rec}, indent=2))
         if rec.get("found"):
             try:
@@ -710,6 +742,9 @@ def main() -> None:
             reg = bot_register_csv(args.csv, args.drawn_at)
             n_lv = sum(1 for v in reg.values() if v.get("has_level"))
             print(f"bot registry: {len(reg)} tickers ({n_lv} with levels, {len(reg) - n_lv} need manual drawing)")
+        elif args.action == "unregister":
+            reg = bot_unregister(args.tickers)
+            print(f"bot registry: {len(reg)} tickers left")
         elif args.action in ("approve", "unapprove"):
             if not args.tickers:
                 ap.error("give tickers")

@@ -135,6 +135,8 @@ function infoBadges(r) {
   else if (r.tv_source === "bot-approved") h += ` <span class="pill botok" title="${escAttr(r.tv_bot_note)}">bot drawing (approved)</span>`;
   else if (r.tv_bot_status === "needs manual drawing (data issue)") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">needs manual drawing (data issue)</span>`;
   else if (r.tv_bot_status === "bot drawing missing on chart") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">bot drawing missing on chart</span>`;
+  else if (r.tv_source === "user-lines") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">user lines only, no zone/position</span>`;
+  else if (r.tv_source === "user" && r.tv_bot_status) h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">${escAttr(r.tv_bot_status)}</span>`;
   return h;
 }
 
@@ -190,7 +192,7 @@ function ndCard(r) {
   const pass = String(r.status).toUpperCase() === "PASS";
   const ver = encodeURIComponent(r.tv_read_date || "");
   const isBot = r.tv_source === "bot" || r.tv_source === "bot-approved";
-  const nd = isBot ? "" : r.needs_drawing === "True" ? `<span class="pill draw">needs drawing</span>` : `<span class="pill draw">no drawing</span>`;
+  const nd = (isBot || r.tv_source === "user-lines") ? "" : r.needs_drawing === "True" ? `<span class="pill draw">needs drawing</span>` : `<span class="pill draw">no drawing</span>`;
   const shot = r.tv_screenshot
     ? `<div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)} · ${isBot ? "bot drawing" : "no drawing found"}"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>`
     : `<div class="shot ph">screenshot after next nightly read</div>`;
@@ -236,7 +238,7 @@ function render() {
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
   // + bot drawings awaiting the nightly read / review (cards even without a screenshot)
   const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot)
-    || r.tv_source === "bot" || r.tv_source === "bot-approved");
+    || r.tv_source === "bot" || r.tv_source === "bot-approved" || r.tv_source === "user-lines");
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
     .filter(r => !onlyNear || r.f_near_zone === "True")
