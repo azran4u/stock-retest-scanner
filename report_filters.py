@@ -85,6 +85,19 @@ CONFIG: Dict[str, Any] = {
     # daily low (intraday wick) since the read date < SL; "daily" = any daily close < SL;
     # "weekly" = W-FRI weekly closes only (completed weeks + current week's latest close)
     "stale_close_basis": "low",
+    # "technical" = clear weekly uptrend (informational, NOT part of status); port of
+    # /workspace/drawing-learn/technical.py (calibrated on the user's 54 drawings)
+    "tech_newhi_atr": 1.0,           # recent 26w high >= 1 ATR above the prior 2.5y high
+    "tech_newhi_lookback_weeks": 130,  # prior-high window = weeks 27..130 back
+    "tech_recent_weeks": 26,
+    "tech_structure_weeks": 78,      # HH/HL swing window
+    "tech_pivot_k": 3,               # swing clarity: 3 weeks each side
+    "tech_structure_min": 0.5,       # (HH rate + HL rate) / 2 >= 0.5
+    "tech_ema_span": 30,             # 30w EMA rising vs 26 weeks ago
+    "tech_min_weekly_bars": 130,     # fewer bars -> f_technical empty (not enough history)
+    # bot drawings (review needed): levels within max(0.011, 0.15% of the level) = same drawing
+    "bot_match_rel": 0.0015,
+    "bot_match_abs": 0.011,
 }
 
 CORE_FILTERS = [  # status=PASS iff all true
@@ -101,6 +114,12 @@ INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in stat
 # obsolete-drawing check (tv_found=yes only): f_tv_stale True/False, tv_stale = "broken" /
 # "target hit" / "far" (comma-joined when several), tv_stale_detail = numbers
 STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
+# technical = clear weekly uptrend (every row with >= tech_min_weekly_bars weekly bars; else empty)
+TECH_COLS = ["f_technical", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
+             "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail"]
+# drawing source: tv_source = user / bot / bot-approved / "" ; f_bot_review = bot drawing awaiting
+# the user's approval (does NOT count toward f_rr / PASS / grok); tv_bot_status / tv_bot_note = detail
+SOURCE_COLS = ["tv_source", "f_bot_review", "tv_bot_status", "tv_bot_note"]
 
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
@@ -108,7 +127,7 @@ REPORT_COLS = [
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
-    *TV_COLS, *NEAR_ZONE_COLS, *STALE_COLS,
+    *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "daily_reversal_kind", "daily_reversal_date",
@@ -279,6 +298,7 @@ def compute_row(
     if hist is None or len(hist) < 2:
         notes.append("no price history")
         apply_tv(r, tv_rec)
+        apply_source(r, ticker, tv_rec)
         r["filter_notes"] = "; ".join(notes)
         return r
 
@@ -315,10 +335,12 @@ def compute_row(
 
     # --- f_rr: the user's TradingView drawing (read-only) ------------------
     apply_tv(r, tv_rec)
+    apply_source(r, ticker, tv_rec)
     if not r["f_rr"]:
         notes.append(tv_note(r))
     r.update(compute_near_zone(hist, r))
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
+    r.update(compute_technical(hist))
 
     # --- smooth streak / reversals (completed bars only) --------------------
     as_of = _as_of_ts(report_date)
@@ -476,8 +498,194 @@ def compute_stale(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, 
     return out
 
 
+# ---------------------------------------------------------------------------
+# technical = clear weekly uptrend (port of /workspace/drawing-learn/technical.py)
+# ---------------------------------------------------------------------------
+def _swing_pivots(a: np.ndarray, k: int, kind: str) -> List[int]:
+    return [i for i in range(k, len(a) - k)
+            if (kind == "hi" and a[i] > max(np.r_[a[i - k:i], a[i + 1:i + k + 1]]))
+            or (kind == "lo" and a[i] < min(np.r_[a[i - k:i], a[i + 1:i + k + 1]]))]
+
+
+def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
+    """'Technical' = clear weekly uptrend (all three, W-FRI weekly bars from the cached daily
+    history cut at the report date; the current week may be partial):
+      1. NEW HIGH: recent high (max High of the last 26 weeks) >= 1.0 weekly ATR(14) above the
+         highest High of the 2.5 years before it (weeks 27-130 back).
+      2. STRUCTURE: over the last 78 weeks, with strength-3 swing pivots (3 weeks each side),
+         (share of higher highs + share of higher lows) / 2 >= 0.5. The recent high counts as
+         the latest swing high; swing lows after it (the current pullback) are ignored.
+      3. TREND: 30-week EMA higher than 26 weeks ago (price may be below it in the pullback).
+    Fewer than tech_min_weekly_bars weekly bars -> every column empty. Informational only.
+    """
+    C = CONFIG
+    out: Dict[str, Any] = {c: None for c in TECH_COLS}
+    if hist is None or len(hist) < 2:
+        return out
+    try:
+        w = ss.to_weekly(hist)
+        n = len(w)
+        if n < int(C["tech_min_weekly_bars"]):
+            out["tech_detail"] = f"not enough history ({n} weekly bars < {int(C['tech_min_weekly_bars'])})"
+            return out
+        h, l, c = (w[x].values.astype(float) for x in ("High", "Low", "Close"))
+        atr = float(ss.atr_series(w).iloc[-1])
+        rw, k = int(C["tech_recent_weeks"]), int(C["tech_pivot_k"])
+        ihi = n - rw + int(np.argmax(h[-rw:]))
+        rh = float(h[ihi])
+        prior = float(h[max(0, n - int(C["tech_newhi_lookback_weeks"])):n - rw].max())
+        newhi = (rh - prior) / atr
+        i0 = max(0, n - int(C["tech_structure_weeks"]))
+        ph = sorted(set([i for i in _swing_pivots(h, k, "hi") if i >= i0] + [ihi]))
+        pl = [i for i in _swing_pivots(l, k, "lo") if i0 <= i < ihi]
+        hh = int(sum(h[b] > h[a] for a, b in zip(ph, ph[1:])))
+        nh = max(1, len(ph) - 1)
+        hl = int(sum(l[b] > l[a] for a, b in zip(pl, pl[1:])))
+        nl = max(1, len(pl) - 1)
+        struct = (hh / nh + hl / nl) / 2
+        ema = pd.Series(c).ewm(span=int(C["tech_ema_span"]), adjust=False).mean().values
+        slope = (ema[-1] / ema[-27] - 1) * 100
+    except Exception as e:  # pragma: no cover
+        out["tech_detail"] = f"technical error: {e}"
+        return out
+    ok1, ok2, ok3 = newhi >= float(C["tech_newhi_atr"]), struct >= float(C["tech_structure_min"]), slope > 0
+    tech = bool(ok1 and ok2 and ok3)
+    if tech:
+        why = [f"uptrend: new high {newhi:+.1f} ATR above prior 2.5y high, {hh}/{nh} HH and {hl}/{nl} HL, "
+               f"30w EMA {slope:+.0f}% in 26w"]
+    else:
+        why = []
+        if not ok1:
+            why.append(f"no new high: recent high {rh:.2f} is {newhi:+.2f} ATR vs prior 2.5y high {prior:.2f} "
+                       f"(needs >= +{float(C['tech_newhi_atr']):g})")
+        if not ok2:
+            why.append(f"choppy swings: {hh}/{nh} higher highs, {hl}/{nl} higher lows")
+        if not ok3:
+            why.append(f"30w EMA falling ({slope:+.0f}% in 26w)")
+    out.update({"f_technical": tech, "tech_new_high_atr": round(newhi, 2), "tech_hh": f"{hh}/{nh}",
+                "tech_hl": f"{hl}/{nl}", "tech_structure": round(struct, 2),
+                "tech_ema30_slope_pct": round(slope, 1), "tech_ema_rising": bool(ok3),
+                "tech_detail": "; ".join(why)})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# drawing source: user vs bot (bot drawings need the user's approval before they count)
+# ---------------------------------------------------------------------------
+BOT_REGISTRY = Path("/workspace/stock-screener/bot_drawings.json")         # {"tickers": {T: {...}}}
+BOT_APPROVED = Path("/workspace/stock-screener/approved_bot_drawings.json")  # {"approved": {T: {...}}}
+BOT_LABEL_RE = re.compile(r"\bBOT\b.*review", re.I)
+_LEVEL_KEYS = ("zone_top", "zone_bottom", "entry", "sl", "tp")
+_REG_CACHE: Dict[str, Any] = {}
+
+
+def _load_cached_json(p: Path, key: str) -> Dict[str, Any]:
+    try:
+        m = p.stat().st_mtime
+    except OSError:
+        return {}
+    c = _REG_CACHE.get(str(p))
+    if c and c[0] == m:
+        return c[1]
+    d = _read_json(p).get(key, {}) or {}
+    d = {str(t).strip().upper(): v for t, v in d.items()}
+    _REG_CACHE[str(p)] = (m, d)
+    return d
+
+
+def load_bot_registry() -> Dict[str, Dict[str, Any]]:
+    return _load_cached_json(BOT_REGISTRY, "tickers")
+
+
+def load_bot_approved() -> Dict[str, Dict[str, Any]]:
+    return _load_cached_json(BOT_APPROVED, "approved")
+
+
+def levels_match(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool:
+    """Near-identical zone / entry / SL / TP (each within max(bot_match_abs, bot_match_rel x level))."""
+    if not a or not b:
+        return False
+    for k in _LEVEL_KEYS:
+        x, y = _num(a.get(k)), _num(b.get(k))
+        if x is None or y is None:
+            return False
+        if abs(x - y) > max(float(CONFIG["bot_match_abs"]), float(CONFIG["bot_match_rel"]) * abs(y)):
+            return False
+    return True
+
+
+def drawing_source(ticker: str, rec: Optional[Dict[str, Any]],
+                   registry: Optional[Dict[str, Dict[str, Any]]] = None,
+                   approved: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Who owns the ticker's TradingView drawing.
+
+    rec = latest stored read (tv_drawings.json); registry = bot_drawings.json (levels the bot
+    drew); approved = approved_bot_drawings.json. Rules:
+      - read found + levels near-identical to the registry entry -> bot (also when the read's
+        rectangle text was "BOT - review needed"); explicit `upsert --source user` -> user;
+        found but levels changed vs the registry -> user (the user edited it = user-owned);
+        found, no registry entry -> user (unless the read itself says source bot).
+      - not found / never read, registry entry with levels, read older than the bot drawing ->
+        bot ("bot drawing - awaiting nightly read"); a not-found read AFTER the bot drew it -> "" with
+        status "bot drawing missing on chart" (counts as needs drawing again).
+      - registry entry without levels (data issue) -> status "needs manual drawing (data issue)".
+      - bot + approved (approved entry without levels, or levels matching) -> bot-approved
+        (counts like a user drawing). f_bot_review = tv_source == "bot".
+    """
+    t = str(ticker).strip().upper()
+    registry = load_bot_registry() if registry is None else registry
+    approved = load_bot_approved() if approved is None else approved
+    b = registry.get(t)
+    found = bool(rec and rec.get("found"))
+    override = str((rec or {}).get("source_override") or "")
+    src, status, note = ("user" if found else ""), "", ""
+    if b and not b.get("has_level", True):
+        status = "needs manual drawing (data issue)"
+        note = f"needs manual drawing (data issue): {b.get('reason') or 'no bot level'}"
+    elif b:
+        lv = (f"zone {b.get('zone_bottom')}-{b.get('zone_top')} entry {b.get('entry')} SL {b.get('sl')} "
+              f"TP {b.get('tp')} R:R {b.get('rr')}")
+        if found:
+            if override == "user":
+                src, status, note = "user", "user-owned (marked)", f"bot drawing marked user-owned ({lv})"
+            elif levels_match(rec, b):
+                src, status = "bot", "bot drawing on chart"
+                note = f"bot drawing (review needed): {lv}"
+            else:
+                src, status = "user", "user-edited bot drawing"
+                note = f"levels changed vs the bot drawing ({lv}) -> user-owned"
+        else:
+            drawn = str(b.get("drawn_at") or b.get("registered_at") or "")
+            read = str((rec or {}).get("read_at") or "")
+            if rec and read and drawn and read > drawn and override != "bot":
+                src, status = "", "bot drawing missing on chart"
+                note = f"read {rec.get('read_date')} found no drawing after the bot drew it ({lv})"
+            else:
+                src, status = "bot", "bot drawing - awaiting nightly read"
+                note = f"bot drawing (review needed, awaiting nightly read): {lv}"
+    elif found and (override == "bot" or str((rec or {}).get("source") or "") == "bot"):
+        src, status, note = "bot", "bot drawing on chart", "bot drawing (review needed)"
+    if src == "bot":
+        a = approved.get(t)
+        ref = rec if found else b
+        if a is not None and (not any(a.get(k) is not None for k in _LEVEL_KEYS) or levels_match(ref, a)):
+            src, status = "bot-approved", "approved by the user"
+            note = note.replace("(review needed", "(approved") if note else "bot drawing (approved)"
+    return {"tv_source": src, "f_bot_review": src == "bot", "tv_bot_status": status, "tv_bot_note": note}
+
+
+def apply_source(r: Dict[str, Any], ticker: str, rec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Fill SOURCE_COLS; a bot drawing awaiting review never counts: f_rr = False."""
+    r.update(drawing_source(ticker, rec))
+    if r["f_bot_review"]:
+        r["f_rr"] = False
+    return r
+
+
 def tv_note(r: Dict[str, Any]) -> str:
     """filter_notes entry explaining a False f_rr."""
+    if _truthy(r.get("f_bot_review")):
+        return "TV drawing by the bot - review needed (f_rr False until approved)"
     return ({"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}", "no": "TV drawing not found"}
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
@@ -487,8 +695,11 @@ NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "
 
 def compute_needs_drawing(r: Dict[str, Any]) -> bool:
     """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
-    AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status."""
-    return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes")
+    AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
+    Tickers with a bot drawing (tv_source bot / bot-approved, even before the nightly read
+    confirms it) are excluded: they show as "review needed" instead."""
+    return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes"
+                and str(r.get("tv_source") or "") not in ("bot", "bot-approved"))
 
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
@@ -526,7 +737,9 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
                 f"R:R={r['tv_rr']} zone=[{r['tv_zone_bottom']}-{r['tv_zone_top']}]")
     fails = []
     for f in r["failed_filters"].split(","):
-        if f == "rr":
+        if f == "rr" and _truthy(r.get("f_bot_review")):
+            f = "rr (bot drawing - review needed)"
+        elif f == "rr":
             rec_note = {"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}",
                         "no": "TV drawing not found"}.get(str(r.get("tv_found")), "no TV drawing read")
             f = f"rr ({rec_note})"
@@ -616,7 +829,7 @@ def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     s = {f: int(df[f].astype(bool).sum()) for f in ALL_FILTERS}
     if "needs_drawing" in df.columns:
         s["needs_drawing"] = int(df["needs_drawing"].map(lambda v: v is True or str(v) == "True").sum())
-    for f in INFO_FILTERS:
+    for f in INFO_FILTERS + ["f_tv_stale", "f_technical", "f_bot_review"]:
         if f in df.columns:
             s[f] = int(df[f].map(lambda v: v is True or str(v) == "True").sum())
     s["rows"] = int(len(df))

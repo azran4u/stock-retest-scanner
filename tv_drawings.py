@@ -37,6 +37,16 @@ Usage:
            closes; latest close < SL always), target hit (close >= TP), far (close > zone
            top + 3 weekly ATR(14)); refreshes cached prices of drawn tickers first;
            writes /workspace/stock-screener/tv_stale.{json,csv}
+  python tv_drawings.py upsert NYSE:SSB ...values... [--source bot|user] [--label "BOT - review needed"]
+        -> drawing source: bot drawings (registry match / --source bot / rectangle text
+           "BOT - review needed") are "review needed" and never count toward f_rr / PASS /
+           grok_sync_target until approved; changed levels vs the bot registry = user-owned
+  python tv_drawings.py bot register [--csv /workspace/drawing-learn/bot_drawings.csv]
+        -> /workspace/stock-screener/bot_drawings.json (levels the bot drew; no-level rows =
+           "needs manual drawing (data issue)")
+  python tv_drawings.py bot approve T [T ...] | bot unapprove T [T ...] | bot list | bot shots
+        -> approved_bot_drawings.json (approved bot drawings count like the user's own);
+           shots = attach new /workspace/tv_shots/<T>*.png images of bot drawings
   python tv_drawings.py show [TICKER]
 """
 from __future__ import annotations
@@ -186,7 +196,8 @@ def remove_screenshot(ticker: str) -> None:
 
 
 def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Optional[str] = None,
-           screenshot: Optional[Path] = None, **vals: Optional[float]) -> Dict[str, Any]:
+           screenshot: Optional[Path] = None, source: Optional[str] = None, label: Optional[str] = None,
+           **vals: Optional[float]) -> Dict[str, Any]:
     t = ticker.strip().upper()
     if ":" in t:
         symbol = t
@@ -203,6 +214,9 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
         rec["symbol"] = symbol
     store = load_store()
     prev = store.get(t) or {}
+    if label:
+        rec["label"] = label
+    _resolve_upsert_source(t, rec, prev, source, label)
     # every read gets a screenshot, found or not (not-found charts show as "needs drawing" cards)
     if screenshot is not None:
         rec["screenshot"] = save_screenshot(t, screenshot)
@@ -215,6 +229,32 @@ def upsert(ticker: str, found: bool, symbol: Optional[str] = None, read_at: Opti
     store[t] = rec
     save_store(store)
     return rec
+
+
+def _resolve_upsert_source(t: str, rec: Dict[str, Any], prev: Dict[str, Any],
+                           source: Optional[str], label: Optional[str]) -> None:
+    """Set rec['source_override'] / rec['source'] for a new read (see report_filters.drawing_source).
+
+    --source bot: the bot drew these levels -> (re)register them in bot_drawings.json.
+    --label with "BOT ... review": bot only if the levels still match the registry (or there is
+    no registry entry -> registered now); changed levels = the user edited it = user-owned.
+    --source user: user-owned regardless of the registry (kept on later reads while the levels
+    are unchanged)."""
+    import report_filters as rf
+
+    reg = dict(rf.load_bot_registry())
+    b = reg.get(t)
+    label_bot = bool(label and rf.BOT_LABEL_RE.search(label))
+    if source == "user":
+        rec["source_override"] = "user"
+    elif rec.get("found") and (source == "bot" or (label_bot and not b)):
+        rec["source_override"] = "bot"
+        if not b or not rf.levels_match(rec, b):
+            bot_register_levels(t, rec, note="registered by upsert --source bot" if source == "bot"
+                                else "registered from rectangle text 'BOT - review needed'")
+    elif prev.get("source_override") == "user" and rf.levels_match(prev, rec):
+        rec["source_override"] = "user"
+    rec["source"] = rf.drawing_source(t, rec)["tv_source"] or ("user" if rec.get("found") else "")
 
 
 def _hist_upto(hist_map: Dict[str, Any], ticker: str, report_date: Optional[date]) -> Optional[pd.DataFrame]:
@@ -272,17 +312,21 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
     df = df.copy()
     if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
-    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS:
+    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS + rf.SOURCE_COLS + rf.TECH_COLS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
     for c in ("f_rr", "status", "failed_filters", "reason", "needs_drawing"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
     for i, row in df.iterrows():
         r = {k: row[k] for k in df.columns}
-        rf.apply_tv(r, store.get(str(row["ticker"]).strip().upper()))
+        rec = store.get(str(row["ticker"]).strip().upper())
+        rf.apply_tv(r, rec)
+        rf.apply_source(r, str(row["ticker"]).strip(), rec)
         rf.finalize_status(r)
         reason = rf.status_reason(r, row.get("reason"))
         for c in TV_COLS + ["f_rr", "status", "failed_filters"]:
             df.at[i, c] = r[c]
+        for c in rf.SOURCE_COLS:
+            df.at[i, c] = _csv_val(r[c])
         df.at[i, "needs_drawing"] = _csv_val(rf.compute_needs_drawing(r))
         h = _hist_upto(hist_map, str(row["ticker"]).strip(), report_date)
         nz = rf.compute_near_zone(h, r)
@@ -291,6 +335,8 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         st = rf.compute_stale(h, r)
         for c in rf.STALE_COLS:
             df.at[i, c] = _csv_val(st[c])
+        for c, v in rf.compute_technical(h).items():
+            df.at[i, c] = _csv_val(v)
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
                  if n and "(f_rr False)" not in n]
         if not r["f_rr"]:
@@ -408,6 +454,126 @@ def stale_check(tickers: Optional[List[str]] = None, as_of: Optional[date] = Non
     return rows
 
 
+BOT_CSV = Path("/workspace/drawing-learn/bot_drawings.csv")
+SHOTS_DIR = Path("/workspace/tv_shots")
+
+
+def _write_json_key(p: Path, key: str, d: Dict[str, Any], **meta: Any) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    body = {**meta, "updated_at": datetime.now(TZ).isoformat(timespec="seconds"), key: dict(sorted(d.items()))}
+    p.write_text(json.dumps(body, indent=2, default=str) + "\n")
+    import report_filters as rf
+
+    rf._REG_CACHE.pop(str(p), None)  # mtime may not change within the same tick
+
+
+_BOT_META = {"note": "TradingView drawings made by the bot (Rectangle + Long Position) for needs-drawing tickers. "
+                     "source=bot -> 'review needed': NOT counted toward f_rr / PASS / grok_sync_target until "
+                     "listed in approved_bot_drawings.json; a read whose levels differ = user-owned."}
+_APPROVED_META = {"note": "Bot drawings the user approved (tv_drawings.py bot approve T). Entries with levels "
+                          "approve exactly those levels; an approved drawing counts like the user's own."}
+
+
+def bot_register_levels(t: str, levels: Dict[str, Any], note: str = "", symbol: Optional[str] = None) -> None:
+    import report_filters as rf
+
+    reg = dict(rf.load_bot_registry())
+    now = datetime.now(TZ).isoformat(timespec="seconds")
+    e = dict(reg.get(t) or {})
+    e.update({k: levels.get(k) for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr")})
+    e.update({"has_level": True, "data_issue": False, "registered_at": e.get("registered_at") or now,
+              "drawn_at": now, "note": note})
+    if symbol or levels.get("symbol"):
+        e["symbol"] = symbol or levels.get("symbol")
+    reg[t] = e
+    _write_json_key(rf.BOT_REGISTRY, "tickers", reg, **_BOT_META)
+
+
+def bot_register_csv(path: Path = BOT_CSV, drawn_at: Optional[str] = None) -> Dict[str, Any]:
+    """Register every row of the bot's drawing plan (bot_drawings.csv) as source=bot."""
+    import report_filters as rf
+
+    reg = dict(rf.load_bot_registry())
+    now = drawn_at or datetime.now(TZ).isoformat(timespec="seconds")
+    df = pd.read_csv(path)
+    for _, b in df.iterrows():
+        t = csv_ticker(str(b["ticker"]))
+        has = str(b.get("has_level")).strip().lower() == "true"
+        e = dict(reg.get(t) or {})
+        lv = {k: (None if pd.isna(b.get(k)) else round(float(b.get(k)), 4))
+              for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr")}
+        same = has and rf.levels_match(e, lv)
+        e.update(lv)
+        e.update({"symbol": b.get("tv_symbol") or t, "has_level": has,
+                  "data_issue": str(b.get("data_issue")).strip().lower() == "true",
+                  "kind": None if pd.isna(b.get("kind")) else b.get("kind"),
+                  "reason": None if pd.isna(b.get("reason")) else b.get("reason"),
+                  "data_date": b.get("data_date"), "tag": b.get("tag"), "source_csv": str(path),
+                  "registered_at": e.get("registered_at") or now,
+                  "drawn_at": e.get("drawn_at") if same and e.get("drawn_at") else now})
+        reg[t] = e
+    _write_json_key(rf.BOT_REGISTRY, "tickers", reg, **_BOT_META)
+    return reg
+
+
+def bot_approve(tickers: List[str], approve: bool = True, note: str = "") -> Dict[str, Any]:
+    import report_filters as rf
+
+    appr = dict(rf.load_bot_approved())
+    reg, store = rf.load_bot_registry(), load_store()
+    now = datetime.now(TZ).isoformat(timespec="seconds")
+    for raw in tickers:
+        t = csv_ticker(raw)
+        if not approve:
+            appr.pop(t, None)
+            continue
+        rec = store.get(t) or {}
+        src = rec if rec.get("found") else reg.get(t) or {}
+        appr[t] = {**{k: src.get(k) for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr")},
+                   "approved_at": now, "note": note}
+    _write_json_key(rf.BOT_APPROVED, "approved", appr, **_APPROVED_META)
+    return appr
+
+
+def bot_status_rows() -> List[Dict[str, Any]]:
+    import report_filters as rf
+
+    store = load_store()
+    out = []
+    for t, b in sorted(rf.load_bot_registry().items()):
+        d = rf.drawing_source(t, store.get(t))
+        out.append({"ticker": t, "symbol": b.get("symbol"), **d})
+    return out
+
+
+def bot_attach_shots() -> List[str]:
+    """Attach /workspace/tv_shots/<T>.png / <T>_bot*.png images written after the bot drew the
+    ticker (screenshot only; values untouched; needs a store record)."""
+    import report_filters as rf
+
+    store, done = load_store(), []
+    for t, b in rf.load_bot_registry().items():
+        if not b.get("has_level") or t not in store:
+            continue
+        since = datetime.fromisoformat(str(b.get("drawn_at") or b.get("registered_at"))).timestamp() - 6 * 3600
+        prev = store[t].get("screenshot_at")
+        cands = sorted([p for p in SHOTS_DIR.glob(f"{t}*.png")
+                        if re.fullmatch(rf"{re.escape(t)}(_bot\w*)?\.png", p.name) and p.stat().st_mtime >= since],
+                       key=lambda p: p.stat().st_mtime)
+        if not cands:
+            continue
+        p = cands[-1]
+        ts = datetime.fromtimestamp(p.stat().st_mtime, TZ)
+        if prev and datetime.fromisoformat(prev) >= ts:
+            continue
+        store[t].update({"screenshot": save_screenshot(t, p), "screenshot_at": ts.isoformat(timespec="seconds"),
+                         "screenshot_date": ts.date().isoformat()})
+        done.append(f"{t} <- {p.name}")
+    if done:
+        save_store(store)
+    return done
+
+
 def merge_files(paths: List[Path], grok_target: bool = True) -> None:
     """Merge the store into each CSV, recompute status, then regenerate grok_sync_target
     from the first (latest) report's status=PASS rows."""
@@ -428,8 +594,11 @@ def merge_files(paths: List[Path], grok_target: bool = True) -> None:
         n_near = int((out["f_near_zone"] == "True").sum())
         n_near_pass = int(((out["f_near_zone"] == "True") & (out["status"] == "PASS")).sum())
         n_nd = int((out["needs_drawing"] == "True").sum())
+        n_bot = int((out["f_bot_review"] == "True").sum())
+        n_tech = int((out["f_technical"] == "True").sum())
         print(f"merged {p} (as of {rd}): tv_found yes={n_yes} no={n_no}; status PASS={n_pass}; "
-              f"f_near_zone={n_near} (PASS {n_near_pass}); needs_drawing={n_nd}")
+              f"f_near_zone={n_near} (PASS {n_near_pass}); needs_drawing={n_nd}; "
+              f"bot review needed={n_bot}; technical={n_tech}")
     if grok_target and first is not None:
         from export_daily_report import write_grok_target, write_needs_drawing_target
 
@@ -460,6 +629,15 @@ def main() -> None:
     u.add_argument("--screenshot", type=Path, default=None,
                    help="chart screenshot (PNG/JPG/WebP on the box); resized <=1280px, WebP <300KB, "
                         "stored as charts/latest/<TICKER>.webp in the repo (overwritten each read)")
+    u.add_argument("--source", choices=["user", "bot"], default=None,
+                   help="who drew it: bot = review needed (registered in bot_drawings.json), user = user-owned")
+    u.add_argument("--label", default=None, help="rectangle text read on the chart ('BOT - review needed' = bot)")
+    bp = sub.add_parser("bot", help="bot drawings: register / approve / unapprove / list / shots")
+    bp.add_argument("action", choices=["register", "approve", "unapprove", "list", "shots"])
+    bp.add_argument("tickers", nargs="*")
+    bp.add_argument("--csv", type=Path, default=BOT_CSV)
+    bp.add_argument("--drawn-at", default=None, help="ISO time the bot drew them (default now)")
+    bp.add_argument("--note", default="")
     sc = sub.add_parser("screenshot", help="attach/replace only the chart screenshot (values unchanged)")
     sc.add_argument("ticker")
     sc.add_argument("path", type=Path)
@@ -497,14 +675,16 @@ def main() -> None:
         print(f"{len(syms)} targets -> {args.out_txt}, {args.out_json}")
     elif args.cmd == "upsert":
         if args.not_found:
-            rec = upsert(args.ticker, False, read_at=args.read_at, screenshot=args.screenshot)
+            rec = upsert(args.ticker, False, read_at=args.read_at, screenshot=args.screenshot,
+                         source=args.source, label=args.label)
         else:
             vals = {"zone_top": args.zone_top, "zone_bottom": args.zone_bottom, "entry": args.entry,
                     "sl": args.sl, "tp": args.tp, "rr": args.rr}
             missing = [k for k, v in vals.items() if v is None]
             if missing:
                 ap.error(f"missing values: {', '.join(missing)} (or pass --not-found)")
-            rec = upsert(args.ticker, True, read_at=args.read_at, screenshot=args.screenshot, **vals)
+            rec = upsert(args.ticker, True, read_at=args.read_at, screenshot=args.screenshot,
+                         source=args.source, label=args.label, **vals)
         print(json.dumps({csv_ticker(args.ticker): rec}, indent=2))
         if rec.get("found"):
             try:
@@ -525,6 +705,26 @@ def main() -> None:
                          "screenshot_date": now.date().isoformat()})
         save_store(store)
         print(json.dumps({t: store[t]}, indent=2))
+    elif args.cmd == "bot":
+        if args.action == "register":
+            reg = bot_register_csv(args.csv, args.drawn_at)
+            n_lv = sum(1 for v in reg.values() if v.get("has_level"))
+            print(f"bot registry: {len(reg)} tickers ({n_lv} with levels, {len(reg) - n_lv} need manual drawing)")
+        elif args.action in ("approve", "unapprove"):
+            if not args.tickers:
+                ap.error("give tickers")
+            appr = bot_approve(args.tickers, args.action == "approve", args.note)
+            print(f"approved bot drawings: {len(appr)} ({', '.join(sorted(appr)) or 'none'})")
+        elif args.action == "shots":
+            done = bot_attach_shots()
+            print(f"bot screenshots attached: {len(done)}" + (": " + ", ".join(done) if done else ""))
+        else:
+            rows = bot_status_rows()
+            by: Dict[str, int] = {}
+            for r in rows:
+                by[r["tv_bot_status"]] = by.get(r["tv_bot_status"], 0) + 1
+                print(f"  {r['ticker']:<6} {r['tv_source'] or '-':<13} {r['tv_bot_status']:<34} {r['tv_bot_note']}")
+            print(f"bot drawings: {len(rows)} " + str(by))
     elif args.cmd == "merge":
         merge_files(args.report or _default_reports(), grok_target=not args.no_grok_target)
     elif args.cmd == "stale":

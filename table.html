@@ -136,6 +136,9 @@
   .sizing-bar .sz-title { font-weight:600; font-size:.85rem; align-self:center; margin-right:4px; }
   .sizing-bar label.sz { flex-direction:column; }
   .sizing-bar input { width:96px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; }
+  .pill.tech { background: rgba(63,185,80,.12); color: #7ee787; border: 1px solid rgba(63,185,80,.45); white-space: nowrap; }
+  .pill.bot { background: rgba(163,113,247,.15); color: #d2a8ff; border: 1px solid rgba(163,113,247,.5); white-space: nowrap; }
+  .pill.botok { background: rgba(88,166,255,.12); color: #79c0ff; border: 1px solid rgba(88,166,255,.45); white-space: nowrap; }
   .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
   .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
   .pill.draw { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.45); white-space: nowrap; }
@@ -236,8 +239,10 @@ const FILTERS = [
   { col: "f_smooth_streak",   label: "smooth streak ≥5w",     core: false, tip: "≥ 5 consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks)" },
   { col: "f_weekly_reversal", label: "weekly reversal (5w)",  core: false, tip: "Reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, no zone gate) in the last 5 completed weeks" },
   { col: "f_daily_reversal",  label: "daily reversal (10d)",  core: false, tip: "Reversal-shape daily candle (same shapes, no zone gate) in the last 10 completed sessions" },
+  { col: "f_technical",       label: "technical (weekly uptrend)", core: false, tip: "Clear weekly uptrend: recent 26w high ≥ 1 weekly ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w (strength-3 swings, current-pullback lows ignored), 30w EMA higher than 26w ago. Empty with < 130 weekly bars. Informational, not part of status" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
-  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
+  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
+  { col: "f_bot_review",      label: "bot drawing — review needed", core: false, group: "TradingView", tip: "The bot drew the Rectangle + Long Position for this ticker (bot_drawings.json); it does NOT count toward f_rr / PASS / Grok until you approve it (approved_bot_drawings.json). Editing its levels on TradingView makes it yours" },
   { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Not part of status" },
   { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
   { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
@@ -249,8 +254,8 @@ const PREFERRED_COLS = [
   "ticker","status","failed_filters",
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
-  "weekly_bars",
-  "tv_found","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
+  "weekly_bars","tech_new_high_atr","tech_hh","tech_hl","tech_structure","tech_ema30_slope_pct","tech_ema_rising",
+  "tv_found","tv_source","tv_bot_status","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
   "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
@@ -260,7 +265,7 @@ const PREFERRED_COLS = [
 // never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
 // (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
-  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable", "f_tv_stale", "tv_stale_detail",
+  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable", "f_tv_stale", "tv_stale_detail", "tv_bot_note", "tech_detail",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
 const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
@@ -271,11 +276,12 @@ const NUM_COLS = new Set([
   "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist",
   "pos_shares","pos_cost","pos_risk","pos_profit",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
-  "weekly_bars","days_to_earnings","smooth_streak_weeks"
+  "weekly_bars","days_to_earnings","smooth_streak_weeks",
+  "tech_new_high_atr","tech_structure","tech_ema30_slope_pct"
 ]);
 const BOOL_COLS = new Set([
   ...FILTERS.map(f => f.col).filter(c => c !== "tv_found"), "smooth_pullback","earnings_known","earnings_blackout",
-  "weekly_reversal","daily_reversal","smooth_and_reversal","smooth_streak"
+  "weekly_reversal","daily_reversal","smooth_and_reversal","smooth_streak","tech_ema_rising"
 ]);
 const EARNINGS_BLACKOUT_DAYS = 14;
 const RR_BINS = [
@@ -378,6 +384,9 @@ const COL_LABELS = {
   tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
   tv_zone_dist: "dist to zone ($)",
   tv_stale: "drawing obsolete?",
+  tv_source: "drawing by", tv_bot_status: "bot drawing status", f_technical: "technical", f_bot_review: "bot review needed",
+  tech_new_high_atr: "new high (ATR)", tech_hh: "higher highs", tech_hl: "higher lows", tech_structure: "HH/HL score",
+  tech_ema30_slope_pct: "30w EMA 26w %", tech_ema_rising: "30w EMA rising",
   pos_shares: "Shares", pos_cost: "Cost", pos_risk: "Risk $", pos_profit: "Profit at TP $", pos_cap: "limited by", f_near_zone: "f_near_zone (≤1 ATR)",
   f_rr: "f_rr (TV R:R ≥ 2)",
 };
@@ -433,6 +442,19 @@ function tvLinksHtml(label, tradingviewUrl) {
 }
 
 
+// technical / bot-drawing badges (informational; bot drawings awaiting review never count toward PASS)
+function escAttr(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+function infoBadges(r) {
+  if (!r) return "";
+  let h = "";
+  if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr(r.tech_detail)}">technical</span>`;
+  if (r.f_bot_review === "True") h += ` <span class="pill bot" title="${escAttr(r.tv_bot_note)}">bot drawing: review needed</span>`;
+  else if (r.tv_source === "bot-approved") h += ` <span class="pill botok" title="${escAttr(r.tv_bot_note)}">bot drawing (approved)</span>`;
+  else if (r.tv_bot_status === "needs manual drawing (data issue)") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">needs manual drawing (data issue)</span>`;
+  else if (r.tv_bot_status === "bot drawing missing on chart") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">bot drawing missing on chart</span>`;
+  return h;
+}
+
 function fmt(col, val, row) {
   if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
@@ -446,6 +468,10 @@ function fmt(col, val, row) {
   if (col === "tv_stale") return val
     ? `<span class="pill stale" title="${String((row && row.tv_stale_detail) || "").replace(/"/g, "&quot;")}">${val}</span>`
     : (row && row.tv_found === "yes" ? '<span class="muted">ok</span>' : "");
+  if (col === "tv_bot_status" && val) return `<span title="${escAttr(row && row.tv_bot_note)}">${val}</span>`;
+  if (col === "tv_source" && val === "bot") return `<span class="pill bot" title="${escAttr(row && row.tv_bot_note)}">bot (review)</span>`;
+  if (col === "f_technical") return val === "True" ? `<span title="${escAttr(row && row.tech_detail)}">✓</span>`
+    : val === "False" ? `<span title="${escAttr(row && row.tech_detail)}">·</span>` : '<span class="muted">n/a</span>';
   if (col === "tv_found") return val === "yes" ? "yes" : val === "no" ? "no" : '<span class="muted">not checked</span>';
   if (val === null || val === undefined || val === "") return "";
   if (col === "finviz_url") return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
@@ -455,7 +481,7 @@ function fmt(col, val, row) {
       ? ` <span class="pill draw" title="$vol / short float / earnings / history pass, no TradingView drawing yet">needs drawing</span>` : "";
     const stl = row && row.tv_stale
       ? ` <span class="pill stale" title="${String(row.tv_stale_detail || "").replace(/"/g, "&quot;")}">drawing may be obsolete: ${row.tv_stale}</span>` : "";
-    return `<span class="pill ${cls}">${val}</span>${nd}${stl}`;
+    return `<span class="pill ${cls}">${val}</span>${nd}${stl}${infoBadges(row)}`;
   }
   if (BOOL_COLS.has(col)) return isTrueFlag(val) ? "✓" : "·";
   if (NUM_COLS.has(col)) {

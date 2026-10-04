@@ -35,6 +35,9 @@
   .pill.draw { background:rgba(210,153,34,.15); color:var(--warn); border:1px solid rgba(210,153,34,.45); }
   .card.nd { border-style:dashed; }
   .muted { color:var(--muted); font-style:italic; }
+  .pill.tech { background: rgba(63,185,80,.12); color: #7ee787; border: 1px solid rgba(63,185,80,.45); white-space: nowrap; }
+  .pill.bot { background: rgba(163,113,247,.15); color: #d2a8ff; border: 1px solid rgba(163,113,247,.5); white-space: nowrap; }
+  .pill.botok { background: rgba(88,166,255,.12); color: #79c0ff; border: 1px solid rgba(88,166,255,.45); white-space: nowrap; }
   .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
   .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
 
@@ -66,6 +69,8 @@
     <span>Report <select id="reportSel"></select></span>
     <label><input type="checkbox" id="fPass"/> PASS only</label>
     <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
+    <label title="Clear weekly uptrend: new 26w high ≥ 1 ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w, 30w EMA rising. Informational"><input type="checkbox" id="fTech"/> technical</label>
+    <label title="Drawings the bot made for needs-drawing tickers: not counted toward PASS until you approve them"><input type="checkbox" id="fBot"/> bot drawing — review needed</label>
     <label title="broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR)"><input type="checkbox" id="fStale"/> drawing may be obsolete</label>
     <label title="Drawn tickers with shares ≥ 1 under the position-sizing settings"><input type="checkbox" id="fTrad"/> tradable with account</label>
     <label title="Drawn tickers where the sizing gives 0 shares"><input type="checkbox" id="fNoTrad"/> not tradable (account limits)</label>
@@ -120,6 +125,19 @@ function distLabel(r) {
   return d === 0 ? "in zone" : d.toFixed(2) + " ATR";
 }
 
+// technical / bot-drawing badges (informational; bot drawings awaiting review never count toward PASS)
+function escAttr(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+function infoBadges(r) {
+  if (!r) return "";
+  let h = "";
+  if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr(r.tech_detail)}">technical</span>`;
+  if (r.f_bot_review === "True") h += ` <span class="pill bot" title="${escAttr(r.tv_bot_note)}">bot drawing: review needed</span>`;
+  else if (r.tv_source === "bot-approved") h += ` <span class="pill botok" title="${escAttr(r.tv_bot_note)}">bot drawing (approved)</span>`;
+  else if (r.tv_bot_status === "needs manual drawing (data issue)") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">needs manual drawing (data issue)</span>`;
+  else if (r.tv_bot_status === "bot drawing missing on chart") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">bot drawing missing on chart</span>`;
+  return h;
+}
+
 function card(r) {
   if (r.tv_found !== "yes") return ndCard(r);
   const sym = tvSymbolFromUrl(r.tradingview_url);
@@ -136,6 +154,7 @@ function card(r) {
   return `<div class="card">${shot}<div class="body">
     <div class="top"><div><div class="tk">${tk}</div><span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span>
       ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}
+      ${infoBadges(r) ? `<div style="margin-top:4px">${infoBadges(r)}</div>` : ""}
       ${r.tv_stale ? `<div style="margin-top:4px"><span class="pill stale" title="${esc(r.tv_stale_detail)}">drawing may be obsolete: ${esc(r.tv_stale)}</span></div>` : ""}</div>
       <div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div>
     <dl>
@@ -170,12 +189,18 @@ function tkHtml(r) {
 function ndCard(r) {
   const pass = String(r.status).toUpperCase() === "PASS";
   const ver = encodeURIComponent(r.tv_read_date || "");
-  const nd = r.needs_drawing === "True" ? `<span class="pill draw">needs drawing</span>` : `<span class="pill draw">no drawing</span>`;
-  return `<div class="card nd"><div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)} · no drawing found"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>
+  const isBot = r.tv_source === "bot" || r.tv_source === "bot-approved";
+  const nd = isBot ? "" : r.needs_drawing === "True" ? `<span class="pill draw">needs drawing</span>` : `<span class="pill draw">no drawing</span>`;
+  const shot = r.tv_screenshot
+    ? `<div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)} · ${isBot ? "bot drawing" : "no drawing found"}"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>`
+    : `<div class="shot ph">screenshot after next nightly read</div>`;
+  const botRR = (String(r.tv_bot_note || "").match(/R:R ([0-9.]+)/) || [])[1];
+  return `<div class="card nd">${shot}
     <div class="body"><div class="top"><div><div class="tk">${tkHtml(r)}</div>
-      <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}</div>
-      <div class="rr bad">—<small>no drawing</small></div></div>
-    <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl></div></div>`;
+      <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}${infoBadges(r)}</div>
+      <div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div>
+    <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl>
+    ${r.tv_bot_note ? `<div class="muted" style="font-size:.75rem;margin-top:4px">${esc(r.tv_bot_status)}: ${esc(r.tv_bot_note)}</div>` : ""}</div></div>`;
 }
 
 
@@ -201,23 +226,30 @@ function render() {
   const onlyPass = document.getElementById("fPass").checked;
   const onlyNear = document.getElementById("fNear").checked;
   const onlyStale = document.getElementById("fStale").checked;
+  const onlyTech = document.getElementById("fTech").checked;
+  const onlyBot = document.getElementById("fBot").checked;
   const onlyTrad = document.getElementById("fTrad").checked;
   const onlyNoTrad = document.getElementById("fNoTrad").checked;
-  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad, stale: onlyStale })); } catch (_) {}
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad, stale: onlyStale, tech: onlyTech, bot: onlyBot })); } catch (_) {}
   const sz = Sizing.load();
   const shares = r => { const z = Sizing.compute(r, sz); return z ? z.shares : null; };
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
-  const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot));
+  // + bot drawings awaiting the nightly read / review (cards even without a screenshot)
+  const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot)
+    || r.tv_source === "bot" || r.tv_source === "bot-approved");
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
     .filter(r => !onlyNear || r.f_near_zone === "True")
     .filter(r => !onlyStale || r.f_tv_stale === "True")
+    .filter(r => !onlyTech || r.f_technical === "True")
+    .filter(r => !onlyBot || r.f_bot_review === "True")
     .filter(r => !onlyTrad || (shares(r) ?? 0) >= 1)
     .filter(r => !onlyNoTrad || shares(r) === 0)
     .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
   const nDrawn = drawn.filter(r => r.tv_found === "yes").length;
+  const nBot = drawn.filter(r => r.f_bot_review === "True").length;
   document.getElementById("count").textContent =
-    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn, ${drawn.length - nDrawn} needs drawing)`;
+    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn, ${nBot} bot drawings to review, ${drawn.filter(r => r.tv_found !== "yes" && r.f_bot_review !== "True").length} other)`;
   document.getElementById("grid").innerHTML = sel.length ? sel.map(card).join("")
     : `<div class="empty">No drawn tickers match${drawn.length ? " the selected toggles" : " (no TradingView drawings in this report)"}.</div>`;
 }
@@ -237,6 +269,8 @@ async function init() {
     document.getElementById("fNear").checked = !!st.near;
     document.getElementById("fTrad").checked = !!st.trad;
     document.getElementById("fStale").checked = !!st.stale;
+    document.getElementById("fTech").checked = !!st.tech;
+    document.getElementById("fBot").checked = !!st.bot;
     document.getElementById("fNoTrad").checked = !!st.notrad;
   } catch (_) {}
   let reports = [];
@@ -250,6 +284,8 @@ async function init() {
   document.getElementById("fNear").addEventListener("change", render);
   document.getElementById("fTrad").addEventListener("change", render);
   document.getElementById("fStale").addEventListener("change", render);
+  document.getElementById("fTech").addEventListener("change", render);
+  document.getElementById("fBot").addEventListener("change", render);
   document.getElementById("fNoTrad").addEventListener("change", render);
   document.addEventListener("click", ev => {
     const a = ev.target.closest && ev.target.closest("a.tv-app");
