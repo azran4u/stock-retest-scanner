@@ -136,6 +136,8 @@
   .sizing-bar .sz-title { font-weight:600; font-size:.85rem; align-self:center; margin-right:4px; }
   .sizing-bar label.sz { flex-direction:column; }
   .sizing-bar input { width:96px; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 6px; }
+  .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
+  .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
   .pill.draw { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid rgba(210,153,34,.45); white-space: nowrap; }
   .err { color: var(--fail); padding: 12px; }
   .chart-filter {
@@ -183,6 +185,7 @@
     <div class="matchcount" id="matchCount">—</div>
   </div>
   <div id="sizingBar"></div>
+  <div id="staleBanner" class="stale-banner"></div>
   <div class="filters" id="filterBox"></div>
   <div class="schema-note" id="schemaNote" style="display:none"></div>
 </header>
@@ -236,6 +239,7 @@ const FILTERS = [
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
   { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Not part of status" },
   { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
+  { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (a close below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
   { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
@@ -245,7 +249,7 @@ const PREFERRED_COLS = [
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
   "weekly_bars",
-  "tv_found","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
+  "tv_found","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
   "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
@@ -255,7 +259,7 @@ const PREFERRED_COLS = [
 // never displayed: zone / entry / SL / TP / R:R come ONLY from the user's TradingView drawings
 // (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
-  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable",
+  "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable", "f_tv_stale", "tv_stale_detail",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
 const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
@@ -372,6 +376,7 @@ const COL_LABELS = {
   tv_zone_top: "zone top (TV)", tv_zone_bottom: "zone bottom (TV)", tv_read_date: "TV read date",
   tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
   tv_zone_dist: "dist to zone ($)",
+  tv_stale: "drawing obsolete?",
   pos_shares: "Shares", pos_cost: "Cost", pos_risk: "Risk $", pos_profit: "Profit at TP $", pos_cap: "limited by", f_near_zone: "f_near_zone (≤1 ATR)",
   f_rr: "f_rr (TV R:R ≥ 2)",
 };
@@ -437,6 +442,9 @@ function fmt(col, val, row) {
   // zone / entry / SL / TP / R:R: TradingView drawing values only; no drawing -> "not found"
   if (TV_LEVEL_COLS.has(col) && !(row && row.tv_found === "yes" && toNum(val) !== null))
     return '<span class="muted">not found</span>';
+  if (col === "tv_stale") return val
+    ? `<span class="pill stale" title="${String((row && row.tv_stale_detail) || "").replace(/"/g, "&quot;")}">${val}</span>`
+    : (row && row.tv_found === "yes" ? '<span class="muted">ok</span>' : "");
   if (col === "tv_found") return val === "yes" ? "yes" : val === "no" ? "no" : '<span class="muted">not checked</span>';
   if (val === null || val === undefined || val === "") return "";
   if (col === "finviz_url") return `<a href="${val}" target="_blank" rel="noopener">Finviz</a>`;
@@ -444,7 +452,9 @@ function fmt(col, val, row) {
     const cls = String(val).toUpperCase() === "PASS" ? "pass" : "fail";
     const nd = row && isTrueFlag(row.needs_drawing)
       ? ` <span class="pill draw" title="$vol / short float / earnings / history pass, no TradingView drawing yet">needs drawing</span>` : "";
-    return `<span class="pill ${cls}">${val}</span>${nd}`;
+    const stl = row && row.tv_stale
+      ? ` <span class="pill stale" title="${String(row.tv_stale_detail || "").replace(/"/g, "&quot;")}">drawing may be obsolete: ${row.tv_stale}</span>` : "";
+    return `<span class="pill ${cls}">${val}</span>${nd}${stl}`;
   }
   if (BOOL_COLS.has(col)) return isTrueFlag(val) ? "✓" : "·";
   if (NUM_COLS.has(col)) {
@@ -735,8 +745,28 @@ async function loadReport(path, dateLabel) {
   document.getElementById("cBlackout").textContent = nBo;
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
   refresh(false);  // restoring on load must not rewrite storage
+  loadStaleBanner(allRows.map(r => r.ticker));
   document.getElementById("footerNote").textContent =
     `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS = all core filters incl. TV R:R ≥ 2 · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
+}
+
+
+// Obsolete-drawing banner (tv_stale.json, published by tv_drawings.py stale/merge; covers drawn
+// tickers that are NOT in this report too, e.g. ones that dropped out of the FinViz list)
+async function loadStaleBanner(reportTickers) {
+  const el = document.getElementById("staleBanner");
+  if (!el) return;
+  try {
+    const j = await (await fetch("tv_stale.json?t=" + Date.now())).json();
+    const fl = j.flagged_tickers || [];
+    if (!fl.length) { el.style.display = "none"; return; }
+    const inRep = new Set(reportTickers || []);
+    el.innerHTML = `<b>⚠ ${fl.length} TradingView drawing${fl.length > 1 ? "s" : ""} may be obsolete</b> (checked ${String(j.generated_at || "").slice(0, 16).replace("T", " ")}): ` +
+      fl.map(r => `<span class="pill stale" title="${String(r.detail || "").replace(/"/g, "&quot;")}">${r.symbol || r.ticker}: ${r.flag}</span>` +
+        (inRep.has(r.ticker) ? "" : `<span class="muted" style="font-size:.75rem"> (not in this report)</span>`)).join(" ") +
+      ` <span class="muted" style="font-size:.75rem">hover for numbers · redraw in TradingView, the next nightly read picks it up</span>`;
+    el.style.display = "block";
+  } catch (_) { el.style.display = "none"; }
 }
 
 // Position sizing (client-side; settings bar shared with charts.html via localStorage)

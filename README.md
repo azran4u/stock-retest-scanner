@@ -38,6 +38,7 @@ Every FinViz row, every filter computed independently (`report_filters.py`):
 | `f_daily_reversal` | reversal-shape daily candle in last 10 completed sessions |
 | `f_near_zone` | TV drawings only (else empty): latest daily close within 1 × weekly ATR(14) of the TV zone (0 inside it); values `tv_price`, `tv_weekly_atr`, `tv_zone_dist`, `tv_zone_dist_atr`. Informational — not part of status / Grok target; refreshed by the nightly export and `tv_drawings.py merge` |
 | `needs_drawing` | $vol + short float + no earnings ≤14d + history pass AND no TradingView drawing (not found or never read) → `grok_needs_drawing_target.{json,txt}` (daily export + `tv_drawings.py merge`). Not part of status / `grok_sync_target` |
+| `f_tv_stale`, `tv_stale`, `tv_stale_detail` | TV drawings only: drawing may be obsolete — `broken` (a close below the drawn SL since the read date; below the zone but above SL does not count), `target hit` (latest close ≥ TP), `far` (latest close > zone top + 3 weekly ATR). Informational — not part of status. `python tv_drawings.py stale` → `tv_stale.json` (+ `/workspace/stock-screener/tv_stale.{json,csv}`); also refreshed by the export and `merge` |
 
 `status=PASS` = `f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history AND f_rr` (Grok watchlist), with `f_rr` = TradingView drawing found AND TV R:R ≥ 2 — a missing drawing fails.
 
@@ -60,7 +61,7 @@ See `RULES.md` § Reports for the full process.
 
 ## TradingView chart gallery (`charts.html`)
 
-Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus read-but-not-found tickers that have a screenshot (badge "needs drawing", no R:R): chart screenshot (click to enlarge), status, TV R:R, zone, entry / SL / TP, distance to zone (ATR), read date; sort R:R desc; toggles PASS only / near zone only (saved in localStorage). Screenshots: `python tv_drawings.py upsert NYSE:ST …values… --screenshot /workspace/tv_shots/ST.png` → `charts/latest/ST.webp` (≤1280px, <300KB, overwritten each read; CSV column `tv_screenshot`); not-found reads too: `upsert NYSE:XYZ --not-found --screenshot /workspace/tv_shots/XYZ.png`. Cards without an image show "screenshot after next nightly read".
+Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus read-but-not-found tickers that have a screenshot (badge "needs drawing", no R:R): chart screenshot (click to enlarge), status, TV R:R, zone, entry / SL / TP, distance to zone (ATR), read date; sort R:R desc; toggles PASS only / near zone only / drawing may be obsolete (saved in localStorage); red badge + banner (from `tv_stale.json`) for drawings that may be obsolete. Screenshots: `python tv_drawings.py upsert NYSE:ST …values… --screenshot /workspace/tv_shots/ST.png` → `charts/latest/ST.webp` (≤1280px, <300KB, overwritten each read; CSV column `tv_screenshot`); not-found reads too: `upsert NYSE:XYZ --not-found --screenshot /workspace/tv_shots/XYZ.png`. Cards without an image show "screenshot after next nightly read".
 
 ## Position sizing (client-side)
 

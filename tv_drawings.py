@@ -31,6 +31,11 @@ Usage:
            tv_read_date (latest stored reading per ticker) into latest.csv + its dated
            twin, sets f_rr = found AND tv_rr >= 2, recomputes status / failed_filters /
            reason, and regenerates /workspace/stock-screener/grok_sync_target.{json,txt}
+  python tv_drawings.py stale [--no-refresh] [--as-of YYYY-MM-DD] [--ticker T]
+        -> flags found drawings that may be obsolete: broken (weekly close < SL since the
+           read week, or latest close < SL), target hit (close >= TP), far (close > zone
+           top + 3 weekly ATR(14)); refreshes cached prices of drawn tickers first;
+           writes /workspace/stock-screener/tv_stale.{json,csv}
   python tv_drawings.py show [TICKER]
 """
 from __future__ import annotations
@@ -266,7 +271,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
     df = df.copy()
     if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
-    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS:
+    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
     for c in ("f_rr", "status", "failed_filters", "reason", "needs_drawing"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
@@ -278,9 +283,13 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         for c in TV_COLS + ["f_rr", "status", "failed_filters"]:
             df.at[i, c] = r[c]
         df.at[i, "needs_drawing"] = _csv_val(rf.compute_needs_drawing(r))
-        nz = rf.compute_near_zone(_hist_upto(hist_map, str(row["ticker"]).strip(), report_date), r)
+        h = _hist_upto(hist_map, str(row["ticker"]).strip(), report_date)
+        nz = rf.compute_near_zone(h, r)
         for c, v in nz.items():
             df.at[i, c] = _csv_val(v)
+        st = rf.compute_stale(h, r)
+        for c in rf.STALE_COLS:
+            df.at[i, c] = _csv_val(st[c])
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
                  if n and "(f_rr False)" not in n]
         if not r["f_rr"]:
@@ -319,6 +328,81 @@ def _report_date(paths: List[Path]) -> str:
     return _today().isoformat()
 
 
+STALE_JSON = GROK_TARGET_DIR / "tv_stale.json"
+STALE_CSV = GROK_TARGET_DIR / "tv_stale.csv"
+STALE_FIELDS = ["ticker", "symbol", "flag", "detail", "zone_bottom", "zone_top", "sl", "tp", "rr",
+                "latest_close", "last_bar", "weekly_atr", "dist_above_top_atr", "read_date"]
+
+
+def _rec_as_row(t: str, rec: Dict[str, Any]) -> Dict[str, Any]:
+    r = {"ticker": t, "tv_found": "yes" if rec.get("found") else "no", "tv_read_date": rec.get("read_date") or ""}
+    for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
+        r[f"tv_{k}"] = rec.get(k)
+    return r
+
+
+def stale_check(tickers: Optional[List[str]] = None, as_of: Optional[date] = None, refresh: bool = True,
+                write: bool = True, quiet: bool = False) -> List[Dict[str, Any]]:
+    """Obsolete-drawing check for every found drawing in the store (or `tickers`).
+
+    Prices: /workspace/hist_cache.pkl (same data as the report / near-zone filter).
+    refresh=True first appends missing daily bars (stock_screen.refresh_hist_map, only for
+    drawn tickers whose cache is behind the last US session, e.g. tickers that dropped out
+    of the FinViz list). Writes STALE_JSON / STALE_CSV (all checked tickers, flag '' = ok)
+    unless write=False. Returns the rows.
+    """
+    import report_filters as rf
+    import stock_screen as ss
+
+    store = {k: v for k, v in load_store().items() if v.get("found")}
+    if tickers:
+        want = {csv_ticker(t) for t in tickers}
+        store = {k: v for k, v in store.items() if k in want}
+    hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
+    if refresh and store:
+        target = ss.last_us_session_date().date()
+        behind = [t for t in store if (hist_map.get(t) is None or getattr(hist_map.get(t), "empty", True)
+                  or ss._normalize_ohlcv_index(hist_map[t]).index.max().date() < target)]
+        if behind:
+            print(f"[stale] refreshing cached prices for {len(behind)} drawn tickers: {' '.join(behind)}")
+            hist_map = ss.refresh_hist_map(hist_map, behind)
+            pd.to_pickle(hist_map, ss.HIST_CACHE)
+    rows = []
+    for t, rec in sorted(store.items()):
+        r = _rec_as_row(t, rec)
+        st = rf.compute_stale(_hist_upto(hist_map, t, as_of), r)
+        rows.append({"ticker": t, "symbol": rec.get("symbol") or "", "flag": st["tv_stale"] or "",
+                     "detail": st["tv_stale_detail"] or "", "zone_bottom": rec.get("zone_bottom"),
+                     "zone_top": rec.get("zone_top"), "sl": rec.get("sl"), "tp": rec.get("tp"),
+                     "rr": rec.get("rr"), "latest_close": st["latest_close"], "last_bar": st["last_bar"],
+                     "weekly_atr": st["weekly_atr"], "dist_above_top_atr": st["dist_above_top_atr"],
+                     "read_date": rec.get("read_date")})
+    flagged = [r for r in rows if r["flag"]]
+    if write and not tickers:
+        STALE_JSON.write_text(json.dumps({
+            "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
+            "as_of": as_of.isoformat() if as_of else "latest cached close",
+            "rules": {"broken": "weekly close (since read week, incl. current week) < SL, or latest close < SL",
+                      "target hit": "latest close >= TP",
+                      "far": f"latest close > zone top + {rf.CONFIG['stale_far_atr']:g} x weekly ATR(14)"},
+            "checked": len(rows), "flagged": len(flagged),
+            "flagged_tickers": [r for r in flagged], "all": rows}, indent=2, default=str) + "\n")
+        pd.DataFrame(rows, columns=STALE_FIELDS).to_csv(STALE_CSV, index=False)
+        try:  # published copy for the dashboard / charts banner (small JSON, overwritten)
+            (REPO / "tv_stale.json").write_text(STALE_JSON.read_text())
+        except Exception:
+            pass
+    if not quiet:
+        by = {}
+        for r in flagged:
+            for f in r["flag"].split(", "):
+                by[f] = by.get(f, 0) + 1
+        print(f"tv stale: {len(rows)} drawings checked, {len(flagged)} may be obsolete "
+              f"({', '.join(f'{k} {v}' for k, v in sorted(by.items())) or 'none'})"
+              + (": " + ", ".join(f"{r['ticker']} [{r['flag']}]" for r in flagged) if flagged else ""))
+    return rows
+
+
 def merge_files(paths: List[Path], grok_target: bool = True) -> None:
     """Merge the store into each CSV, recompute status, then regenerate grok_sync_target
     from the first (latest) report's status=PASS rows."""
@@ -348,6 +432,10 @@ def merge_files(paths: List[Path], grok_target: bool = True) -> None:
         print(f"grok target {gp}: {json.loads(gp.read_text())['symbols']}")
         np_ = write_needs_drawing_target(first, _report_date(paths), GROK_TARGET_DIR)
         print(f"needs-drawing target {np_}: {json.loads(np_.read_text())['symbols']}")
+    try:  # obsolete-drawing report for ALL found drawings (latest cached closes, no network)
+        stale_check(refresh=False)
+    except Exception as e:  # never block the merge
+        print(f"[stale] skipped: {e}")
 
 
 def main() -> None:
@@ -374,6 +462,12 @@ def main() -> None:
     m.add_argument("--report", type=Path, action="append", default=None)
     m.add_argument("--today", default=None, help="ignored (kept for compatibility)")
     m.add_argument("--no-grok-target", action="store_true", help="don't regenerate grok_sync_target")
+    stp = sub.add_parser("stale", help="flag drawings that may be obsolete (broken / target hit / far)")
+    stp.add_argument("--no-refresh", action="store_true", help="don't append missing daily bars first")
+    stp.add_argument("--as-of", default=None, help="YYYY-MM-DD cut-off (default: latest cached close)")
+    stp.add_argument("--ticker", action="append", default=None, help="check only these (no files written)")
+    stp.add_argument("--close-basis", choices=["daily", "weekly"], default=None,
+                     help="broken = any daily close < SL since the read date (default) or weekly closes only")
     s = sub.add_parser("show")
     s.add_argument("ticker", nargs="?")
     args = ap.parse_args()
@@ -406,6 +500,14 @@ def main() -> None:
                 ap.error(f"missing values: {', '.join(missing)} (or pass --not-found)")
             rec = upsert(args.ticker, True, read_at=args.read_at, screenshot=args.screenshot, **vals)
         print(json.dumps({csv_ticker(args.ticker): rec}, indent=2))
+        if rec.get("found"):
+            try:
+                r = stale_check([args.ticker], refresh=False, write=False, quiet=True)
+                if r:
+                    print(f"stale check {r[0]['ticker']}: {r[0]['flag'] or 'ok'}"
+                          + (f" ({r[0]['detail']})" if r[0]["detail"] else ""))
+            except Exception as e:
+                print(f"[stale] skipped: {e}")
     elif args.cmd == "screenshot":
         t = csv_ticker(args.ticker)
         store = load_store()
@@ -419,6 +521,20 @@ def main() -> None:
         print(json.dumps({t: store[t]}, indent=2))
     elif args.cmd == "merge":
         merge_files(args.report or _default_reports(), grok_target=not args.no_grok_target)
+    elif args.cmd == "stale":
+        if args.close_basis:
+            import report_filters as rf
+
+            rf.CONFIG["stale_close_basis"] = args.close_basis
+        rows = stale_check(args.ticker, as_of=date.fromisoformat(args.as_of) if args.as_of else None,
+                           refresh=not args.no_refresh)
+        for r in rows:
+            if r["flag"]:
+                print(f"  {r['symbol'] or r['ticker']:<14} {r['flag']:<18} zone {r['zone_bottom']}-{r['zone_top']} "
+                      f"SL {r['sl']} TP {r['tp']} close {r['latest_close']} ({r['last_bar']}) "
+                      f"{r['dist_above_top_atr']} ATR vs top | {r['detail']}")
+        if not args.ticker:
+            print(f"-> {STALE_JSON}, {STALE_CSV}")
     elif args.cmd == "show":
         st = load_store()
         print(json.dumps(st.get(args.ticker.upper()) if args.ticker else st, indent=2))

@@ -34,6 +34,10 @@
   .pill.fail { background:rgba(248,81,73,.12); color:var(--fail); border:1px solid rgba(248,81,73,.4); }
   .pill.draw { background:rgba(210,153,34,.15); color:var(--warn); border:1px solid rgba(210,153,34,.45); }
   .card.nd { border-style:dashed; }
+  .muted { color:var(--muted); font-style:italic; }
+  .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
+  .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
+
   .rr { font-size:2rem; font-weight:800; line-height:1; text-align:right; }
   .rr small { display:block; font-size:.7rem; color:var(--muted); font-weight:500; }
   .rr.good { color:var(--pass); } .rr.bad { color:var(--warn); }
@@ -62,11 +66,13 @@
     <span>Report <select id="reportSel"></select></span>
     <label><input type="checkbox" id="fPass"/> PASS only</label>
     <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
+    <label title="broken (close below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR)"><input type="checkbox" id="fStale"/> drawing may be obsolete</label>
     <label title="Drawn tickers with shares ≥ 1 under the position-sizing settings"><input type="checkbox" id="fTrad"/> tradable with account</label>
     <label title="Drawn tickers where the sizing gives 0 shares"><input type="checkbox" id="fNoTrad"/> not tradable (account limits)</label>
     <span id="count"></span>
   </div>
   <div id="sizingBar"></div>
+  <div id="staleBanner" class="stale-banner"></div>
 </header>
 <main>
   <div class="grid" id="grid"></div>
@@ -129,7 +135,8 @@ function card(r) {
     : esc(r.ticker);
   return `<div class="card">${shot}<div class="body">
     <div class="top"><div><div class="tk">${tk}</div><span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span>
-      ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}</div>
+      ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}
+      ${r.tv_stale ? `<div style="margin-top:4px"><span class="pill stale" title="${esc(r.tv_stale_detail)}">drawing may be obsolete: ${esc(r.tv_stale)}</span></div>` : ""}</div>
       <div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div>
     <dl>
       <dt>Zone</dt><dd>${f2(r.tv_zone_bottom)}–${f2(r.tv_zone_top)}</dd>
@@ -171,12 +178,32 @@ function ndCard(r) {
     <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl></div></div>`;
 }
 
+
+// Obsolete-drawing banner (tv_stale.json, published by tv_drawings.py stale/merge; covers drawn
+// tickers that are NOT in this report too, e.g. ones that dropped out of the FinViz list)
+async function loadStaleBanner(reportTickers) {
+  const el = document.getElementById("staleBanner");
+  if (!el) return;
+  try {
+    const j = await (await fetch("tv_stale.json?t=" + Date.now())).json();
+    const fl = j.flagged_tickers || [];
+    if (!fl.length) { el.style.display = "none"; return; }
+    const inRep = new Set(reportTickers || []);
+    el.innerHTML = `<b>⚠ ${fl.length} TradingView drawing${fl.length > 1 ? "s" : ""} may be obsolete</b> (checked ${String(j.generated_at || "").slice(0, 16).replace("T", " ")}): ` +
+      fl.map(r => `<span class="pill stale" title="${String(r.detail || "").replace(/"/g, "&quot;")}">${r.symbol || r.ticker}: ${r.flag}</span>` +
+        (inRep.has(r.ticker) ? "" : `<span class="muted" style="font-size:.75rem"> (not in this report)</span>`)).join(" ") +
+      ` <span class="muted" style="font-size:.75rem">hover for numbers · redraw in TradingView, the next nightly read picks it up</span>`;
+    el.style.display = "block";
+  } catch (_) { el.style.display = "none"; }
+}
+
 function render() {
   const onlyPass = document.getElementById("fPass").checked;
   const onlyNear = document.getElementById("fNear").checked;
+  const onlyStale = document.getElementById("fStale").checked;
   const onlyTrad = document.getElementById("fTrad").checked;
   const onlyNoTrad = document.getElementById("fNoTrad").checked;
-  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad })); } catch (_) {}
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad, stale: onlyStale })); } catch (_) {}
   const sz = Sizing.load();
   const shares = r => { const z = Sizing.compute(r, sz); return z ? z.shares : null; };
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
@@ -184,6 +211,7 @@ function render() {
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
     .filter(r => !onlyNear || r.f_near_zone === "True")
+    .filter(r => !onlyStale || r.f_tv_stale === "True")
     .filter(r => !onlyTrad || (shares(r) ?? 0) >= 1)
     .filter(r => !onlyNoTrad || shares(r) === 0)
     .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
@@ -198,6 +226,7 @@ async function loadReport(path) {
   const res = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
   rows = parseCSV(await res.text());
   render();
+  loadStaleBanner(rows.map(r => r.ticker));
 }
 
 async function init() {
@@ -207,6 +236,7 @@ async function init() {
     document.getElementById("fPass").checked = !!st.pass;
     document.getElementById("fNear").checked = !!st.near;
     document.getElementById("fTrad").checked = !!st.trad;
+    document.getElementById("fStale").checked = !!st.stale;
     document.getElementById("fNoTrad").checked = !!st.notrad;
   } catch (_) {}
   let reports = [];
@@ -219,6 +249,7 @@ async function init() {
   document.getElementById("fPass").addEventListener("change", render);
   document.getElementById("fNear").addEventListener("change", render);
   document.getElementById("fTrad").addEventListener("change", render);
+  document.getElementById("fStale").addEventListener("change", render);
   document.getElementById("fNoTrad").addEventListener("change", render);
   document.addEventListener("click", ev => {
     const a = ev.target.closest && ev.target.closest("a.tv-app");

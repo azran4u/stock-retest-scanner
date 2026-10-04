@@ -397,6 +397,12 @@ def main() -> None:
         print(f"  grok target {gp}")
         np_ = write_needs_drawing_target(df, args.date, args.grok_target_dir)
         print(f"  needs-drawing target {np_}")
+    try:  # obsolete-drawing report (tv_stale.{json,csv}) for every found drawing; cached closes only
+        import tv_drawings  # noqa: E402
+
+        tv_drawings.stale_check(refresh=False)
+    except Exception as e:  # never block the report
+        print(f"  [stale] skipped: {e}")
 
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())

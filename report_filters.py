@@ -79,6 +79,11 @@ CONFIG: Dict[str, Any] = {
     # price near the TradingView support zone (TV drawings only; NOT part of status)
     "near_zone_atr_mult": 1.0,                           # f_near_zone: distance <= 1 x weekly ATR
     "near_zone_atr_period": 14,                          # weekly ATR(14), same ATR as the retest scan
+    # obsolete-drawing check (informational, NOT part of status)
+    "stale_far_atr": 3.0,                                # "far": latest close > zone top + 3 x weekly ATR
+    # "broken" close basis: "daily" = any daily close since the read date < SL (each one was
+    # "the current week's latest close" on the night it printed); "weekly" = W-FRI closes only
+    "stale_close_basis": "daily",
 }
 
 CORE_FILTERS = [  # status=PASS iff all true
@@ -92,6 +97,9 @@ TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv
 # price vs the TradingView zone (only for tv_found=yes; otherwise all empty, f_near_zone empty too)
 NEAR_ZONE_COLS = ["tv_price", "tv_weekly_atr", "tv_zone_dist", "tv_zone_dist_atr"]
 INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in status)
+# obsolete-drawing check (tv_found=yes only): f_tv_stale True/False, tv_stale = "broken" /
+# "target hit" / "far" (comma-joined when several), tv_stale_detail = numbers
+STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
 
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
@@ -99,7 +107,7 @@ REPORT_COLS = [
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
-    *TV_COLS, *NEAR_ZONE_COLS,
+    *TV_COLS, *NEAR_ZONE_COLS, *STALE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "daily_reversal_kind", "daily_reversal_date",
@@ -309,6 +317,7 @@ def compute_row(
     if not r["f_rr"]:
         notes.append(tv_note(r))
     r.update(compute_near_zone(hist, r))
+    r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
 
     # --- smooth streak / reversals (completed bars only) --------------------
     as_of = _as_of_ts(report_date)
@@ -393,6 +402,73 @@ def compute_near_zone(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[s
         out["tv_weekly_atr"] = round(atr, 4)
         out["tv_zone_dist_atr"] = round(dist / atr, 4)
         out["f_near_zone"] = bool(dist <= float(CONFIG["near_zone_atr_mult"]) * atr)
+    return out
+
+
+def compute_stale(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, Any]:
+    """Has a TradingView drawing gone obsolete? (tv_found=yes rows only; else all None)
+
+    hist = cached daily OHLCV already cut at the as-of date. Flags (all that apply):
+      broken     - a close below the drawn SL since the read date: with
+                   stale_close_basis="daily" (default) any daily close (= the current
+                   week's latest close on the night it printed, plus every weekly close);
+                   with "weekly" only W-FRI weekly closes (completed weeks + the current
+                   week's latest close). Lows / wicks never count, and a close below the
+                   zone that stays above the SL does NOT break it.
+      target hit - latest close >= drawn TP.
+      far        - latest close > zone top + stale_far_atr (3) x weekly ATR(14).
+    """
+    out: Dict[str, Any] = {"f_tv_stale": None, "tv_stale": None, "tv_stale_detail": None,
+                           "latest_close": None, "last_bar": None, "weekly_atr": None,
+                           "dist_above_top_atr": None}
+    if str(r.get("tv_found")) != "yes" or hist is None or len(hist) == 0:
+        return out
+    top, sl, tp = _num(r.get("tv_zone_top")), _num(r.get("tv_sl")), _num(r.get("tv_tp"))
+    price = float(hist["Close"].iloc[-1])
+    out["latest_close"] = round(price, 4)
+    out["last_bar"] = pd.Timestamp(hist.index[-1]).date().isoformat()
+    weekly = ss.to_weekly(hist)
+    atr = None
+    try:
+        a = ss.atr_series(weekly, int(CONFIG["near_zone_atr_period"])).dropna()
+        atr = float(a.iloc[-1]) if len(a) else None
+    except Exception:
+        atr = None
+    out["weekly_atr"] = None if atr is None else round(atr, 4)
+    flags, detail = [], []
+    if sl is not None:
+        daily_basis = str(CONFIG.get("stale_close_basis", "daily")) == "daily"
+        bars = hist if daily_basis else weekly
+        try:
+            rd = pd.Timestamp(str(r.get("tv_read_date"))[:10])
+            # daily: sessions on/after the read date; weekly: W-FRI bars ending on/after it
+            win = bars[bars.index.normalize() >= rd]
+        except Exception:
+            win = bars.iloc[-1:]
+        below = win[win["Close"] < sl]
+        if len(below) or price < sl:
+            flags.append("broken")
+            if len(below):
+                d0 = pd.Timestamp(below.index[0]).date().isoformat()
+                lo = below["Close"].idxmin()
+                kind = "close" if daily_basis else "weekly close"
+                detail.append(f"{kind} {float(below['Close'].iloc[0]):.2f} < SL {sl:g} on {d0}"
+                              + (f" ({len(below)} closes below, lowest {float(below['Close'].min()):.2f} on "
+                                 f"{pd.Timestamp(lo).date().isoformat()})" if len(below) > 1 else ""))
+            else:
+                detail.append(f"close {price:.2f} < SL {sl:g}")
+    if tp is not None and price >= tp:
+        flags.append("target hit")
+        detail.append(f"close {price:.2f} >= TP {tp:g}")
+    if top is not None and atr and atr > 0:
+        dist = (price - top) / atr
+        out["dist_above_top_atr"] = round(dist, 4)
+        if dist > float(CONFIG["stale_far_atr"]):
+            flags.append("far")
+            detail.append(f"close {price:.2f} is {dist:.2f} ATR above zone top {top:g}")
+    out["f_tv_stale"] = bool(flags)
+    out["tv_stale"] = ", ".join(flags)
+    out["tv_stale_detail"] = "; ".join(detail)
     return out
 
 
