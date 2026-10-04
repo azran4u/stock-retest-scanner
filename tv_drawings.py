@@ -31,9 +31,10 @@ Usage:
            tv_read_date (latest stored reading per ticker) into latest.csv + its dated
            twin, sets f_rr = found AND tv_rr >= 2, recomputes status / failed_filters /
            reason, and regenerates /workspace/stock-screener/grok_sync_target.{json,txt}
-  python tv_drawings.py stale [--no-refresh] [--as-of YYYY-MM-DD] [--ticker T]
-        -> flags found drawings that may be obsolete: broken (weekly close < SL since the
-           read week, or latest close < SL), target hit (close >= TP), far (close > zone
+  python tv_drawings.py stale [--no-refresh] [--as-of YYYY-MM-DD] [--ticker T] [--close-basis low|daily|weekly]
+        -> flags found drawings that may be obsolete: broken (ANY price below the SL since the
+           read date = a daily low < SL by default; --close-basis daily/weekly = daily/weekly
+           closes; latest close < SL always), target hit (close >= TP), far (close > zone
            top + 3 weekly ATR(14)); refreshes cached prices of drawn tickers first;
            writes /workspace/stock-screener/tv_stale.{json,csv}
   python tv_drawings.py show [TICKER]
@@ -382,7 +383,11 @@ def stale_check(tickers: Optional[List[str]] = None, as_of: Optional[date] = Non
         STALE_JSON.write_text(json.dumps({
             "generated_at": datetime.now(TZ).isoformat(timespec="seconds"),
             "as_of": as_of.isoformat() if as_of else "latest cached close",
-            "rules": {"broken": "weekly close (since read week, incl. current week) < SL, or latest close < SL",
+            "close_basis": rf.CONFIG.get("stale_close_basis", "low"),
+            "rules": {"broken": {"low": "any daily low (intraday wick) since the read date < SL, or latest close < SL",
+                                 "daily": "any daily close since the read date < SL, or latest close < SL",
+                                 "weekly": "weekly close (since read week, incl. current week) < SL, or latest close < SL"
+                                 }.get(str(rf.CONFIG.get("stale_close_basis", "low")), ""),
                       "target hit": "latest close >= TP",
                       "far": f"latest close > zone top + {rf.CONFIG['stale_far_atr']:g} x weekly ATR(14)"},
             "checked": len(rows), "flagged": len(flagged),
@@ -466,8 +471,9 @@ def main() -> None:
     stp.add_argument("--no-refresh", action="store_true", help="don't append missing daily bars first")
     stp.add_argument("--as-of", default=None, help="YYYY-MM-DD cut-off (default: latest cached close)")
     stp.add_argument("--ticker", action="append", default=None, help="check only these (no files written)")
-    stp.add_argument("--close-basis", choices=["daily", "weekly"], default=None,
-                     help="broken = any daily close < SL since the read date (default) or weekly closes only")
+    stp.add_argument("--close-basis", choices=["low", "daily", "weekly"], default=None,
+                     help="broken = any daily low < SL since the read date (low, default), "
+                          "any daily close < SL (daily) or weekly closes only (weekly)")
     s = sub.add_parser("show")
     s.add_argument("ticker", nargs="?")
     args = ap.parse_args()

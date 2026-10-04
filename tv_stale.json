@@ -1,8 +1,9 @@
 {
-  "generated_at": "2026-10-04T09:42:36+03:00",
+  "generated_at": "2026-10-04T11:33:56+03:00",
   "as_of": "latest cached close",
+  "close_basis": "low",
   "rules": {
-    "broken": "weekly close (since read week, incl. current week) < SL, or latest close < SL",
+    "broken": "any daily low (intraday wick) since the read date < SL, or latest close < SL",
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
@@ -13,7 +14,7 @@
       "ticker": "ITW",
       "symbol": "NYSE:ITW",
       "flag": "broken",
-      "detail": "close 257.28 < SL 261.14 on 2026-09-30 (2 closes below, lowest 257.28 on 2026-09-30)",
+      "detail": "low 257.23 < SL 261.14 on 2026-09-30 (2 lows below, lowest 255.69 on 2026-10-01)",
       "zone_bottom": 270.11,
       "zone_top": 273.72,
       "sl": 261.14,
@@ -447,7 +448,7 @@
       "ticker": "ITW",
       "symbol": "NYSE:ITW",
       "flag": "broken",
-      "detail": "close 257.28 < SL 261.14 on 2026-09-30 (2 closes below, lowest 257.28 on 2026-09-30)",
+      "detail": "low 257.23 < SL 261.14 on 2026-09-30 (2 lows below, lowest 255.69 on 2026-10-01)",
       "zone_bottom": 270.11,
       "zone_top": 273.72,
       "sl": 261.14,

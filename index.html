@@ -239,7 +239,7 @@ const FILTERS = [
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing (not found, or not read yet) — grok_needs_drawing_target. Not part of status" },
   { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Not part of status" },
   { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
-  { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (a close below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
+  { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
   { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);

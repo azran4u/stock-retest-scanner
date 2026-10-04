@@ -81,9 +81,10 @@ CONFIG: Dict[str, Any] = {
     "near_zone_atr_period": 14,                          # weekly ATR(14), same ATR as the retest scan
     # obsolete-drawing check (informational, NOT part of status)
     "stale_far_atr": 3.0,                                # "far": latest close > zone top + 3 x weekly ATR
-    # "broken" close basis: "daily" = any daily close since the read date < SL (each one was
-    # "the current week's latest close" on the night it printed); "weekly" = W-FRI closes only
-    "stale_close_basis": "daily",
+    # "broken" basis: "low" (default, user rule 2026-10-04) = ANY price below the SL, i.e. any
+    # daily low (intraday wick) since the read date < SL; "daily" = any daily close < SL;
+    # "weekly" = W-FRI weekly closes only (completed weeks + current week's latest close)
+    "stale_close_basis": "low",
 }
 
 CORE_FILTERS = [  # status=PASS iff all true
@@ -409,12 +410,11 @@ def compute_stale(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, 
     """Has a TradingView drawing gone obsolete? (tv_found=yes rows only; else all None)
 
     hist = cached daily OHLCV already cut at the as-of date. Flags (all that apply):
-      broken     - a close below the drawn SL since the read date: with
-                   stale_close_basis="daily" (default) any daily close (= the current
-                   week's latest close on the night it printed, plus every weekly close);
-                   with "weekly" only W-FRI weekly closes (completed weeks + the current
-                   week's latest close). Lows / wicks never count, and a close below the
-                   zone that stays above the SL does NOT break it.
+      broken     - ANY price below the drawn SL since the read date. stale_close_basis:
+                   "low" (default) any daily low (intraday wick) < SL; "daily" any daily
+                   close < SL; "weekly" only W-FRI weekly closes (completed weeks + the
+                   current week's latest close). The latest close < SL always counts.
+                   Prices that dip below the zone but stay above the SL do NOT break it.
       target hit - latest close >= drawn TP.
       far        - latest close > zone top + stale_far_atr (3) x weekly ATR(14).
     """
@@ -437,23 +437,27 @@ def compute_stale(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, 
     out["weekly_atr"] = None if atr is None else round(atr, 4)
     flags, detail = [], []
     if sl is not None:
-        daily_basis = str(CONFIG.get("stale_close_basis", "daily")) == "daily"
-        bars = hist if daily_basis else weekly
+        basis = str(CONFIG.get("stale_close_basis", "low"))
+        if basis not in ("low", "daily", "weekly"):
+            basis = "low"
+        bars = weekly if basis == "weekly" else hist
+        col = "Low" if basis == "low" else "Close"
+        kind, plural = {"low": ("low", "lows"), "daily": ("close", "closes"),
+                        "weekly": ("weekly close", "weekly closes")}[basis]
         try:
             rd = pd.Timestamp(str(r.get("tv_read_date"))[:10])
             # daily: sessions on/after the read date; weekly: W-FRI bars ending on/after it
             win = bars[bars.index.normalize() >= rd]
         except Exception:
             win = bars.iloc[-1:]
-        below = win[win["Close"] < sl]
+        below = win[win[col] < sl]
         if len(below) or price < sl:
             flags.append("broken")
             if len(below):
                 d0 = pd.Timestamp(below.index[0]).date().isoformat()
-                lo = below["Close"].idxmin()
-                kind = "close" if daily_basis else "weekly close"
-                detail.append(f"{kind} {float(below['Close'].iloc[0]):.2f} < SL {sl:g} on {d0}"
-                              + (f" ({len(below)} closes below, lowest {float(below['Close'].min()):.2f} on "
+                lo = below[col].idxmin()
+                detail.append(f"{kind} {float(below[col].iloc[0]):.2f} < SL {sl:g} on {d0}"
+                              + (f" ({len(below)} {plural} below, lowest {float(below[col].min()):.2f} on "
                                  f"{pd.Timestamp(lo).date().isoformat()})" if len(below) > 1 else ""))
             else:
                 detail.append(f"close {price:.2f} < SL {sl:g}")
