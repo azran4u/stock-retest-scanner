@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-05T23:52:46+03:00",
+  "generated_at": "2026-10-06T00:02:23+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -12,7 +12,7 @@
   "flagged_tickers": [
     {
       "ticker": "CNO",
-      "symbol": "NYSE:CNO",
+      "symbol": "",
       "flag": "far",
       "detail": "close 54.05 is 4.13 ATR above zone top 44.36",
       "zone_bottom": 44.15,
@@ -24,7 +24,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 2.3437,
       "dist_above_top_atr": 4.1345,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "ITW",
@@ -398,7 +398,7 @@
     },
     {
       "ticker": "CNO",
-      "symbol": "NYSE:CNO",
+      "symbol": "",
       "flag": "far",
       "detail": "close 54.05 is 4.13 ATR above zone top 44.36",
       "zone_bottom": 44.15,
@@ -410,7 +410,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 2.3437,
       "dist_above_top_atr": 4.1345,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "COP",
@@ -446,19 +446,19 @@
     },
     {
       "ticker": "CSX",
-      "symbol": "NASDAQ:CSX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 42.44,
       "zone_top": 43.1,
       "sl": 40.75,
       "tp": 53.26,
-      "rr": 5.06,
+      "rr": 5.04,
       "latest_close": 47.43,
       "last_bar": "2026-10-05",
       "weekly_atr": 2.074,
       "dist_above_top_atr": 2.0878,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "DAR",
@@ -478,19 +478,19 @@
     },
     {
       "ticker": "DASH",
-      "symbol": "NASDAQ:DASH",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 166.58,
       "zone_top": 172.91,
       "sl": 152.85,
       "tp": 235.05,
-      "rr": 3.66,
+      "rr": 2.73,
       "latest_close": 191.77,
       "last_bar": "2026-10-05",
       "weekly_atr": 18.1051,
       "dist_above_top_atr": 1.0417,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "DGX",
@@ -574,7 +574,7 @@
     },
     {
       "ticker": "ELV",
-      "symbol": "NYSE:ELV",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 369.48,
@@ -586,7 +586,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 25.1904,
       "dist_above_top_atr": 0.6717,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "EOG",
@@ -622,7 +622,7 @@
     },
     {
       "ticker": "ESS",
-      "symbol": "NYSE:ESS",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 269.28,
@@ -634,11 +634,11 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 9.9874,
       "dist_above_top_atr": 0.0926,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "EW",
-      "symbol": "NYSE:EW",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 84.15,
@@ -650,7 +650,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.9429,
       "dist_above_top_atr": 0.4431,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "EWBC",
@@ -942,7 +942,7 @@
     },
     {
       "ticker": "MA",
-      "symbol": "NYSE:MA",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 520.43,
@@ -954,7 +954,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 21.8264,
       "dist_above_top_atr": 1.7529,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "MDB",
@@ -1102,7 +1102,7 @@
     },
     {
       "ticker": "OKE",
-      "symbol": "NYSE:OKE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 83.68,
@@ -1114,7 +1114,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 5.327,
       "dist_above_top_atr": 0.4111,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "OVV",
@@ -1134,19 +1134,19 @@
     },
     {
       "ticker": "OXY",
-      "symbol": "NYSE:OXY",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 50.15,
       "zone_top": 51.33,
       "sl": 47.0,
       "tp": 62.21,
-      "rr": 2.94,
+      "rr": 2.31,
       "latest_close": 58.315,
       "last_bar": "2026-10-05",
       "weekly_atr": 3.5986,
       "dist_above_top_atr": 1.941,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "PFG",
@@ -1166,7 +1166,7 @@
     },
     {
       "ticker": "PH",
-      "symbol": "NYSE:PH",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 927.47,
@@ -1178,11 +1178,11 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 52.1046,
       "dist_above_top_atr": 0.4633,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "PKG",
-      "symbol": "NYSE:PKG",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 222.27,
@@ -1194,7 +1194,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 12.9205,
       "dist_above_top_atr": 0.0774,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "PM",
@@ -1390,7 +1390,7 @@
     },
     {
       "ticker": "SSB",
-      "symbol": "NYSE:SSB",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 98.71,
@@ -1402,7 +1402,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.4285,
       "dist_above_top_atr": 0.3082,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "SSNC",
@@ -1498,7 +1498,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 19.5061,
       "dist_above_top_atr": 0.6952,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "THG",
@@ -1582,7 +1582,7 @@
     },
     {
       "ticker": "UNM",
-      "symbol": "NYSE:UNM",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 83.51,
@@ -1594,7 +1594,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 5.0289,
       "dist_above_top_atr": 0.7686,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "UNP",
