@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Stock Retest Scanner — TradingView charts</title>
 <script src="sizing.js"></script>
+<script src="filters.js"></script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
           --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
@@ -68,14 +69,13 @@
   <div class="controls">
     <span>Report <select id="reportSel"></select></span>
     <label><input type="checkbox" id="fPass"/> PASS only</label>
-    <label><input type="checkbox" id="fNear"/> near zone only (≤1 ATR)</label>
-    <label title="Clear weekly uptrend: new 26w high ≥ 1 ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w, 30w EMA rising. Informational"><input type="checkbox" id="fTech"/> technical</label>
-    <label title="Drawings the bot made for needs-drawing tickers: not counted toward PASS until you approve them"><input type="checkbox" id="fBot"/> bot drawing — review needed</label>
-    <label title="broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR)"><input type="checkbox" id="fStale"/> drawing may be obsolete</label>
-    <label title="Drawn tickers with shares ≥ 1 under the position-sizing settings"><input type="checkbox" id="fTrad"/> tradable with account</label>
-    <label title="Drawn tickers where the sizing gives 0 shares"><input type="checkbox" id="fNoTrad"/> not tradable (account limits)</label>
+    <label title="Search ticker, status, notes"><input type="search" id="searchBox" placeholder="Ticker, note…" style="background:transparent;border:0;color:inherit;outline:none;width:9em"/></label>
+    <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). = exactly status=PASS (Grok watchlist)">PASS-equivalent</button>
+    <button type="button" class="btn" id="btnClear">Clear filters</button>
+    <button type="button" class="btn" id="btnExportTV" title="Download the cards shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <span id="count"></span>
   </div>
+  <div class="filters" id="filterBox"></div>
   <div id="sizingBar"></div>
   <div id="staleBanner" class="stale-banner"></div>
 </header>
@@ -86,6 +86,14 @@
 <script>
 const STATE_KEY = "srs_charts_state_v1";
 let rows = [];
+// Same ANDed filter checkboxes as table.html (shared filters.js); counts = cards in this report
+let available = new Set();
+let checked = new Set();
+let currentReportDate = "latest";
+let shownRows = [];
+// pre-2026-10-05 toggles -> filter columns (old saved state is migrated once)
+const OLD_TOGGLES = { near: "f_near_zone", tech: "f_technical", bot: "f_bot_review", stale: "f_tv_stale",
+  trad: "f_tradable", notrad: "f_not_tradable" };
 
 function parseCSV(text) {
   const out = []; let i = 0, field = "", row = [], inQ = false;
@@ -224,71 +232,89 @@ async function loadStaleBanner(reportTickers) {
   } catch (_) { el.style.display = "none"; }
 }
 
-function render() {
-  const onlyPass = document.getElementById("fPass").checked;
-  const onlyNear = document.getElementById("fNear").checked;
-  const onlyStale = document.getElementById("fStale").checked;
-  const onlyTech = document.getElementById("fTech").checked;
-  const onlyBot = document.getElementById("fBot").checked;
-  const onlyTrad = document.getElementById("fTrad").checked;
-  const onlyNoTrad = document.getElementById("fNoTrad").checked;
-  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: onlyPass, near: onlyNear, trad: onlyTrad, notrad: onlyNoTrad, stale: onlyStale, tech: onlyTech, bot: onlyBot })); } catch (_) {}
+function saveState() {
+  try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: document.getElementById("fPass").checked,
+    checked: [...checked], search: document.getElementById("searchBox").value })); } catch (_) {}
+}
+
+function loadState() {
+  try {
+    const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {};
+    document.getElementById("fPass").checked = !!st.pass;
+    document.getElementById("searchBox").value = typeof st.search === "string" ? st.search : "";
+    const c = new Set(Array.isArray(st.checked) ? st.checked : []);
+    for (const [k, col] of Object.entries(OLD_TOGGLES)) if (st[k] === true) c.add(col);
+    checked = c;
+  } catch (_) { checked = new Set(); }
+}
+
+function applySizingFlags() {
   const sz = Sizing.load();
-  const shares = r => { const z = Sizing.compute(r, sz); return z ? z.shares : null; };
+  for (const r of rows) { const f = SrsFilters.sizingFlags(r, sz); r.f_tradable = f.f_tradable; r.f_not_tradable = f.f_not_tradable; r._shares = f.z ? f.z.shares : null; }
+}
+
+function render(persist = true) {
+  if (persist) saveState();
+  const onlyPass = document.getElementById("fPass").checked;
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  applySizingFlags();
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
-  // + bot drawings awaiting the nightly read / review (cards even without a screenshot)
+  // + bot drawings awaiting the nightly read / review + user lines-only charts
   const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot)
     || r.tv_source === "bot" || r.tv_source === "bot-approved" || r.tv_source === "user-lines");
+  const active = [...checked].filter(c => available.has(c));
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
-    .filter(r => !onlyNear || r.f_near_zone === "True")
-    .filter(r => !onlyStale || r.f_tv_stale === "True")
-    .filter(r => !onlyTech || r.f_technical === "True")
-    .filter(r => !onlyBot || r.f_bot_review === "True")
-    .filter(r => !onlyTrad || (shares(r) ?? 0) >= 1)
-    .filter(r => !onlyNoTrad || shares(r) === 0)
+    .filter(r => SrsFilters.rowPasses(r, active))
+    .filter(r => !q || `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.failed_filters || ""} ${r.filter_notes || ""} ${r.tv_bot_note || ""} ${r.tv_stale_detail || ""}`.toLowerCase().includes(q))
     .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
+  shownRows = sel;
+  SrsFilters.renderFilterBox(document.getElementById("filterBox"), drawn, available, checked, () => render());
+  const b = document.getElementById("btnExportTV");
+  b.textContent = `Export TV watchlist (${sel.length})`; b.disabled = sel.length === 0;
   const nDrawn = drawn.filter(r => r.tv_found === "yes").length;
   const nBot = drawn.filter(r => r.f_bot_review === "True").length;
   document.getElementById("count").textContent =
-    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn, ${nBot} bot drawings to review, ${drawn.filter(r => r.tv_found !== "yes" && r.f_bot_review !== "True").length} other)`;
+    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn incl. ${nBot} bot drawings to review, ${drawn.length - nDrawn} without a drawing)`;
   document.getElementById("grid").innerHTML = sel.length ? sel.map(card).join("")
-    : `<div class="empty">No drawn tickers match${drawn.length ? " the selected toggles" : " (no TradingView drawings in this report)"}.</div>`;
+    : `<div class="empty">No cards match${drawn.length ? " the selected filters" : " (no TradingView drawings in this report)"}.</div>`;
 }
 
 async function loadReport(path) {
   const res = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
-  rows = parseCSV(await res.text());
-  render();
+  rows = SrsFilters.enrichEarningsLive(parseCSV(await res.text()));
+  const hdr = rows.length ? Object.keys(rows[0]) : [];
+  if (hdr.includes("tv_entry")) hdr.push("f_tradable", "f_not_tradable");
+  available = SrsFilters.availableFilters(hdr);
+  render(false);
   loadStaleBanner(rows.map(r => r.ticker));
 }
 
 async function init() {
-  Sizing.mount(document.getElementById("sizingBar"), () => render());
-  try {
-    const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
-    document.getElementById("fPass").checked = !!st.pass;
-    document.getElementById("fNear").checked = !!st.near;
-    document.getElementById("fTrad").checked = !!st.trad;
-    document.getElementById("fStale").checked = !!st.stale;
-    document.getElementById("fTech").checked = !!st.tech;
-    document.getElementById("fBot").checked = !!st.bot;
-    document.getElementById("fNoTrad").checked = !!st.notrad;
-  } catch (_) {}
+  SrsFilters.injectCss();
+  Sizing.mount(document.getElementById("sizingBar"), () => render(false));
+  loadState();
   let reports = [];
   try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}
   const sel = document.getElementById("reportSel");
   sel.innerHTML = reports.length
     ? reports.map(r => `<option value="${esc(r.path)}">${esc(r.date)}</option>`).join("")
     : `<option value="historical-reports/latest.csv">latest</option>`;
-  sel.addEventListener("change", () => loadReport(sel.value));
-  document.getElementById("fPass").addEventListener("change", render);
-  document.getElementById("fNear").addEventListener("change", render);
-  document.getElementById("fTrad").addEventListener("change", render);
-  document.getElementById("fStale").addEventListener("change", render);
-  document.getElementById("fTech").addEventListener("change", render);
-  document.getElementById("fBot").addEventListener("change", render);
-  document.getElementById("fNoTrad").addEventListener("change", render);
+  sel.addEventListener("change", () => { currentReportDate = (sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest"; loadReport(sel.value); });
+  currentReportDate = (sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest";
+  document.getElementById("fPass").addEventListener("change", () => render());
+  document.getElementById("searchBox").addEventListener("input", () => render());
+  document.getElementById("btnPassPreset").addEventListener("click", () => {
+    checked = new Set(SrsFilters.CORE.filter(c => available.has(c))); render();
+  });
+  document.getElementById("btnClear").addEventListener("click", () => {
+    checked = new Set(); document.getElementById("fPass").checked = false; document.getElementById("searchBox").value = "";
+    try { localStorage.removeItem(STATE_KEY); } catch (_) {}
+    render(false);
+  });
+  document.getElementById("btnExportTV").addEventListener("click", () => {
+    SrsFilters.downloadWatchlist(SrsFilters.tvSymbolsForRows(shownRows, r => tvSymbolFromUrl(r.tradingview_url)), "charts", currentReportDate);
+  });
   document.addEventListener("click", ev => {
     const a = ev.target.closest && ev.target.closest("a.tv-app");
     if (a) { ev.preventDefault(); openTradingViewApp(a.getAttribute("data-tv-symbol")); return; }
