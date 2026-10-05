@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-05T23:10:28+03:00",
+  "generated_at": "2026-10-05T23:44:57+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -44,7 +44,7 @@
     },
     {
       "ticker": "MLI",
-      "symbol": "NYSE:MLI",
+      "symbol": "",
       "flag": "broken",
       "detail": "low 61.70 < SL 87.82 on 2026-10-05",
       "zone_bottom": null,
@@ -56,11 +56,11 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.1267,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "SSNC",
-      "symbol": "NASDAQ:SSNC",
+      "symbol": "",
       "flag": "far",
       "detail": "close 79.08 is 3.98 ATR above zone top 63.05",
       "zone_bottom": 61.45,
@@ -72,7 +72,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.0267,
       "dist_above_top_atr": 3.981,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-05"
     }
   ],
   "all": [
@@ -126,19 +126,19 @@
     },
     {
       "ticker": "AIZ",
-      "symbol": "NYSE:AIZ",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 239.39,
       "zone_top": 244.73,
       "sl": 231.66,
       "tp": 286.63,
-      "rr": 4.137383,
+      "rr": 4.14,
       "latest_close": 266.4601,
       "last_bar": "2026-10-05",
       "weekly_atr": 11.0293,
       "dist_above_top_atr": 1.9702,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "ALSN",
@@ -318,19 +318,19 @@
     },
     {
       "ticker": "BPOP",
-      "symbol": "NASDAQ:BPOP",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 143.39,
       "zone_top": 146.69,
       "sl": 136.59,
       "tp": 176.59,
-      "rr": 3.514673,
+      "rr": 3.51,
       "latest_close": 158.82,
       "last_bar": "2026-10-05",
       "weekly_atr": 6.7324,
       "dist_above_top_atr": 1.8017,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "BWA",
@@ -670,7 +670,7 @@
     },
     {
       "ticker": "FIVE",
-      "symbol": "NASDAQ:FIVE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
@@ -682,7 +682,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 18.64,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "FIX",
@@ -702,19 +702,19 @@
     },
     {
       "ticker": "FTI",
-      "symbol": "NYSE:FTI",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 63.6,
       "zone_top": 64.55,
       "sl": 59.83,
       "tp": 79.75,
-      "rr": 3.698113,
+      "rr": 3.7,
       "latest_close": 70.33,
       "last_bar": "2026-10-05",
       "weekly_atr": 5.3715,
       "dist_above_top_atr": 1.0761,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "GL",
@@ -734,19 +734,19 @@
     },
     {
       "ticker": "GTX",
-      "symbol": "NASDAQ:GTX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 20.96,
       "zone_top": 21.3,
       "sl": 18.48,
       "tp": 34.59,
-      "rr": 5.148855,
+      "rr": 5.15,
       "latest_close": 26.68,
       "last_bar": "2026-10-05",
       "weekly_atr": 2.0929,
       "dist_above_top_atr": 2.5705,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "GWRE",
@@ -974,7 +974,7 @@
     },
     {
       "ticker": "MLI",
-      "symbol": "NYSE:MLI",
+      "symbol": "",
       "flag": "broken",
       "detail": "low 61.70 < SL 87.82 on 2026-10-05",
       "zone_bottom": null,
@@ -986,7 +986,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.1267,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "MOG-A",
@@ -1070,19 +1070,19 @@
     },
     {
       "ticker": "NTRS",
-      "symbol": "NASDAQ:NTRS",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 149.22,
       "zone_top": 154.89,
       "sl": 141.15,
       "tp": 189.78,
-      "rr": 3.644699,
+      "rr": 3.64,
       "latest_close": 170.67,
       "last_bar": "2026-10-05",
       "weekly_atr": 8.5712,
       "dist_above_top_atr": 1.841,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "NUE",
@@ -1230,19 +1230,19 @@
     },
     {
       "ticker": "R",
-      "symbol": "NYSE:R",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 221.83,
       "zone_top": 228.9,
       "sl": 213.47,
       "tp": 276.32,
-      "rr": 3.607771,
+      "rr": 3.61,
       "latest_close": 235.995,
       "last_bar": "2026-10-05",
       "weekly_atr": 11.9852,
       "dist_above_top_atr": 0.592,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "RHP",
@@ -1278,35 +1278,35 @@
     },
     {
       "ticker": "ROST",
-      "symbol": "NASDAQ:ROST",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 205.24,
       "zone_top": 212.6,
       "sl": 197.13,
       "tp": 253.89,
-      "rr": 3.396592,
+      "rr": 3.4,
       "latest_close": 226.37,
       "last_bar": "2026-10-05",
       "weekly_atr": 12.0388,
       "dist_above_top_atr": 1.1438,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "RPRX",
-      "symbol": "NASDAQ:RPRX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 50.92,
       "zone_top": 52.75,
       "sl": 49.82,
       "tp": 63.46,
-      "rr": 3.2625,
+      "rr": 3.26,
       "latest_close": 56.66,
       "last_bar": "2026-10-05",
       "weekly_atr": 2.8739,
       "dist_above_top_atr": 1.3605,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "RS",
@@ -1342,19 +1342,19 @@
     },
     {
       "ticker": "SNEX",
-      "symbol": "NASDAQ:SNEX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 56.98,
       "zone_top": 58.87,
       "sl": 51.65,
       "tp": 93.27,
-      "rr": 5.913621,
+      "rr": 5.91,
       "latest_close": 67.43,
       "last_bar": "2026-10-05",
       "weekly_atr": 6.2973,
       "dist_above_top_atr": 1.3593,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "SNX",
@@ -1406,7 +1406,7 @@
     },
     {
       "ticker": "SSNC",
-      "symbol": "NASDAQ:SSNC",
+      "symbol": "",
       "flag": "far",
       "detail": "close 79.08 is 3.98 ATR above zone top 63.05",
       "zone_bottom": 61.45,
@@ -1418,7 +1418,7 @@
       "last_bar": "2026-10-05",
       "weekly_atr": 4.0267,
       "dist_above_top_atr": 3.981,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "ST",
@@ -1438,19 +1438,19 @@
     },
     {
       "ticker": "STLD",
-      "symbol": "NASDAQ:STLD",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 216.73,
       "zone_top": 220.81,
       "sl": 200.03,
       "tp": 285.6,
-      "rr": 3.668303,
+      "rr": 3.67,
       "latest_close": 241.04,
       "last_bar": "2026-10-05",
       "weekly_atr": 17.8514,
       "dist_above_top_atr": 1.1332,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "STX",
@@ -1726,19 +1726,19 @@
     },
     {
       "ticker": "WDC",
-      "symbol": "NASDAQ:WDC",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 408.24,
       "zone_top": 433.33,
       "sl": 365.23,
       "tp": 727.22,
-      "rr": 3.697508,
+      "rr": 3.7,
       "latest_close": 441.64,
       "last_bar": "2026-10-05",
       "weekly_atr": 85.2194,
       "dist_above_top_atr": 0.0975,
-      "read_date": "2026-10-03"
+      "read_date": "2026-10-05"
     },
     {
       "ticker": "WELL",
