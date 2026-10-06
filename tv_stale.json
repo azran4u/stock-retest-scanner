@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-07T00:18:11+03:00",
+  "generated_at": "2026-10-07T00:25:02+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,8 +7,8 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 110,
-  "flagged": 6,
+  "checked": 109,
+  "flagged": 7,
   "flagged_tickers": [
     {
       "ticker": "CNO",
@@ -43,6 +43,22 @@
       "read_date": "2026-10-06"
     },
     {
+      "ticker": "EHC",
+      "symbol": "NYSE:EHC",
+      "flag": "target hit",
+      "detail": "close 124.69 >= TP 124.62",
+      "zone_bottom": 110.44,
+      "zone_top": 113.85,
+      "sl": 105.42,
+      "tp": 124.62,
+      "rr": 1.54,
+      "latest_close": 124.69,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 6.6868,
+      "dist_above_top_atr": 1.6211,
+      "read_date": "2026-10-04"
+    },
+    {
       "ticker": "ITW",
       "symbol": "NYSE:ITW",
       "flag": "broken",
@@ -52,10 +68,10 @@
       "sl": 261.14,
       "tp": 295.97,
       "rr": 2.51,
-      "latest_close": 264.19,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 12.2343,
-      "dist_above_top_atr": -0.779,
+      "latest_close": 267.14,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 12.455,
+      "dist_above_top_atr": -0.5283,
       "read_date": "2026-09-29"
     },
     {
@@ -118,10 +134,10 @@
       "sl": 70.38,
       "tp": 86.58,
       "rr": 2.2271,
-      "latest_close": 82.47,
-      "last_bar": "2026-10-05",
+      "latest_close": 82.21,
+      "last_bar": "2026-10-06",
       "weekly_atr": 5.2223,
-      "dist_above_top_atr": 1.2715,
+      "dist_above_top_atr": 1.2217,
       "read_date": "2026-10-02"
     },
     {
@@ -150,10 +166,10 @@
       "sl": 294.03,
       "tp": 360.73,
       "rr": 2.53,
-      "latest_close": 345.79,
-      "last_bar": "2026-10-05",
+      "latest_close": 344.99,
+      "last_bar": "2026-10-06",
       "weekly_atr": 17.926,
-      "dist_above_top_atr": 1.6713,
+      "dist_above_top_atr": 1.6267,
       "read_date": "2026-09-30"
     },
     {
@@ -182,10 +198,10 @@
       "sl": 102.44,
       "tp": 134.21,
       "rr": 2.29,
-      "latest_close": 115.75,
-      "last_bar": "2026-10-05",
+      "latest_close": 114.75,
+      "last_bar": "2026-10-06",
       "weekly_atr": 9.1885,
-      "dist_above_top_atr": 0.2623,
+      "dist_above_top_atr": 0.1535,
       "read_date": "2026-10-04"
     },
     {
@@ -198,10 +214,10 @@
       "sl": 314.97,
       "tp": 634.75,
       "rr": 3.68,
-      "latest_close": 542.28,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 58.9143,
-      "dist_above_top_atr": 2.4992,
+      "latest_close": 530.27,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 59.4394,
+      "dist_above_top_atr": 2.2751,
       "read_date": "2026-09-29"
     },
     {
@@ -390,10 +406,10 @@
       "sl": 200.12,
       "tp": 245.5,
       "rr": 2.21,
-      "latest_close": 233.12,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 13.8563,
-      "dist_above_top_atr": 1.1684,
+      "latest_close": 233.44,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 13.9284,
+      "dist_above_top_atr": 1.1853,
       "read_date": "2026-10-02"
     },
     {
@@ -406,10 +422,10 @@
       "sl": 52.89,
       "tp": 67.81,
       "rr": 1.58,
-      "latest_close": 64.37,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 6.0886,
-      "dist_above_top_atr": 0.8113,
+      "latest_close": 66.35,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 6.1529,
+      "dist_above_top_atr": 1.1247,
       "read_date": "2026-09-30"
     },
     {
@@ -422,10 +438,10 @@
       "sl": 298.94,
       "tp": 324.23,
       "rr": 0.85,
-      "latest_close": 322.37,
-      "last_bar": "2026-10-05",
+      "latest_close": 318.06,
+      "last_bar": "2026-10-06",
       "weekly_atr": 13.88,
-      "dist_above_top_atr": 0.6153,
+      "dist_above_top_atr": 0.3048,
       "read_date": "2026-10-02"
     },
     {
@@ -454,10 +470,10 @@
       "sl": 100.51,
       "tp": 138.22,
       "rr": 3.94,
-      "latest_close": 128.4,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 7.5016,
-      "dist_above_top_atr": 2.5701,
+      "latest_close": 129.35,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 7.5888,
+      "dist_above_top_atr": 2.6658,
       "read_date": "2026-10-04"
     },
     {
@@ -470,10 +486,10 @@
       "sl": 360.37,
       "tp": 415.74,
       "rr": 1.65,
-      "latest_close": 401.94,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 20.1173,
-      "dist_above_top_atr": 0.7938,
+      "latest_close": 406.79,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 20.2201,
+      "dist_above_top_atr": 1.0297,
       "read_date": "2026-10-05"
     },
     {
@@ -542,7 +558,7 @@
     },
     {
       "ticker": "DOC",
-      "symbol": "NYSE:DOC",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 20.26,
@@ -554,7 +570,7 @@
       "last_bar": "2026-10-06",
       "weekly_atr": 0.9134,
       "dist_above_top_atr": -1.686,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "DXCM",
@@ -591,17 +607,17 @@
     {
       "ticker": "EHC",
       "symbol": "NYSE:EHC",
-      "flag": "",
-      "detail": "",
+      "flag": "target hit",
+      "detail": "close 124.69 >= TP 124.62",
       "zone_bottom": 110.44,
       "zone_top": 113.85,
       "sl": 105.42,
       "tp": 124.62,
       "rr": 1.54,
-      "latest_close": 120.97,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 6.5264,
-      "dist_above_top_atr": 1.0909,
+      "latest_close": 124.69,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 6.6868,
+      "dist_above_top_atr": 1.6211,
       "read_date": "2026-10-04"
     },
     {
@@ -614,10 +630,10 @@
       "sl": 348.95,
       "tp": 420.07,
       "rr": 1.85,
-      "latest_close": 394.39,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 25.1904,
-      "dist_above_top_atr": 0.6717,
+      "latest_close": 400.09,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 25.546,
+      "dist_above_top_atr": 0.8855,
       "read_date": "2026-10-06"
     },
     {
@@ -646,10 +662,10 @@
       "sl": 948.29,
       "tp": 1094.77,
       "rr": 1.65,
-      "latest_close": 1023.44,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 57.7499,
-      "dist_above_top_atr": 0.1998,
+      "latest_close": 1047.36,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 59.4677,
+      "dist_above_top_atr": 0.5963,
       "read_date": "2026-10-06"
     },
     {
@@ -710,9 +726,9 @@
       "sl": 166.0,
       "tp": 249.32,
       "rr": 3.91,
-      "latest_close": 215.93,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 18.64,
+      "latest_close": 209.92,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 18.9721,
       "dist_above_top_atr": null,
       "read_date": "2026-10-05"
     },
@@ -726,10 +742,10 @@
       "sl": 1298.41,
       "tp": 1992.24,
       "rr": 2.93,
-      "latest_close": 1713.0699,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 168.4255,
-      "dist_above_top_atr": 1.2819,
+      "latest_close": 1817.96,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 175.3227,
+      "dist_above_top_atr": 1.8298,
       "read_date": "2026-09-30"
     },
     {
@@ -797,22 +813,6 @@
       "read_date": "2026-10-06"
     },
     {
-      "ticker": "GWRE",
-      "symbol": "",
-      "flag": "",
-      "detail": "",
-      "zone_bottom": null,
-      "zone_top": null,
-      "sl": null,
-      "tp": null,
-      "rr": null,
-      "latest_close": 164.57,
-      "last_bar": "2026-10-06",
-      "weekly_atr": 21.4729,
-      "dist_above_top_atr": null,
-      "read_date": "2026-10-06"
-    },
-    {
       "ticker": "IESC",
       "symbol": "",
       "flag": "",
@@ -822,10 +822,10 @@
       "sl": 269.85,
       "tp": 380.82,
       "rr": 2.1998,
-      "latest_close": 339.62,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 45.0945,
-      "dist_above_top_atr": 0.5974,
+      "latest_close": 341.845,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 45.6739,
+      "dist_above_top_atr": 0.6385,
       "read_date": "2026-10-02"
     },
     {
@@ -838,10 +838,10 @@
       "sl": 210.38,
       "tp": 238.24,
       "rr": 2.0,
-      "latest_close": 235.29,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 10.1373,
-      "dist_above_top_atr": 1.4175,
+      "latest_close": 236.28,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 10.218,
+      "dist_above_top_atr": 1.5032,
       "read_date": "2026-09-30"
     },
     {
@@ -886,10 +886,10 @@
       "sl": 261.14,
       "tp": 295.97,
       "rr": 2.51,
-      "latest_close": 264.19,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 12.2343,
-      "dist_above_top_atr": -0.779,
+      "latest_close": 267.14,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 12.455,
+      "dist_above_top_atr": -0.5283,
       "read_date": "2026-09-29"
     },
     {
@@ -950,10 +950,10 @@
       "sl": 364.97,
       "tp": 484.02,
       "rr": 2.63,
-      "latest_close": 451.42,
-      "last_bar": "2026-10-05",
+      "latest_close": 454.28,
+      "last_bar": "2026-10-06",
       "weekly_atr": 37.9614,
-      "dist_above_top_atr": 1.4494,
+      "dist_above_top_atr": 1.5247,
       "read_date": "2026-09-30"
     },
     {
@@ -982,10 +982,10 @@
       "sl": 233.69,
       "tp": 290.49,
       "rr": 2.28,
-      "latest_close": 274.93,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 16.0129,
-      "dist_above_top_atr": 1.372,
+      "latest_close": 275.26,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 16.0708,
+      "dist_above_top_atr": 1.3876,
       "read_date": "2026-09-30"
     },
     {
@@ -1078,10 +1078,10 @@
       "sl": 35.33,
       "tp": 43.42,
       "rr": 2.25,
-      "latest_close": 40.33,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 2.8782,
-      "dist_above_top_atr": 0.549,
+      "latest_close": 40.62,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 2.8825,
+      "dist_above_top_atr": 0.6487,
       "read_date": "2026-10-05"
     },
     {
@@ -1146,7 +1146,7 @@
       "last_bar": "2026-10-06",
       "weekly_atr": 17.9593,
       "dist_above_top_atr": 1.6855,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "OKE",
@@ -1254,10 +1254,10 @@
       "sl": 168.79,
       "tp": 194.19,
       "rr": 1.36,
-      "latest_close": 189.56,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 10.9132,
-      "dist_above_top_atr": 0.7835,
+      "latest_close": 190.4,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 11.0339,
+      "dist_above_top_atr": 0.851,
       "read_date": "2026-10-06"
     },
     {
@@ -1270,10 +1270,10 @@
       "sl": 20.82,
       "tp": 23.93,
       "rr": 1.35,
-      "latest_close": 22.23,
-      "last_bar": "2026-10-05",
+      "latest_close": 22.35,
+      "last_bar": "2026-10-06",
       "weekly_atr": 1.4951,
-      "dist_above_top_atr": -0.0736,
+      "dist_above_top_atr": 0.0067,
       "read_date": "2026-10-04"
     },
     {
@@ -1334,10 +1334,10 @@
       "sl": 388.07,
       "tp": 477.44,
       "rr": 2.6,
-      "latest_close": 455.18,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 24.4375,
-      "dist_above_top_atr": 1.6278,
+      "latest_close": 450.74,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 24.5079,
+      "dist_above_top_atr": 1.442,
       "read_date": "2026-09-30"
     },
     {
@@ -1382,10 +1382,10 @@
       "sl": 343.81,
       "tp": 424.39,
       "rr": 2.56,
-      "latest_close": 408.24,
-      "last_bar": "2026-10-05",
+      "latest_close": 401.49,
+      "last_bar": "2026-10-06",
       "weekly_atr": 23.5799,
-      "dist_above_top_atr": 1.64,
+      "dist_above_top_atr": 1.3537,
       "read_date": "2026-10-04"
     },
     {
@@ -1430,10 +1430,10 @@
       "sl": 226.53,
       "tp": 282.57,
       "rr": 2.02,
-      "latest_close": 277.28,
-      "last_bar": "2026-10-05",
+      "latest_close": 278.38,
+      "last_bar": "2026-10-06",
       "weekly_atr": 20.0213,
-      "dist_above_top_atr": 1.6522,
+      "dist_above_top_atr": 1.7072,
       "read_date": "2026-09-30"
     },
     {
@@ -1446,10 +1446,10 @@
       "sl": 196.07,
       "tp": 227.16,
       "rr": 3.54,
-      "latest_close": 201.4,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 7.8527,
-      "dist_above_top_atr": -0.3171,
+      "latest_close": 201.74,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 7.9098,
+      "dist_above_top_atr": -0.2718,
       "read_date": "2026-09-29"
     },
     {
@@ -1494,10 +1494,10 @@
       "sl": 38.46,
       "tp": 51.55,
       "rr": 2.59,
-      "latest_close": 43.18,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 3.0541,
-      "dist_above_top_atr": 0.3995,
+      "latest_close": 43.92,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 3.0669,
+      "dist_above_top_atr": 0.6391,
       "read_date": "2026-10-05"
     },
     {
@@ -1622,10 +1622,10 @@
       "sl": 124.41,
       "tp": 150.77,
       "rr": 1.87,
-      "latest_close": 129.8,
-      "last_bar": "2026-10-05",
+      "latest_close": 130.08,
+      "last_bar": "2026-10-06",
       "weekly_atr": 7.0104,
-      "dist_above_top_atr": -0.6505,
+      "dist_above_top_atr": -0.6105,
       "read_date": "2026-10-04"
     },
     {
@@ -1654,10 +1654,10 @@
       "sl": 81.16,
       "tp": 95.52,
       "rr": 2.38,
-      "latest_close": 89.935,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 5.0289,
-      "dist_above_top_atr": 0.7686,
+      "latest_close": 91.83,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 5.1764,
+      "dist_above_top_atr": 1.1127,
       "read_date": "2026-10-06"
     },
     {
@@ -1686,10 +1686,10 @@
       "sl": 906.26,
       "tp": 1165.22,
       "rr": 2.3971,
-      "latest_close": 1074.28,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 81.3564,
-      "dist_above_top_atr": 0.9784,
+      "latest_close": 1080.62,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 82.0975,
+      "dist_above_top_atr": 1.0468,
       "read_date": "2026-10-02"
     },
     {
@@ -1718,10 +1718,10 @@
       "sl": 446.92,
       "tp": 569.28,
       "rr": 3.24,
-      "latest_close": 476.91,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 29.4699,
-      "dist_above_top_atr": -0.322,
+      "latest_close": 486.89,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 29.7971,
+      "dist_above_top_atr": 0.0164,
       "read_date": "2026-10-05"
     },
     {
@@ -1750,10 +1750,10 @@
       "sl": 259.83,
       "tp": 307.74,
       "rr": 1.73,
-      "latest_close": 292.26,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 16.0503,
-      "dist_above_top_atr": 0.795,
+      "latest_close": 293.1,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 16.0606,
+      "dist_above_top_atr": 0.8468,
       "read_date": "2026-10-04"
     },
     {
@@ -1782,10 +1782,10 @@
       "sl": 259.64,
       "tp": 301.16,
       "rr": 1.4744,
-      "latest_close": 291.86,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 14.9266,
-      "dist_above_top_atr": 0.8944,
+      "latest_close": 291.16,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 15.0148,
+      "dist_above_top_atr": 0.8425,
       "read_date": "2026-10-02"
     },
     {
@@ -1830,10 +1830,10 @@
       "sl": 211.66,
       "tp": 249.85,
       "rr": 2.57,
-      "latest_close": 238.7,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 15.4746,
-      "dist_above_top_atr": 1.1806,
+      "latest_close": 242.25,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 15.9011,
+      "dist_above_top_atr": 1.3722,
       "read_date": "2026-10-02"
     },
     {
@@ -1846,10 +1846,10 @@
       "sl": 35.32,
       "tp": 41.54,
       "rr": 2.54,
-      "latest_close": 38.67,
-      "last_bar": "2026-10-05",
-      "weekly_atr": 1.7487,
-      "dist_above_top_atr": 0.7777,
+      "latest_close": 38.81,
+      "last_bar": "2026-10-06",
+      "weekly_atr": 1.7515,
+      "dist_above_top_atr": 0.8564,
       "read_date": "2026-10-04"
     },
     {
