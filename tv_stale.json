@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-06T23:49:08+03:00",
+  "generated_at": "2026-10-06T23:58:55+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -83,12 +83,12 @@
       "zone_top": null,
       "sl": 48.22,
       "tp": 61.18,
-      "rr": 2.83,
+      "rr": 2.8343,
       "latest_close": 61.46,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.1829,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "SSNC",
@@ -277,12 +277,12 @@
       "zone_top": 32.3,
       "sl": 30.14,
       "tp": 38.04,
-      "rr": 2.67,
+      "rr": 2.6744,
       "latest_close": 33.42,
       "last_bar": "2026-10-06",
       "weekly_atr": 2.178,
       "dist_above_top_atr": 0.5142,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "BAX",
@@ -357,12 +357,12 @@
       "zone_top": 146.69,
       "sl": 136.59,
       "tp": 176.59,
-      "rr": 3.51,
+      "rr": 3.5147,
       "latest_close": 158.29,
       "last_bar": "2026-10-06",
       "weekly_atr": 6.7535,
       "dist_above_top_atr": 1.7176,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "BWA",
@@ -373,12 +373,12 @@
       "zone_top": 62.15,
       "sl": 56.67,
       "tp": 75.26,
-      "rr": 3.09,
+      "rr": 3.0947,
       "latest_close": 63.34,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.6878,
       "dist_above_top_atr": 0.2538,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "CAH",
@@ -689,16 +689,16 @@
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 121.17,
-      "zone_top": 122.07,
-      "sl": 116.48,
-      "tp": 135.96,
-      "rr": 2.87,
+      "zone_bottom": 111.64,
+      "zone_top": 117.6,
+      "sl": null,
+      "tp": null,
+      "rr": null,
       "latest_close": 127.12,
       "last_bar": "2026-10-06",
       "weekly_atr": 5.2877,
-      "dist_above_top_atr": 0.955,
-      "read_date": "2026-10-05"
+      "dist_above_top_atr": 1.8004,
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "FIVE",
@@ -862,19 +862,19 @@
     },
     {
       "ticker": "IRM",
-      "symbol": "NYSE:IRM",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 114.84,
       "zone_top": 116.65,
       "sl": 108.82,
       "tp": 137.81,
-      "rr": 2.99,
+      "rr": 2.9876,
       "latest_close": 116.44,
       "last_bar": "2026-10-06",
       "weekly_atr": 8.0641,
       "dist_above_top_atr": -0.026,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "ITW",
@@ -965,12 +965,12 @@
       "zone_top": 289.97,
       "sl": 272.04,
       "tp": 333.31,
-      "rr": 2.66,
+      "rr": 2.6623,
       "latest_close": 311.645,
       "last_bar": "2026-10-06",
       "weekly_atr": 17.1611,
       "dist_above_top_atr": 1.263,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "LNG",
@@ -1013,12 +1013,12 @@
       "zone_top": 297.71,
       "sl": 242.41,
       "tp": 452.39,
-      "rr": 3.16,
+      "rr": 3.1588,
       "latest_close": 360.71,
       "last_bar": "2026-10-06",
       "weekly_atr": 54.7467,
       "dist_above_top_atr": 1.1508,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "MLI",
@@ -1045,12 +1045,12 @@
       "zone_top": 353.61,
       "sl": 316.8,
       "tp": 439.61,
-      "rr": 2.71,
+      "rr": 2.7125,
       "latest_close": 375.595,
       "last_bar": "2026-10-06",
       "weekly_atr": 32.9638,
       "dist_above_top_atr": 0.6669,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "MSI",
@@ -1093,12 +1093,12 @@
       "zone_top": 520.14,
       "sl": 473.12,
       "tp": 620.64,
-      "rr": 3.02,
+      "rr": 3.0185,
       "latest_close": 513.35,
       "last_bar": "2026-10-06",
       "weekly_atr": 40.4056,
       "dist_above_top_atr": -0.168,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "NEM",
@@ -1173,12 +1173,12 @@
       "zone_top": null,
       "sl": 48.22,
       "tp": 61.18,
-      "rr": 2.83,
+      "rr": 2.8343,
       "latest_close": 61.46,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.1829,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "OXY",
@@ -1317,12 +1317,12 @@
       "zone_top": 117.25,
       "sl": 108.83,
       "tp": 134.08,
-      "rr": 2.61,
+      "rr": 2.6123,
       "latest_close": 120.97,
       "last_bar": "2026-10-06",
       "weekly_atr": 6.5404,
       "dist_above_top_atr": 0.5688,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "ROK",
@@ -1349,12 +1349,12 @@
       "zone_top": 212.6,
       "sl": 197.13,
       "tp": 253.89,
-      "rr": 3.4,
+      "rr": 3.3966,
       "latest_close": 224.21,
       "last_bar": "2026-10-06",
       "weekly_atr": 12.2656,
       "dist_above_top_atr": 0.9465,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "RPRX",
@@ -1365,12 +1365,12 @@
       "zone_top": 52.75,
       "sl": 49.82,
       "tp": 63.46,
-      "rr": 3.26,
+      "rr": 3.2625,
       "latest_close": 56.44,
       "last_bar": "2026-10-06",
       "weekly_atr": 2.8739,
       "dist_above_top_atr": 1.284,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "RS",
@@ -1813,12 +1813,12 @@
       "zone_top": 220.4,
       "sl": 206.34,
       "tp": 249.6,
-      "rr": 2.64,
+      "rr": 2.6384,
       "latest_close": 225.75,
       "last_bar": "2026-10-06",
       "weekly_atr": 10.8094,
       "dist_above_top_atr": 0.4949,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "WSM",
@@ -1861,12 +1861,12 @@
       "zone_top": 343.78,
       "sl": 330.54,
       "tp": 388.28,
-      "rr": 2.95,
+      "rr": 2.9467,
       "latest_close": 362.46,
       "last_bar": "2026-10-06",
       "weekly_atr": 18.7654,
       "dist_above_top_atr": 0.9955,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-06"
     }
   ]
 }
