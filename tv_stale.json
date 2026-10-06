@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-06T23:07:45+03:00",
+  "generated_at": "2026-10-06T23:49:08+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -35,7 +35,7 @@
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
-      "rr": 3.74,
+      "rr": 3.7428,
       "latest_close": 228.405,
       "last_bar": "2026-10-06",
       "weekly_atr": 12.4968,
@@ -62,17 +62,17 @@
       "ticker": "MLI",
       "symbol": "",
       "flag": "broken",
-      "detail": "low 61.70 < SL 87.82 on 2026-10-05 (2 lows below, lowest 61.70 on 2026-10-05)",
+      "detail": "low 62.47 < SL 87.82 on 2026-10-06",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 87.82,
       "tp": 132.4,
-      "rr": 6.13,
+      "rr": 6.1328,
       "latest_close": 63.15,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.1267,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "OVV",
@@ -99,12 +99,12 @@
       "zone_top": 63.05,
       "sl": 59.56,
       "tp": 82.86,
-      "rr": 4.71,
+      "rr": 4.7108,
       "latest_close": 77.99,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.0863,
       "dist_above_top_atr": 3.6561,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     }
   ],
   "all": [
@@ -165,12 +165,12 @@
       "zone_top": 244.73,
       "sl": 231.66,
       "tp": 286.63,
-      "rr": 4.14,
+      "rr": 4.1374,
       "latest_close": 270.98,
       "last_bar": "2026-10-06",
       "weekly_atr": 11.2202,
       "dist_above_top_atr": 2.3395,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "ALSN",
@@ -302,19 +302,19 @@
     },
     {
       "ticker": "BDX",
-      "symbol": "NYSE:BDX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 145.93,
       "tp": 182.3,
-      "rr": 3.49,
+      "rr": 3.4901,
       "latest_close": 180.23,
       "last_bar": "2026-10-06",
       "weekly_atr": 9.7908,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "BMY",
@@ -533,7 +533,7 @@
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
-      "rr": 3.74,
+      "rr": 3.7428,
       "latest_close": 228.405,
       "last_bar": "2026-10-06",
       "weekly_atr": 12.4968,
@@ -741,12 +741,12 @@
       "zone_top": 64.55,
       "sl": 59.83,
       "tp": 79.75,
-      "rr": 3.7,
+      "rr": 3.6981,
       "latest_close": 69.9,
       "last_bar": "2026-10-06",
       "weekly_atr": 5.3715,
       "dist_above_top_atr": 0.996,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "FWONK",
@@ -789,12 +789,12 @@
       "zone_top": 21.3,
       "sl": 18.48,
       "tp": 34.59,
-      "rr": 5.15,
+      "rr": 5.1489,
       "latest_close": 26.09,
       "last_bar": "2026-10-06",
       "weekly_atr": 2.1365,
       "dist_above_top_atr": 2.242,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "GWRE",
@@ -910,19 +910,19 @@
     },
     {
       "ticker": "JBL",
-      "symbol": "NYSE:JBL",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 290.79,
       "zone_top": 301.46,
       "sl": 276.77,
       "tp": 417.39,
-      "rr": 5.87,
+      "rr": 5.8696,
       "latest_close": 309.19,
       "last_bar": "2026-10-06",
       "weekly_atr": 33.7527,
       "dist_above_top_atr": 0.229,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "LAMR",
@@ -1024,17 +1024,17 @@
       "ticker": "MLI",
       "symbol": "",
       "flag": "broken",
-      "detail": "low 61.70 < SL 87.82 on 2026-10-05 (2 lows below, lowest 61.70 on 2026-10-05)",
+      "detail": "low 62.47 < SL 87.82 on 2026-10-06",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 87.82,
       "tp": 132.4,
-      "rr": 6.13,
+      "rr": 6.1328,
       "latest_close": 63.15,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.1267,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "MOG-A",
@@ -1125,12 +1125,12 @@
       "zone_top": 154.89,
       "sl": 141.15,
       "tp": 189.78,
-      "rr": 3.64,
+      "rr": 3.6447,
       "latest_close": 169.46,
       "last_bar": "2026-10-06",
       "weekly_atr": 8.6248,
       "dist_above_top_atr": 1.6893,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "NUE",
@@ -1301,12 +1301,12 @@
       "zone_top": 228.9,
       "sl": 213.47,
       "tp": 276.32,
-      "rr": 3.61,
+      "rr": 3.6078,
       "latest_close": 236.17,
       "last_bar": "2026-10-06",
       "weekly_atr": 11.9863,
       "dist_above_top_atr": 0.6065,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "RHP",
@@ -1413,12 +1413,12 @@
       "zone_top": 58.87,
       "sl": 51.65,
       "tp": 93.27,
-      "rr": 5.91,
+      "rr": 5.9136,
       "latest_close": 66.0,
       "last_bar": "2026-10-06",
       "weekly_atr": 6.2973,
       "dist_above_top_atr": 1.1322,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "SNX",
@@ -1477,12 +1477,12 @@
       "zone_top": 63.05,
       "sl": 59.56,
       "tp": 82.86,
-      "rr": 4.71,
+      "rr": 4.7108,
       "latest_close": 77.99,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.0863,
       "dist_above_top_atr": 3.6561,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "ST",
@@ -1665,16 +1665,16 @@
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 262.45,
-      "zone_top": 265.51,
-      "sl": 252.91,
-      "tp": 304.64,
-      "rr": 3.5,
+      "zone_bottom": 271.18,
+      "zone_top": 274.95,
+      "sl": 258.2,
+      "tp": 313.49,
+      "rr": 2.6738,
       "latest_close": 276.65,
       "last_bar": "2026-10-06",
       "weekly_atr": 12.9378,
-      "dist_above_top_atr": 0.861,
-      "read_date": "2026-10-05"
+      "dist_above_top_atr": 0.1314,
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "URI",
@@ -1797,12 +1797,12 @@
       "zone_top": 433.33,
       "sl": 365.23,
       "tp": 727.22,
-      "rr": 3.7,
+      "rr": 3.6975,
       "latest_close": 411.04,
       "last_bar": "2026-10-06",
       "weekly_atr": 85.8251,
       "dist_above_top_atr": -0.2597,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-06"
     },
     {
       "ticker": "WELL",
