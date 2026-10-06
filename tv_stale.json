@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-07T00:04:31+03:00",
+  "generated_at": "2026-10-07T00:12:02+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -325,12 +325,12 @@
       "zone_top": 61.55,
       "sl": 58.11,
       "tp": 67.27,
-      "rr": 1.94,
+      "rr": 1.9359,
       "latest_close": 59.58,
       "last_bar": "2026-10-06",
       "weekly_atr": 3.3479,
       "dist_above_top_atr": -0.5884,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "BNY",
@@ -661,12 +661,12 @@
       "zone_top": 271.13,
       "sl": 259.25,
       "tp": 299.07,
-      "rr": 2.78,
+      "rr": 2.778,
       "latest_close": 272.5,
       "last_bar": "2026-10-06",
       "weekly_atr": 10.3039,
       "dist_above_top_atr": 0.133,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "EW",
@@ -677,12 +677,12 @@
       "zone_top": 85.06,
       "sl": 79.47,
       "tp": 93.91,
-      "rr": 1.93,
+      "rr": 1.929,
       "latest_close": 86.49,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.9646,
       "dist_above_top_atr": 0.288,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "EWBC",
@@ -997,12 +997,12 @@
       "zone_top": 526.59,
       "sl": 500.74,
       "tp": 593.17,
-      "rr": 3.06,
+      "rr": 3.0593,
       "latest_close": 566.75,
       "last_bar": "2026-10-06",
       "weekly_atr": 22.0461,
       "dist_above_top_atr": 1.8216,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "MDB",
@@ -1061,12 +1061,12 @@
       "zone_top": 447.5,
       "sl": 423.34,
       "tp": 482.73,
-      "rr": 1.8,
+      "rr": 1.7961,
       "latest_close": 456.34,
       "last_bar": "2026-10-06",
       "weekly_atr": 21.5983,
       "dist_above_top_atr": 0.4093,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "MTCH",
@@ -1157,12 +1157,12 @@
       "zone_top": 86.42,
       "sl": 79.99,
       "tp": 97.11,
-      "rr": 1.99,
+      "rr": 1.993,
       "latest_close": 89.255,
       "last_bar": "2026-10-06",
       "weekly_atr": 5.3713,
       "dist_above_top_atr": 0.5278,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "OVV",
@@ -1189,12 +1189,12 @@
       "zone_top": 51.33,
       "sl": 47.0,
       "tp": 62.21,
-      "rr": 2.31,
+      "rr": 2.3065,
       "latest_close": 58.34,
       "last_bar": "2026-10-06",
       "weekly_atr": 3.5986,
       "dist_above_top_atr": 1.948,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "PFG",
@@ -1221,12 +1221,12 @@
       "zone_top": 951.29,
       "sl": 895.21,
       "tp": 1077.95,
-      "rr": 2.71,
+      "rr": 2.7097,
       "latest_close": 985.01,
       "last_bar": "2026-10-06",
       "weekly_atr": 52.8267,
       "dist_above_top_atr": 0.6383,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "PKG",
@@ -1237,12 +1237,12 @@
       "zone_top": 228.27,
       "sl": 214.16,
       "tp": 253.22,
-      "rr": 2.15,
+      "rr": 2.1475,
       "latest_close": 229.74,
       "last_bar": "2026-10-06",
       "weekly_atr": 13.0276,
       "dist_above_top_atr": 0.1128,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "PM",
@@ -1461,12 +1461,12 @@
       "zone_top": 99.77,
       "sl": 94.54,
       "tp": 111.18,
-      "rr": 2.59,
+      "rr": 2.5862,
       "latest_close": 101.04,
       "last_bar": "2026-10-06",
       "weekly_atr": 4.4378,
       "dist_above_top_atr": 0.2862,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "SSNC",
@@ -1518,19 +1518,19 @@
     },
     {
       "ticker": "STX",
-      "symbol": "NASDAQ:STX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 712.16,
       "zone_top": 787.03,
       "sl": 641.42,
       "tp": 1073.88,
-      "rr": 2.43,
+      "rr": 2.4284,
       "latest_close": 805.63,
       "last_bar": "2026-10-06",
       "weekly_atr": 142.7166,
       "dist_above_top_atr": 0.1303,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "SWK",
@@ -1562,7 +1562,7 @@
       "last_bar": "2026-10-06",
       "weekly_atr": 19.6218,
       "dist_above_top_atr": 0.6365,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-07"
     },
     {
       "ticker": "THG",
