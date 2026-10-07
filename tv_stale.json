@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08T00:27:45+03:00",
+  "generated_at": "2026-10-08T00:32:08+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -538,7 +538,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 5.2052,
       "dist_above_top_atr": 0.1191,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "DASH",
@@ -602,7 +602,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 6.03,
       "dist_above_top_atr": 0.2106,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "EBAY",
@@ -922,7 +922,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 2.0223,
       "dist_above_top_atr": 0.445,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "JBL",
@@ -1082,7 +1082,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 21.5983,
       "dist_above_top_atr": 0.0403,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "MTCH",
@@ -1418,7 +1418,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 7.1295,
       "dist_above_top_atr": -0.1641,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "SNEX",
