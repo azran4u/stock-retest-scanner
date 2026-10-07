@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08T00:15:22+03:00",
+  "generated_at": "2026-10-08T00:27:45+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -362,7 +362,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 3.3479,
       "dist_above_top_atr": -0.5586,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "BNY",
@@ -714,7 +714,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 4.9646,
       "dist_above_top_atr": 0.145,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "EWBC",
@@ -1018,7 +1018,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 22.3879,
       "dist_above_top_atr": 1.9403,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "MDB",
@@ -1210,7 +1210,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 3.5986,
       "dist_above_top_atr": 1.9091,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "PFG",
@@ -1242,7 +1242,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 53.2774,
       "dist_above_top_atr": 0.03,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "PKG",
@@ -1258,7 +1258,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 13.0276,
       "dist_above_top_atr": -0.053,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "PM",
@@ -1390,19 +1390,19 @@
     },
     {
       "ticker": "RS",
-      "symbol": "NYSE:RS",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 366.66,
       "zone_top": 369.57,
       "sl": 343.81,
       "tp": 424.39,
-      "rr": 2.56,
+      "rr": 2.5576,
       "latest_close": 396.12,
       "last_bar": "2026-10-07",
       "weekly_atr": 24.0111,
       "dist_above_top_atr": 1.1057,
-      "read_date": "2026-10-04"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "SJM",
@@ -1546,7 +1546,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 143.984,
       "dist_above_top_atr": 0.1427,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "SWK",
@@ -1578,7 +1578,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 19.6218,
       "dist_above_top_atr": 0.7125,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "THG",
