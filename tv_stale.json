@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-07T23:55:19+03:00",
+  "generated_at": "2026-10-08T00:06:11+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -120,7 +120,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 4.2036,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "SSNC",
@@ -174,19 +174,19 @@
     },
     {
       "ticker": "AIT",
-      "symbol": "NYSE:AIT",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 308.02,
       "zone_top": 315.83,
       "sl": 294.03,
       "tp": 360.73,
-      "rr": 2.53,
+      "rr": 2.5272,
       "latest_close": 334.78,
       "last_bar": "2026-10-07",
       "weekly_atr": 18.5153,
       "dist_above_top_atr": 1.0235,
-      "read_date": "2026-09-30"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "AIZ",
@@ -282,7 +282,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 1.3034,
       "dist_above_top_atr": -0.2724,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ATI",
@@ -298,7 +298,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 20.1086,
       "dist_above_top_atr": 0.2327,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "AXTA",
@@ -314,7 +314,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 2.178,
       "dist_above_top_atr": 0.2227,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "BAX",
@@ -890,7 +890,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 8.0641,
       "dist_above_top_atr": -0.1091,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ITW",
@@ -986,7 +986,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 17.3275,
       "dist_above_top_atr": 1.2766,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "LNG",
@@ -1066,7 +1066,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 33.832,
       "dist_above_top_atr": 0.1936,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "MSI",
@@ -1194,7 +1194,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 4.2036,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "OXY",
@@ -1226,7 +1226,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 5.496,
       "dist_above_top_atr": 2.4163,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "PH",
@@ -1338,7 +1338,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 6.5975,
       "dist_above_top_atr": 0.3031,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ROK",
@@ -1509,12 +1509,12 @@
       "zone_top": 41.96,
       "sl": 38.46,
       "tp": 51.55,
-      "rr": 2.59,
+      "rr": 2.5863,
       "latest_close": 42.36,
       "last_bar": "2026-10-07",
       "weekly_atr": 3.1669,
       "dist_above_top_atr": 0.1263,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "STLD",
@@ -1690,7 +1690,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 12.9378,
       "dist_above_top_atr": -0.0201,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "URI",
@@ -1834,7 +1834,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 10.9044,
       "dist_above_top_atr": 0.0706,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "WSM",
@@ -1882,7 +1882,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 19.9739,
       "dist_above_top_atr": 0.2183,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-08"
     }
   ]
 }
