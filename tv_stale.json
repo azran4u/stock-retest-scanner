@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08T00:06:11+03:00",
+  "generated_at": "2026-10-08T00:15:22+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -62,7 +62,7 @@
       "ticker": "GL",
       "symbol": "",
       "flag": "broken",
-      "detail": "low 163.04 < SL 163.72 on 2026-10-07",
+      "detail": "close 163.54 < SL 163.72",
       "zone_bottom": 167.97,
       "zone_top": 173.75,
       "sl": 163.72,
@@ -72,7 +72,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 8.553,
       "dist_above_top_atr": -1.1937,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ITW",
@@ -154,7 +154,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 5.2223,
       "dist_above_top_atr": 1.056,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ADP",
@@ -266,7 +266,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 2.9416,
       "dist_above_top_atr": -0.1326,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "ASB",
@@ -330,7 +330,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 1.9951,
       "dist_above_top_atr": 0.807,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "BDX",
@@ -417,16 +417,16 @@
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 211.21,
-      "zone_top": 216.93,
+      "zone_bottom": 211.0,
+      "zone_top": 214.79,
       "sl": 200.12,
       "tp": 245.5,
-      "rr": 2.21,
+      "rr": 2.2139,
       "latest_close": 232.1,
       "last_bar": "2026-10-07",
       "weekly_atr": 13.9841,
-      "dist_above_top_atr": 1.0848,
-      "read_date": "2026-10-02"
+      "dist_above_top_atr": 1.2378,
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "CGNX",
@@ -513,16 +513,16 @@
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 42.44,
-      "zone_top": 43.1,
-      "sl": 40.75,
-      "tp": 53.26,
-      "rr": 5.0435,
+      "zone_bottom": 42.52,
+      "zone_top": 43.16,
+      "sl": 40.51,
+      "tp": 52.97,
+      "rr": 4.3707,
       "latest_close": 46.81,
       "last_bar": "2026-10-07",
       "weekly_atr": 2.0976,
-      "dist_above_top_atr": 1.7687,
-      "read_date": "2026-10-07"
+      "dist_above_top_atr": 1.7401,
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "DAR",
@@ -547,14 +547,14 @@
       "detail": "",
       "zone_bottom": 183.38,
       "zone_top": 192.74,
-      "sl": 165.75,
-      "tp": 235.58,
-      "rr": 2.0614,
+      "sl": 167.54,
+      "tp": 224.51,
+      "rr": 1.8992,
       "latest_close": 191.24,
       "last_bar": "2026-10-07",
       "weekly_atr": 18.1051,
       "dist_above_top_atr": -0.0828,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "DGX",
@@ -666,7 +666,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 8.88,
       "dist_above_top_atr": 1.875,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "EQIX",
@@ -800,7 +800,7 @@
       "ticker": "GL",
       "symbol": "",
       "flag": "broken",
-      "detail": "low 163.04 < SL 163.72 on 2026-10-07",
+      "detail": "close 163.54 < SL 163.72",
       "zone_bottom": 167.97,
       "zone_top": 173.75,
       "sl": 163.72,
@@ -810,7 +810,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 8.553,
       "dist_above_top_atr": -1.1937,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "GTX",
@@ -842,7 +842,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 47.765,
       "dist_above_top_atr": -0.0806,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "IEX",
@@ -874,7 +874,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 7.845,
       "dist_above_top_atr": 0.1632,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "IRM",
@@ -954,7 +954,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 6.1436,
       "dist_above_top_atr": -0.6576,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "LFUS",
@@ -990,19 +990,19 @@
     },
     {
       "ticker": "LNG",
-      "symbol": "NYSE:LNG",
+      "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 247.64,
-      "zone_top": 252.96,
-      "sl": 233.69,
-      "tp": 290.49,
-      "rr": 2.28,
+      "zone_bottom": 268.55,
+      "zone_top": 273.85,
+      "sl": 255.95,
+      "tp": 296.96,
+      "rr": 1.807,
       "latest_close": 272.162,
       "last_bar": "2026-10-07",
       "weekly_atr": 16.0858,
-      "dist_above_top_atr": 1.1937,
-      "read_date": "2026-09-30"
+      "dist_above_top_atr": -0.1049,
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "MA",
@@ -1562,7 +1562,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 5.977,
       "dist_above_top_atr": -0.3329,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "THC",
@@ -1706,7 +1706,7 @@
       "last_bar": "2026-10-07",
       "weekly_atr": 85.2796,
       "dist_above_top_atr": 0.4968,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-08"
     },
     {
       "ticker": "VLTO",
