@@ -299,7 +299,8 @@ def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path
     jp = out_dir / "grok_needs_drawing_target.json"
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
-                                      "AND no TradingView drawing (never read counts)"}, indent=2) + "\n")
+                                      "AND no TradingView drawing (never read counts) AND not marked not-technical by the user "
+                                      "(user_overrides.json)"}, indent=2) + "\n")
     (out_dir / "grok_needs_drawing_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp
 
@@ -317,6 +318,7 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     mask = pd.Series(True, index=df.index)
     for c in ["f_bot_review"] + REVIEW_FILTERS:
         mask &= df[c].map(t) if c in df.columns else False
+    mask &= ~df["ticker"].map(lambda x: rf.user_technical(str(x)) is False)  # user: not technical
     syms = []
     for _, r in df[mask].iterrows():
         m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
@@ -326,7 +328,8 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     jp = out_dir / "grok_review_target.json"
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_bot_review (bot drawing, review needed: not approved / not edited) AND "
-                                      "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history"},
+                                      "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
+                                      "AND not marked not-technical by the user (user_overrides.json)"},
                              indent=2) + "\n")
     (out_dir / "grok_review_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp

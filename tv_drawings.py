@@ -351,8 +351,10 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         st = rf.compute_stale(h, r)
         for c in rf.STALE_COLS:
             df.at[i, c] = _csv_val(st[c])
-        for c, v in rf.compute_technical(h).items():
-            df.at[i, c] = _csv_val(v)
+        tech = rf.apply_user_overrides(dict(rf.compute_technical(h), ticker=str(row["ticker"]).strip()),
+                                       str(row["ticker"]).strip())
+        for c in rf.TECH_COLS:
+            df.at[i, c] = _csv_val(tech.get(c))
         for c, v in rf.compute_evidence(h, r).items():  # reversal evidence (grade inputs)
             df.at[i, c] = _csv_val(v)
         if h is not None and len(h) >= 2 and "f_weekly_reversal" in df.columns:

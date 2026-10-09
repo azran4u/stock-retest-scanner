@@ -337,7 +337,7 @@ const COL_LABELS = {
   ev_first_reaction: "E3 first reaction", ev_double_bottom: "E4 double bottom", ev_ma_support: "E7 MA support", ev_fib: "E8 fib",
   ev_ma_support_mas: "E7 MA(s)", ev_fib_levels: "E8 fib level(s)", ev_pullback_high: "pullback high", ev_pullback_high_date: "pullback high week",
   f_rr_x: "E6 TV R:R ≥ X", f_must_haves: "all must-haves", f_weekly_reversal: "E1 weekly reversal", f_daily_reversal: "E2 daily reversal", f_smooth_streak: "E5 smooth ≥ N",
-  tv_source: "drawing by", tv_bot_status: "drawing status", f_technical: "technical", f_bot_review: "bot review needed",
+  tv_source: "drawing by", tv_bot_status: "drawing status", f_technical: "technical", tech_computed: "technical (computed)", tech_override: "technical override (user)", f_bot_review: "bot review needed",
   tech_new_high_atr: "new high (ATR)", tech_hh: "higher highs", tech_hl: "higher lows", tech_structure: "HH/HL score",
   tech_ema30_slope_pct: "30w EMA 26w %", tech_ema_rising: "30w EMA rising",
   pos_shares: "Shares", pos_cost: "Cost", pos_risk: "Risk $", pos_profit: "Profit at TP $", pos_cap: "limited by", f_near_zone: "f_near_zone (≤1 ATR)",
@@ -397,7 +397,8 @@ function escAttr(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").r
 function infoBadges(r) {
   if (!r) return "";
   let h = "";
-  if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr(r.tech_detail)}">technical</span>`;
+  if (r.tech_override && /^not technical/.test(r.tech_override)) h += ` <span class="pill notech" title="${escAttr(r.tech_override + (r.tech_computed === "True" ? " — computed flag says technical" : "") + " | " + (r.tech_detail || ""))}">not technical (Eyal)</span>`;
+  else if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr((r.tech_override ? r.tech_override + " | " : "") + (r.tech_detail || ""))}">technical${r.tech_override ? " (Eyal)" : ""}</span>`;
   if (r.f_bot_review === "True") h += ` <span class="pill bot" title="${escAttr(r.tv_bot_note)}">bot drawing: review needed</span>`;
   else if (r.tv_source === "bot-approved") h += ` <span class="pill botok" title="${escAttr(r.tv_bot_note)}">bot drawing (approved)</span>`;
   else if (r.tv_bot_status === "needs manual drawing (data issue)") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">needs manual drawing (data issue)</span>`;
@@ -425,6 +426,7 @@ function fmt(col, val, row) {
     : (row && row.tv_found === "yes" ? '<span class="muted">ok</span>' : "");
   if (col === "tv_bot_status" && val) return `<span title="${escAttr(row && row.tv_bot_note)}">${val}</span>`;
   if (col === "tv_source" && val === "bot") return `<span class="pill bot" title="${escAttr(row && row.tv_bot_note)}">bot (review)</span>`;
+  if (col === "f_technical" && row && row.tech_override) return `<span title="${escAttr(row.tech_override + " | computed: " + (row.tech_computed || "n/a") + " | " + (row.tech_detail || ""))}">${val === "True" ? "✓" : "·"} (Eyal)</span>`;
   if (col === "f_technical") return val === "True" ? `<span title="${escAttr(row && row.tech_detail)}">✓</span>`
     : val === "False" ? `<span title="${escAttr(row && row.tech_detail)}">·</span>` : '<span class="muted">n/a</span>';
   if (col === "tv_found") return val === "yes" ? "yes" : val === "no" ? "no" : '<span class="muted">not checked</span>';

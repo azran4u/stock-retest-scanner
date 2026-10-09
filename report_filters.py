@@ -118,7 +118,7 @@ INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in stat
 # "target hit" / "far" (comma-joined when several), tv_stale_detail = numbers
 STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
 # technical = clear weekly uptrend (every row with >= tech_min_weekly_bars weekly bars; else empty)
-TECH_COLS = ["f_technical", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
+TECH_COLS = ["f_technical", "tech_computed", "tech_override", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
              "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail"]
 # reversal evidence at the TV zone (compute_evidence; grade is computed live in the browser)
 EVIDENCE_COLS = [
@@ -365,6 +365,7 @@ def compute_row(
     r.update(compute_near_zone(hist, r))
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
     r.update(compute_technical(hist))
+    apply_user_overrides(r, ticker)
     r.update(compute_evidence(hist, r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
@@ -945,12 +946,47 @@ def tv_note(r: Dict[str, Any]) -> str:
 NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]
 
 
+# ---------------------------------------------------------------------------
+# user overrides (Eyal's judgement wins over computed flags)
+# ---------------------------------------------------------------------------
+USER_OVERRIDES = Path("/workspace/stock-screener/user_overrides.json")  # {"tickers": {T: {"technical": false, ...}}}
+
+
+def load_user_overrides() -> Dict[str, Dict[str, Any]]:
+    return _load_cached_json(USER_OVERRIDES, "tickers")
+
+
+def user_technical(ticker: str) -> Optional[bool]:
+    """The user's technical verdict for `ticker` (True / False) or None when not overridden."""
+    o = load_user_overrides().get(str(ticker).strip().upper()) or {}
+    v = o.get("technical")
+    return None if v is None else bool(v)
+
+
+def apply_user_overrides(r: Dict[str, Any], ticker: str) -> Dict[str, Any]:
+    """After compute_technical: tech_computed = the computed f_technical; a user override
+    (user_overrides.json "technical") replaces f_technical; tech_override = e.g.
+    "not technical (Eyal) 2026-10-09: <note>" (empty when not overridden)."""
+    r["tech_computed"] = r.get("f_technical")
+    r["tech_override"] = ""
+    o = load_user_overrides().get(str(ticker).strip().upper()) or {}
+    if o.get("technical") is not None:
+        v = bool(o["technical"])
+        r["f_technical"] = v
+        r["tech_override"] = (f"{'technical' if v else 'not technical'} ({o.get('by') or 'Eyal'}) "
+                              f"{o.get('date') or ''}" + (f": {o['note']}" if o.get("note") else "")).strip()
+    return r
+
+
 def compute_needs_drawing(r: Dict[str, Any]) -> bool:
     """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
     AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
     Tickers with a bot drawing (tv_source bot / bot-approved, even before the nightly read
     confirms it) are excluded: they show as "review needed" instead; so are charts where the user
-    drew only Fib / horizontal lines (tv_source user-lines)."""
+    drew only Fib / horizontal lines (tv_source user-lines), and tickers the user marked not technical
+    (user_overrides.json technical=false)."""
+    if user_technical(str(r.get("ticker") or "")) is False:  # the user marked it not technical
+        return False
     return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes"
                 and str(r.get("tv_source") or "") not in ("bot", "bot-approved", "user-lines"))
 

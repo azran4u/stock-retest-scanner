@@ -12,7 +12,7 @@ const FILTERS = [
   { col: "f_no_earnings_14d", label: P => `no earnings ≤${P.earnDays}d`, core: true, must: true, tip: "Next earnings NOT within E days (E = the earnings-days input, default 14) — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
   { col: "f_history",         label: "history ≥ 3y",          core: true, must: true, tip: "≥ 150 weekly bars (weekly_bars)" },
   { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, must: true, tip: "TradingView drawing that counts (user-owned or approved bot drawing) AND TradingView Long Position R:R ≥ 2. No drawing / not checked / bot drawing awaiting review → fails. Part of status=PASS (Grok sync)" },
-  { col: "f_technical",       label: "technical (weekly uptrend)", core: false, must: true, tip: "Clear weekly uptrend: recent 26w high ≥ 1 weekly ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w (strength-3 swings, current-pullback lows ignored), 30w EMA higher than 26w ago. Empty with < 130 weekly bars. Must-have for a grade; not part of status" },
+  { col: "f_technical",       label: "technical (weekly uptrend)", core: false, must: true, tip: "Clear weekly uptrend: recent 26w high ≥ 1 weekly ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w (strength-3 swings, current-pullback lows ignored), 30w EMA higher than 26w ago. Empty with < 130 weekly bars. A user override (user_overrides.json, e.g. "not technical (Eyal)") wins over the computed flag. Must-have for a grade; not part of status" },
   { col: "f_must_haves",      label: "all must-haves", core: false, group: "Grade", tip: "All 9 must-haves pass (FinViz list, short float < 5%, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2) = the stock gets a grade A/B/C/D" },
   { col: "f_weekly_reversal", label: "E1 weekly reversal at zone (5w)",  core: false, group: "Evidence", ev: 1, short: "W-rev", tip: "E1: reversal-shape weekly candle (hammer/engulfing/strong_close/rejection) in the last 5 completed weeks AT the TV zone: its low ≤ zone top + 0.5 weekly ATR(14) and (low ≥ zone bottom − 0.5 weekly ATR or close ≥ zone bottom). No TV zone → false" },
   { col: "f_daily_reversal",  label: "E2 daily reversal at zone (10d)",  core: false, group: "Evidence", ev: 2, short: "D-rev", tip: "E2: reversal-shape daily candle (same shapes) in the last 10 completed sessions AT the TV zone: its low ≤ zone top + 0.5 daily ATR(14) and (low ≥ zone bottom − 0.5 daily ATR or close ≥ zone bottom). No TV zone → false" },
@@ -107,7 +107,7 @@ function applyLive(rows, P) {
     }
     if (!("ev_fib" in r)) { r.grade = ""; r.f_must_haves = ""; continue; }  // older schema: no grade
     const failed = MUST.filter(c => !isTrueFlag(r[c]));
-    r.mh_failed = failed.map(c => textOf(MUST_LABEL[c], P)).join(", ");
+    r.mh_failed = failed.map(c => c === "f_technical" && /^not technical/.test(r.tech_override || "") ? "not technical (Eyal)" : textOf(MUST_LABEL[c], P)).join(", ");
     r.f_must_haves = failed.length ? "False" : "True";
     const missing = EVIDENCE.filter(f => !isTrueFlag(r[f.col]));
     r.ev_count = EVIDENCE.length - missing.length;
@@ -313,6 +313,7 @@ const CSS = `
   .evc { font-size:.7rem; padding:0 6px; border-radius:999px; border:1px solid var(--border); white-space:nowrap; cursor:help; }
   .evc.yes { color:#7ee787; border-color:rgba(63,185,80,.5); background:rgba(63,185,80,.1); }
   .evc.no { color:var(--muted); opacity:.7; text-decoration:line-through; }
+  .pill.notech { background: rgba(248,81,73,.10); color: #ffa198; border: 1px solid rgba(248,81,73,.4); white-space: nowrap; padding:1px 8px; border-radius:999px; font-size:.75rem; font-weight:650; }
   .mhfail { color:var(--muted); font-size:.72rem; }
   td .evchips { flex-wrap:nowrap; }
 `;

@@ -143,7 +143,8 @@ function escAttr(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").r
 function infoBadges(r) {
   if (!r) return "";
   let h = "";
-  if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr(r.tech_detail)}">technical</span>`;
+  if (r.tech_override && /^not technical/.test(r.tech_override)) h += ` <span class="pill notech" title="${escAttr(r.tech_override + (r.tech_computed === "True" ? " — computed flag says technical" : "") + " | " + (r.tech_detail || ""))}">not technical (Eyal)</span>`;
+  else if (r.f_technical === "True") h += ` <span class="pill tech" title="${escAttr((r.tech_override ? r.tech_override + " | " : "") + (r.tech_detail || ""))}">technical${r.tech_override ? " (Eyal)" : ""}</span>`;
   if (r.f_bot_review === "True") h += ` <span class="pill bot" title="${escAttr(r.tv_bot_note)}">bot drawing: review needed</span>`;
   else if (r.tv_source === "bot-approved") h += ` <span class="pill botok" title="${escAttr(r.tv_bot_note)}">bot drawing (approved)</span>`;
   else if (r.tv_bot_status === "needs manual drawing (data issue)") h += ` <span class="pill draw" title="${escAttr(r.tv_bot_note)}">needs manual drawing (data issue)</span>`;
