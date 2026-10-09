@@ -1,0 +1,65 @@
+{
+ "ticker": "LAMR",
+ "name": "Lamar Advertising Company",
+ "business": "Outdoor-advertising REIT: billboards (incl. digital), transit and logo signs across the US and Canada.",
+ "news": [
+  {
+   "date": "2026-08-06",
+   "title": "Q2 AFFO/share $2.40 (+8.1%); FY26 AFFO/share guide raised to $8.75–8.90",
+   "url": "https://www.globenewswire.com/news-release/2026/08/06/3340021/16126/en/lamar-advertising-company-announces-second-quarter-ended-june-30-2026-operating-results.html",
+   "source": "GlobeNewswire"
+  },
+  {
+   "date": "2026-09-01",
+   "title": "Declares $1.65/share quarterly dividend",
+   "url": "https://www.sec.gov/Archives/edgar/data/1090425/000119312526378592/d81164d8k.htm",
+   "source": "SEC 8-K"
+  },
+  {
+   "date": "2026-09-29",
+   "title": "Shares slide with REITs as Treasury yields rise",
+   "url": "https://kalkine.com/news/real-estate/rate-pressure-on-reits-sends-lamar-advertising-nasdaqlamr-stock-sliding",
+   "source": "Kalkine"
+  }
+ ],
+ "pros": [
+  "Raised AFFO guidance; dividend yield {div} ({src})",
+  "High margins: operating margin {om}",
+  "Digital billboard conversion supports pricing"
+ ],
+ "cons": [
+  "Rate-sensitive REIT; debt {debt} ({src})",
+  "Ad spending is cyclical; growth only mid-single-digit (rev +{rg})",
+  "Consensus 'hold', mean target ${tgt}",
+  "Q3 earnings Oct 29"
+ ],
+ "take": "Stable income REIT with raised guidance; upside depends mostly on rates, so fundamentals are a mild plus, not a driver.",
+ "metrics": {
+  "sector": "Real Estate",
+  "industry": "REIT - Specialty",
+  "trailingPE": 26.739964,
+  "forwardPE": 22.613426,
+  "priceToSalesTrailing12Months": 6.396878,
+  "profitMargins": 0.23905,
+  "operatingMargins": 0.33283,
+  "revenueGrowth": 0.065,
+  "earningsGrowth": 0.039,
+  "debtToEquity": 500.114,
+  "totalDebt": 4978484224,
+  "totalCash": 67950000,
+  "freeCashflow": 558694400,
+  "marketCap": 14880582656,
+  "targetMeanPrice": 162.2,
+  "recommendationKey": "hold",
+  "dividendYield": 4.61,
+  "returnOnEquity": 0.59433,
+  "fiftyTwoWeekHigh": 166.33,
+  "fiftyTwoWeekLow": 114.45,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 146.535,
+  "summary": "Lamar Advertising Company is one of the largest outdoor advertising companies in North America, with over 362,000 displays across the United States and Canada. Lamar offers advertisers a variety of billboards, interstate logo, transit and airport advertising formats, helping both local businesses and national brands reach broad audiences every day. In addition to its more traditional out-of-home i",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/LAMR/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

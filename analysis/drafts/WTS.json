@@ -1,0 +1,59 @@
+{
+ "ticker": "WTS",
+ "name": "Watts Water Technologies, Inc.",
+ "business": "Plumbing, heating, water-quality and flow-control products (valves, boilers, thermal storage) for commercial and residential buildings.",
+ "news": [
+  {
+   "date": "2026-08-05",
+   "title": "Record Q2: sales $763M (+19%, +12% organic), adj. EPS $3.66; FY26 sales outlook raised (8–11% organic)",
+   "url": "https://www.nasdaq.com/press-release/watts-water-technologies-reports-record-second-quarter-2026-results-2026-08-05",
+   "source": "Business Wire / Nasdaq"
+  },
+  {
+   "date": "2026-08-06",
+   "title": "Data-center sales more than tripled y/y; data-center TAM estimate roughly doubled to ~$2B",
+   "url": "https://vectorshift.ai/research/companies/watts-water/earnings/2026-q2",
+   "source": "Q2 call transcript"
+  }
+ ],
+ "pros": [
+  "Double-digit organic growth with pricing power (~6% price)",
+  "New data-center leg (CoolVault thermal storage) adds a secular driver",
+  "Net cash ({cash} cash vs {debt} debt); operating margin {om} ({src})"
+ ],
+ "cons": [
+  "Premium valuation: forward P/E {fpe} ({src})",
+  "Adj. operating margin −60 bp (acquisition dilution, tariffs/inflation)",
+  "Part of Q2 demand was pull-forward; Middle East softness",
+  "Q3 earnings Nov 4"
+ ],
+ "take": "High-quality industrial with a balance-sheet cushion and a data-center kicker; fundamentals fine, valuation already prices quality.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Specialty Industrial Machinery",
+  "trailingPE": 30.46987,
+  "forwardPE": 24.853642,
+  "priceToSalesTrailing12Months": 4.3503213,
+  "profitMargins": 0.14336,
+  "operatingMargins": 0.20912,
+  "revenueGrowth": 0.186,
+  "earningsGrowth": 0.173,
+  "debtToEquity": 9.674,
+  "totalDebt": 211800000,
+  "totalCash": 347900000,
+  "freeCashflow": 228787504,
+  "marketCap": 11646679040,
+  "targetMeanPrice": 404.0,
+  "recommendationKey": "buy",
+  "dividendYield": 0.66,
+  "returnOnEquity": 0.18805,
+  "fiftyTwoWeekHigh": 394.54,
+  "fiftyTwoWeekLow": 260.0,
+  "mostRecentQuarter": 1782604800,
+  "currentPrice": 348.88,
+  "summary": "Watts Water Technologies, Inc., together with its subsidiaries, supplies products and solutions that manage and conserve the flow of fluids and energy into, through, and out of buildings in the commercial, industrial, and residential markets. The company offers residential and commercial flow control and protection products, including backflow preventers, water pressure regulators, temperature and",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/WTS/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

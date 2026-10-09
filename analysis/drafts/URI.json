@@ -1,0 +1,59 @@
+{
+ "ticker": "URI",
+ "name": "United Rentals, Inc.",
+ "business": "Largest US equipment-rental company (general and specialty rentals).",
+ "news": [
+  {
+   "date": "2026-07-22",
+   "title": "Record Q2: revenue $4.4B, adj. EPS $12.76; FY26 revenue guide raised to $17.5–17.8B",
+   "url": "https://investors.unitedrentals.com/press-releases/press-releases-details/2026/United-Rentals-Announces-Record-Second-Quarter-Results-and-Raises-Full-Year-2026-Guidance/default.aspx",
+   "source": "URI IR"
+  },
+  {
+   "date": "2026-09-19",
+   "title": "Management: large-project pipeline accelerating, specialty demand strong",
+   "url": "https://www.marketbeat.com/instant-alerts/event-united-rentals-sees-large-project-pipeline-accelerate-as-specialty-demand-stays-strong-2026-09-19/",
+   "source": "MarketBeat"
+  }
+ ],
+ "pros": [
+  "Mega-project demand (data centers, manufacturing) driving raised guidance",
+  "Strong FCF ({fcf}) funds buybacks/M&A ({src})",
+  "Forward P/E {fpe}"
+ ],
+ "cons": [
+  "Leverage: debt {debt} ({src})",
+  "Diesel cost $5.34/gal YTD vs $3.66 a year earlier",
+  "Cyclical construction exposure",
+  "Q3 earnings Oct 28"
+ ],
+ "take": "Cycle leader with raised guidance and a long project pipeline; fundamentals supportive. (Only graded with a larger account — 1 share > position cap.)",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Rental & Leasing Services",
+  "trailingPE": 25.226976,
+  "forwardPE": 18.304743,
+  "priceToSalesTrailing12Months": 3.879764,
+  "profitMargins": 0.15673,
+  "operatingMargins": 0.25986,
+  "revenueGrowth": 0.118,
+  "earningsGrowth": 0.255,
+  "debtToEquity": 166.793,
+  "totalDebt": 15384999936,
+  "totalCash": 112000000,
+  "freeCashflow": 1706249984,
+  "marketCap": 65304190976,
+  "targetMeanPrice": 1265.9524,
+  "recommendationKey": "buy",
+  "dividendYield": 0.76,
+  "returnOnEquity": 0.28895,
+  "fiftyTwoWeekHigh": 1179.18,
+  "fiftyTwoWeekLow": 701.59,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 1049.19,
+  "summary": "United Rentals, Inc., through its subsidiaries, operates as an equipment rental company in the United States, Canada, Europe, Australia, and New Zealand. It operates through two segments, General Rentals and Specialty. The General Rentals segment rents general construction and industrial equipment, such as backhoes, skid-steer loaders, forklifts, earthmoving equipment, and material handling equipm",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/URI/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

@@ -1,0 +1,59 @@
+{
+ "ticker": "AMGN",
+ "name": "Amgen Inc.",
+ "business": "Large-cap biopharma: Repatha, Prolia/Xgeva, Evenity, Tezspire, oncology and biosimilars; MariTide obesity drug in Phase 3.",
+ "news": [
+  {
+   "date": "2026-08-04",
+   "title": "Q2 revenue $10.1B (+10%), non-GAAP EPS $6.29; FY26 guide $38.2–39.4B revenue",
+   "url": "https://www.amgen.com/newsroom/press-releases/2026/08/amgen-reports-second-quarter-2026-financial-results",
+   "source": "Amgen"
+  },
+  {
+   "date": "2026-09-16",
+   "title": "Pipeline update: MariTide Phase 3 (MARITIME) enrolling strongly; key obesity readouts ~2027",
+   "url": "https://www.americanbankingnews.com/2026/09/16/amgen-highlights-maritide-imdelltra-pipeline-progress-and-growth-priorities.html",
+   "source": "ABMN"
+  }
+ ],
+ "pros": [
+  "Steady growth (+10%) with operating margin {om} ({src})",
+  "Huge free cash flow ({fcf}); dividend yield {div}",
+  "Obesity optionality (MariTide) plus Imdelltra/Tezspire growth"
+ ],
+ "cons": [
+  "Leverage: {debt} debt vs {cash} cash ({src})",
+  "Price already above the analyst mean target ${tgt}; consensus 'hold'",
+  "Biosimilar erosion (Prolia/Xgeva) and drug-pricing policy risk",
+  "Q3 earnings Nov 3"
+ ],
+ "take": "Defensive cash machine with an obesity call option; fair value, not a bargain — fine as a pullback trade, weak as a fundamental upside case.",
+ "metrics": {
+  "sector": "Healthcare",
+  "industry": "Drug Manufacturers - General",
+  "trailingPE": 25.65031,
+  "forwardPE": 16.867079,
+  "priceToSalesTrailing12Months": 5.860738,
+  "profitMargins": 0.22951001,
+  "operatingMargins": 0.35548002,
+  "revenueGrowth": 0.095,
+  "earningsGrowth": 0.649,
+  "debtToEquity": 490.281,
+  "totalDebt": 57303998464,
+  "totalCash": 13989000192,
+  "freeCashflow": 8645624832,
+  "marketCap": 223264800768,
+  "targetMeanPrice": 391.46103,
+  "recommendationKey": "hold",
+  "dividendYield": 2.47,
+  "returnOnEquity": 0.91473,
+  "fiftyTwoWeekHigh": 447.03,
+  "fiftyTwoWeekLow": 288.0,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 412.97,
+  "summary": "Amgen Inc. discovers, develops, manufactures, and delivers human therapeutics worldwide. The company's principal products include Enbrel for the treatment of rheumatoid arthritis, plaque psoriasis, and psoriatic arthritis; Otezla for the treatment of adult patients with plaque psoriasis, psoriatic arthritis, and oral ulcers associated with Behçet's disease; Prolia to treat postmenopausal women wit",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/AMGN/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

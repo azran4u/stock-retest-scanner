@@ -1,0 +1,66 @@
+{
+ "ticker": "BWA",
+ "name": "BorgWarner Inc.",
+ "business": "Turbochargers, drivetrain/Morse chains, eMotors, inverters and battery systems for combustion, hybrid and EV makers; developing TurboCell turbine generators for data-center power.",
+ "news": [
+  {
+   "date": "2026-10-06",
+   "title": "Morgan Stanley upgrades to Overweight, target $71→$95 on TurboCell AI-power opportunity; shares +~5%",
+   "url": "https://ph.investing.com/news/stock-market-news/borgwarner-jumps-as-morgan-stanley-upgrades-stock-on-ai-power-potential-2616254",
+   "source": "Investing.com"
+  },
+  {
+   "date": "2026-10-03",
+   "title": "J.P. Morgan sets $85 target, Buy",
+   "url": "https://www.ad-hoc-news.de/boerse/news/corporate-news/j-p-morgan-sets-usd-85-00-target-for-borgwarner-stock/70241401",
+   "source": "AD HOC NEWS"
+  },
+  {
+   "date": "2026-08-05",
+   "title": "Q2: adj. EPS $1.42 (+17%), FY26 adj. EPS guide raised to $5.05–5.30, buyback +$1B",
+   "url": "https://last10k.com/sec-filings/bwa/0000908255-26-000051.htm",
+   "source": "10-Q / press release"
+  }
+ ],
+ "pros": [
+  "Cheap: forward P/E {fpe}, P/S {ps} ({src})",
+  "Margin expansion despite flat sales: Q2 adj. operating margin 11.3% (+100 bp)",
+  "Shareholder returns: ~$1.35B buyback authorization through 2029",
+  "Optional upside from data-center power (TurboCell deliveries expected 2027)"
+ ],
+ "cons": [
+  "No top-line growth: FY26 organic sales guided −1.5% to −3.5% (battery business shrinking)",
+  "Cyclical auto-production exposure; estimates were trending down after Q2 (Zacks)",
+  "TurboCell is pre-revenue; the AI-power story could fade",
+  "Q3 earnings Oct 29"
+ ],
+ "take": "Value auto supplier with improving margins and a buyback, plus an AI-power call option — fundamentals support a pullback buy, but growth is not the story.",
+ "metrics": {
+  "sector": "Consumer Cyclical",
+  "industry": "Auto Parts",
+  "trailingPE": 30.76,
+  "forwardPE": 10.393121,
+  "priceToSalesTrailing12Months": 0.87350494,
+  "profitMargins": 0.02893,
+  "operatingMargins": 0.106359996,
+  "revenueGrowth": 0.003,
+  "earningsGrowth": 0.301,
+  "debtToEquity": 70.11,
+  "totalDebt": 4064999936,
+  "totalCash": 2448000000,
+  "freeCashflow": 1066249984,
+  "marketCap": 12529554432,
+  "targetMeanPrice": 81.26667,
+  "recommendationKey": "buy",
+  "dividendYield": 1.1,
+  "returnOnEquity": 0.08056,
+  "fiftyTwoWeekHigh": 78.82,
+  "fiftyTwoWeekLow": 40.5,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 61.52,
+  "summary": "BorgWarner Inc., together with its subsidiaries, provides technology solutions for combustion, hybrid, and electric vehicles worldwide. The company operates through the Turbos & Thermal Technologies; Drivetrain & Morse Systems; PowerDrive Systems; and Battery & Charging Systems segments. It offers turbochargers, eBoosters, eTurbos, emissions systems, thermal systems, gasoline ignition technology, ",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/BWA/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

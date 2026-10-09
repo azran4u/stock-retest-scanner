@@ -1,0 +1,65 @@
+{
+ "ticker": "RHP",
+ "name": "Ryman Hospitality Properties, Inc.",
+ "business": "Lodging REIT owning large group-meeting resorts (Gaylord Hotels, JW Marriott/Ritz-Carlton) plus Opry Entertainment.",
+ "news": [
+  {
+   "date": "2026-08-06",
+   "title": "Q2 beat; FY26 same-store RevPAR growth guide raised to 3.5–4.5%",
+   "url": "https://www.globenewswire.com/news-release/2026/08/06/3340801/0/en/ryman-hospitality-properties-inc-reports-second-quarter-2026-results.html",
+   "source": "GlobeNewswire"
+  },
+  {
+   "date": "2026-09-01",
+   "title": "Closes $1.38B Grande Lakes Orlando acquisition; updates 2026 outlook",
+   "url": "https://www.globenewswire.com/news-release/2026/09/01/3354609/0/en/ryman-hospitality-properties-inc-closes-acquisition-of-grande-lakes-orlando-resort-and-updates-2026-outlook.html",
+   "source": "GlobeNewswire"
+  },
+  {
+   "date": "2026-09-15",
+   "title": "Declares $1.20 Q3 dividend",
+   "url": "https://www.globenewswire.com/news-release/2026/09/15/3362671/0/en/ryman-hospitality-properties-inc-declares-third-quarter-dividend.html",
+   "source": "GlobeNewswire"
+  }
+ ],
+ "pros": [
+  "Group-meeting demand strong; guidance raised",
+  "Acquisitive growth (Grande Lakes)",
+  "Dividend yield {div}; consensus '{rec}', mean target ${tgt} ({src})"
+ ],
+ "cons": [
+  "Leverage: debt {debt} ({src}), more after the acquisition",
+  "Hotel/group travel is economically sensitive",
+  "Possible sale of the Entertainment segment adds uncertainty",
+  "Q3 earnings Nov 2"
+ ],
+ "take": "Well-run group-hotel REIT with raised guidance and analyst support; leverage and the travel cycle are the main risks.",
+ "metrics": {
+  "sector": "Real Estate",
+  "industry": "REIT - Hotel & Motel",
+  "trailingPE": 29.344282,
+  "forwardPE": 25.284067,
+  "priceToSalesTrailing12Months": 3.0433013,
+  "profitMargins": 0.09947,
+  "operatingMargins": 0.23305,
+  "revenueGrowth": 0.136,
+  "earningsGrowth": 0.264,
+  "debtToEquity": 334.57,
+  "totalDebt": 4132595968,
+  "totalCash": 369963008,
+  "freeCashflow": 567982976,
+  "marketCap": 8319850496,
+  "targetMeanPrice": 139.7857,
+  "recommendationKey": "strong_buy",
+  "dividendYield": 4.02,
+  "returnOnEquity": 0.22583,
+  "fiftyTwoWeekHigh": 137.46,
+  "fiftyTwoWeekLow": 83.82,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 120.605,
+  "summary": "Ryman Hospitality Properties, Inc. is a leading lodging and hospitality real estate investment trust that specializes in group-oriented, upscale convention center resorts and entertainment experiences. The Company's holdings include Gaylord Opryland Resort & Convention Center; Gaylord Palms Resort & Convention Center; Gaylord Texan Resort & Convention Center; Gaylord National Resort & Convention C",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/RHP/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

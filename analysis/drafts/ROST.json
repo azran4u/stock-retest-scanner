@@ -1,0 +1,59 @@
+{
+ "ticker": "ROST",
+ "name": "Ross Stores, Inc.",
+ "business": "Off-price apparel and home retailer (Ross Dress for Less, dd's DISCOUNTS).",
+ "news": [
+  {
+   "date": "2026-08",
+   "title": "Q2 sales $6.27B (+13%), comps +10%; FY EPS guide raised to $8.61–8.77; 115 new stores planned",
+   "url": "https://www.prnewswire.com/news-releases/ross-stores-reports-strong-second-quarter-sales-and-earnings-results-302856807.html",
+   "source": "PR Newswire"
+  },
+  {
+   "date": "2026-09-18",
+   "title": "Consensus 'Moderate Buy'; several targets raised (e.g. Truist $310)",
+   "url": "https://www.americanbankingnews.com/2026/09/18/ross-stores-inc-nasdaqrost-given-consensus-recommendation-of-moderate-buy-by-brokerages.html",
+   "source": "ABMN"
+  }
+ ],
+ "pros": [
+  "Strong comps (+10%) and store growth",
+  "Large cash pile: {cash} cash vs {debt} total debt ({src})",
+  "ROE {roe}; off-price wins in a cautious consumer environment"
+ ],
+ "cons": [
+  "Full valuation: forward P/E {fpe} ({src})",
+  "Q2 EPS included ~$0.60 tariff refunds — not recurring",
+  "H2 comps guided lower (6–7% Q3, 4–5% Q4)",
+  "Q3 earnings Nov 12"
+ ],
+ "take": "Fundamentally strong retailer with momentum; the one-off tariff boost and a full multiple are the caveats.",
+ "metrics": {
+  "sector": "Consumer Cyclical",
+  "industry": "Apparel Retail",
+  "trailingPE": 26.81076,
+  "forwardPE": 24.710352,
+  "priceToSalesTrailing12Months": 2.8896594,
+  "profitMargins": 0.10848,
+  "operatingMargins": 0.13578,
+  "revenueGrowth": 0.133,
+  "earningsGrowth": 0.705,
+  "debtToEquity": 70.281,
+  "totalDebt": 4739150848,
+  "totalCash": 4288123904,
+  "freeCashflow": 2002041600,
+  "marketCap": 70830743552,
+  "targetMeanPrice": 270.55557,
+  "recommendationKey": "buy",
+  "dividendYield": 0.79,
+  "returnOnEquity": 0.42628,
+  "fiftyTwoWeekHigh": 257.0,
+  "fiftyTwoWeekLow": 147.49,
+  "mostRecentQuarter": 1785542400,
+  "currentPrice": 221.725,
+  "summary": "Ross Stores, Inc., together with its subsidiaries, operates off-price retail apparel and home fashion stores under the Ross Dress for Less and dd's DISCOUNTS brands in the United States. The company offers designer apparel, accessories, footwear, and home-fashioned products for the entire family. It sells its products to middle income households and households with lower to more moderate incomes. ",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ROST/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

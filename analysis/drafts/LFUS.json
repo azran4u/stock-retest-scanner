@@ -1,0 +1,59 @@
+{
+ "ticker": "LFUS",
+ "name": "Littelfuse, Inc.",
+ "business": "Circuit protection (fuses, TVS), power semiconductors and sensors for industrial, data-center, automotive and electronics markets.",
+ "news": [
+  {
+   "date": "2026-07-29",
+   "title": "Q2 sales $739M (+20%, +14% organic), adj. EPS $4.19; industrial +52% on data centers",
+   "url": "https://www.sec.gov/Archives/edgar/data/889331/000162828026050382/q22026earningsreleaseex991.htm",
+   "source": "SEC 8-K"
+  },
+  {
+   "date": "2026-09-16",
+   "title": "Senior leadership transition: Electronics + Semiconductor businesses combined under one leader from Jan 2027",
+   "url": "https://www.nasdaq.com/press-release/littelfuse-announces-senior-leadership-transition-2026-09-16",
+   "source": "Nasdaq"
+  }
+ ],
+ "pros": [
+  "Growth re-accelerating (+20% sales) with data-center tailwind",
+  "High-voltage data-center design wins scaling from 2027",
+  "Modest leverage (debt {debt} vs cash {cash}) ({src})"
+ ],
+ "cons": [
+  "Trailing GAAP net margin slightly negative ({pm}) ({src})",
+  "Forward P/E {fpe}; near 52w high {hi}",
+  "Auto/industrial cyclicality",
+  "Q3 earnings Nov 3"
+ ],
+ "take": "Cyclical recovery plus a data-center story; fundamentals improving, valuation fair — a reasonable pullback buy.",
+ "metrics": {
+  "sector": "Technology",
+  "industry": "Electronic Components",
+  "trailingPE": null,
+  "forwardPE": 21.209904,
+  "priceToSalesTrailing12Months": 4.1402407,
+  "profitMargins": -0.00308,
+  "operatingMargins": 0.18799,
+  "revenueGrowth": 0.204,
+  "earningsGrowth": 0.517,
+  "debtToEquity": 27.093,
+  "totalDebt": 709393024,
+  "totalCash": 630603008,
+  "freeCashflow": 364767136,
+  "marketCap": 10823930880,
+  "targetMeanPrice": 496.25,
+  "recommendationKey": "buy",
+  "dividendYield": 0.75,
+  "returnOnEquity": -0.0030899998,
+  "fiftyTwoWeekHigh": 500.57,
+  "fiftyTwoWeekLow": 233.36,
+  "mostRecentQuarter": 1782518400,
+  "currentPrice": 426.16,
+  "summary": "Littelfuse, Inc. designs, manufactures, and sells electronic components, modules, and subassemblies. It operates through three segments: Electronics, Transportation, and Industrial. Its Electronics segment offers fuses and fuse accessories, coefficient resettable fuses, switches and interconnect solutions, polymer electrostatic discharge suppressors, varistors, reed switch based magnetic sensing, ",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/LFUS/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

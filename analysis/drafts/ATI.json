@@ -1,0 +1,59 @@
+{
+ "ticker": "ATI",
+ "name": "ATI Inc.",
+ "business": "Specialty materials: titanium, nickel-based alloys and forgings, mainly for jet engines, airframes and defense.",
+ "news": [
+  {
+   "date": "2026-07",
+   "title": "Q2: FY26 guide raised (adj. EBITDA $1.135–1.185B, EPS $4.90–5.18, FCF $550–600M); record $4.4B backlog",
+   "url": "https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Second-Quarter-2026-Results/default.aspx",
+   "source": "ATI IR"
+  },
+  {
+   "date": "2026-09-17",
+   "title": "Morgan Stanley Laguna conference: targets ~$1.35B EBITDA run-rate entering 2027",
+   "url": "https://www.investing.com/news/transcripts/ati-at-morgan-stanley-laguna-conference-transformation-drives-margins-93CH-4906441",
+   "source": "Investing.com"
+  }
+ ],
+ "pros": [
+  "Aerospace & defense ~70% of revenue; defense sales +90% y/y",
+  "Margin expansion (adj. EBITDA margin 22.6%) and pricing resets",
+  "Analyst consensus '{rec}', mean target ${tgt} ({src})"
+ ],
+ "cons": [
+  "Rich valuation: forward P/E {fpe} ({src})",
+  "Debt/equity {de}%",
+  "Exposed to Boeing/Airbus build-rate hiccups",
+  "Q3 earnings Nov 3"
+ ],
+ "take": "Strong aerospace up-cycle story with rising margins; fundamentals back the trend, valuation leaves little room for a miss.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Metal Fabrication",
+  "trailingPE": 56.140762,
+  "forwardPE": 30.039747,
+  "priceToSalesTrailing12Months": 5.528601,
+  "profitMargins": 0.10090999,
+  "operatingMargins": 0.18198,
+  "revenueGrowth": 0.106,
+  "earningsGrowth": 0.557,
+  "debtToEquity": 109.699,
+  "totalDebt": 2192000000,
+  "totalCash": 783000000,
+  "freeCashflow": 346687488,
+  "marketCap": 26068459520,
+  "targetMeanPrice": 256.0,
+  "recommendationKey": "strong_buy",
+  "dividendYield": 0.0,
+  "returnOnEquity": 0.25357,
+  "fiftyTwoWeekHigh": 243.57,
+  "fiftyTwoWeekLow": 79.29,
+  "mostRecentQuarter": 1782604800,
+  "currentPrice": 191.44,
+  "summary": "ATI Inc. produces and sells specialty materials and complex components worldwide. It operates in two segments, High Performance Materials & Components, and Advanced Alloys & Solutions. The company produces high performance materials, including titanium and titanium-based alloys, nickel- and cobalt-based alloys and superalloys, advanced powder alloys and other specialty materials, and metallic powd",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ATI/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

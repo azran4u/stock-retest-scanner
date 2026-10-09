@@ -25,6 +25,7 @@ Report table (`table.html`):
 | `table.html` | Report table (filters, charts, sortable table of all tickers) |
 | `charts.html` | Redirect to `index.html` (old links) |
 | `RULES.md` | Screening / drawing / reporting rules |
+| `fundamentals.py` / `fundamentals.js` / `analysis/analysis.json` | Fundamentals analysis for graded (A–D) tickers: sector, business, recent news, pros / cons, take — collapsible on chart cards, expandable row in the table. Manual refresh (web research, not nightly): `python fundamentals.py status` → `scaffold T` → `merge analysis/drafts/T.json` (RULES.md § 15) |
 
 ## Daily report columns
 

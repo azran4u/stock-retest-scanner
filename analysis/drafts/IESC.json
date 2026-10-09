@@ -1,0 +1,59 @@
+{
+ "ticker": "IESC",
+ "name": "IES Holdings, Inc.",
+ "business": "Electrical and technology infrastructure contractor: Communications, Infrastructure Solutions, Commercial & Industrial and Residential segments; data centers are the main driver.",
+ "news": [
+  {
+   "date": "2026-07-31",
+   "title": "Fiscal Q3: revenue $1.243B (+40%), operating income +60%; backlog $4.5B (+91% since FY25 end)",
+   "url": "https://www.globenewswire.com/news-release/2026/07/31/3336740/0/en/ies-holdings-reports-fiscal-2026-third-quarter-results-and-announces-two-for-one-stock-split.html",
+   "source": "GlobeNewswire"
+  },
+  {
+   "date": "2026-08-24",
+   "title": "2-for-1 stock split goes ex-date (announced Jul 31)",
+   "url": "https://infomemo.theocc.com/infomemos?number=59517",
+   "source": "OCC"
+  }
+ ],
+ "pros": [
+  "Hyper-growth: revenue +40%, C&I segment +109% on data centers",
+  "Record $4.5B backlog gives visibility into FY27",
+  "Net cash: {cash} cash vs {debt} debt; ROE {roe} ({src})"
+ ],
+ "cons": [
+  "Heavy dependence on data-center capex — any slowdown hits 3 of 4 segments",
+  "Residential segment weak (housing starts, margin pressure)",
+  "Q3 helped by quick-turn jobs and a $26M securities gain; labor availability is a constraint",
+  "P/S {ps} after a big run (52w range {lo}–{hi}) ({src})"
+ ],
+ "take": "Best growth profile in the group with a net-cash balance sheet; the risk is data-center cycle sentiment, not fundamentals.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Engineering & Construction",
+  "trailingPE": 26.642984,
+  "forwardPE": null,
+  "priceToSalesTrailing12Months": 3.1917377,
+  "profitMargins": 0.11444,
+  "operatingMargins": 0.14364,
+  "revenueGrowth": 0.396,
+  "earningsGrowth": 0.987,
+  "debtToEquity": 6.233,
+  "totalDebt": 76943000,
+  "totalCash": 387860000,
+  "freeCashflow": 329443360,
+  "marketCap": 12721442816,
+  "targetMeanPrice": 440.0,
+  "recommendationKey": "none",
+  "dividendYield": 0.0,
+  "returnOnEquity": 0.44522998,
+  "fiftyTwoWeekHigh": 408.255,
+  "fiftyTwoWeekLow": 170.065,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 300.0,
+  "summary": "IES Holdings, Inc. designs and installs integrated electrical and technology systems and provides infrastructure products and services in the United States. The Communications segment designs, builds, and maintains communications infrastructure within data centers for co-location and managed hosting customers; corporate, educational, financial, hospitality, and healthcare buildings; e-commerce dis",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/IESC/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

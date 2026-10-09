@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="sizing.js"></script>
 <script src="filters.js"></script>
+<script src="fundamentals.js"></script>
 <style>
   :root {
     --bg: #0d1117;
@@ -230,7 +231,7 @@
 const { FILTERS, CORE, isTrueFlag, todayJerusalemISO, liveDaysToEarnings, enrichEarningsLive, rowPasses } = SrsFilters;
 
 const PREFERRED_COLS = [
-  "ticker","grade","evidence","mh_failed","status","failed_filters",
+  "ticker","grade","evidence","fund","mh_failed","status","failed_filters",
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
   "weekly_bars","tech_new_high_atr","tech_hh","tech_hl","tech_structure","tech_ema30_slope_pct","tech_ema_rising",
@@ -283,6 +284,7 @@ let available = new Set();      // filter cols present in the loaded CSV
 let checked = new Set();
 let sortCol = "tv_rr", sortDir = "desc", sortCol2 = "ticker", sortDir2 = "asc";
 let charts = { filters: null, rr: null, streak: null };
+const openFund = new Set();     // tickers whose fundamentals row is expanded
 
 
 
@@ -334,7 +336,7 @@ const COL_LABELS = {
   tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
   tv_zone_dist: "dist to zone ($)",
   tv_stale: "drawing obsolete?",
-  grade: "grade", evidence: "evidence E1–E8", mh_failed: "must-have fails", ev_missing: "evidence missing",
+  grade: "grade", evidence: "evidence E1–E8", fund: "fundamentals", mh_failed: "must-have fails", ev_missing: "evidence missing",
   ev_first_reaction: "E3 first reaction", ev_double_bottom: "E4 double bottom", ev_ma_support: "E7 MA support", ev_fib: "E8 fib",
   ev_ma_support_mas: "E7 MA(s)", ev_fib_levels: "E8 fib level(s)", ev_pullback_high: "pullback high", ev_pullback_high_date: "pullback high week",
   f_rr_x: "E6 TV R:R ≥ X", f_must_haves: "all must-haves", f_weekly_reversal: "E1 weekly reversal", f_daily_reversal: "E2 daily reversal", f_smooth_streak: "E5 smooth ≥ N",
@@ -413,6 +415,8 @@ function infoBadges(r) {
 function fmt(col, val, row) {
   if (col === "grade") return row && row.grade ? SrsFilters.gradeBadge(row, false) : "";
   if (col === "evidence") return row ? SrsFilters.evidenceChips(row) : "";
+  if (col === "fund") return row && Fundamentals.get(row.ticker)
+    ? `<button type="button" class="fa-btn" data-fund="${escAttr(row.ticker)}" title="${escAttr(Fundamentals.tip(row))}">${openFund.has(row.ticker) ? "▾" : "▸"} ${escAttr(val)}</button>` : "";
   if (col === "mh_failed") return val ? `<span class="mhfail">${escAttr(val)}</span>` : "";
   if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
@@ -519,7 +523,8 @@ function renderTable(rows) {
     return `<tr class="${cls}">` + COLS.map(c => {
       const tdc = c.startsWith("f_") ? (isTrueFlag(r[c]) ? ' class="ft"' : ' class="ff"') : "";
       return `<td${tdc}>${fmt(c, r[c], r)}</td>`;
-    }).join("") + "</tr>";
+    }).join("") + "</tr>" +
+      (openFund.has(r.ticker) && Fundamentals.get(r.ticker) ? `<tr class="fundrow"><td colspan="${COLS.length}">${Fundamentals.body(r)}</td></tr>` : "");
   }).join("");
   thead.querySelectorAll("th").forEach(th => {
     th.addEventListener("click", (ev) => {
@@ -683,6 +688,8 @@ async function loadReport(path, dateLabel) {
   if (headers.includes("tv_entry")) { headers.push(...POS_COLS.filter(c => !headers.includes(c))); applySizing(); }
   if (headers.includes("tv_rr") && !headers.includes("f_rr_x")) headers.push("f_rr_x");
   if (headers.includes("ev_fib")) headers.push(...["grade", "evidence", "mh_failed", "f_must_haves", "ev_missing", "ev_count"].filter(c => !headers.includes(c)));
+  if (!headers.includes("fund")) headers.push("fund");  // fundamentals analysis (analysis/analysis.json): sector, click = expandable row
+  for (const r of allRows) { const fa = Fundamentals.get(r.ticker); r.fund = fa ? fa.sector || "analysis" : ""; }
   SrsFilters.applyLive(allRows);
   const hdr = new Set(headers);
   // f_rr means TV R:R only in reports that carry the TradingView columns (older CSVs: computed → disabled)
@@ -741,6 +748,12 @@ function applySizing() {
 
 async function init() {
   SrsFilters.injectCss();
+  Fundamentals.injectCss();
+  await Fundamentals.load();  // analysis/analysis.json (fundamentals.py)
+  document.querySelector("#dataTable tbody").addEventListener("click", ev => {
+    const b = ev.target.closest(".fa-btn"); if (!b) return;
+    const tk = b.dataset.fund; openFund.has(tk) ? openFund.delete(tk) : openFund.add(tk); refresh(false);
+  });
   Sizing.mount(document.getElementById("sizingBar"), () => { applySizing(); refresh(false); });
   gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => refresh(false));
   {  // Settings group (shared layout, filters.js): presets + Clear + E/V/N/X + position sizing

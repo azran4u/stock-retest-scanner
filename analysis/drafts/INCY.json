@@ -1,0 +1,59 @@
+{
+ "ticker": "INCY",
+ "name": "Incyte Corporation",
+ "business": "Biopharma: Jakafi (myelofibrosis/PV), Opzelura cream (vitiligo, eczema), plus an oncology/dermatology pipeline (povorcitinib).",
+ "news": [
+  {
+   "date": "2026-07",
+   "title": "Q2 revenue $1.674B (+38%); FY26 net sales guide $5.13–5.26B, Opzelura raised to $1.05–1.10B",
+   "url": "https://www.nasdaq.com/press-release/incyte-reports-second-quarter-2026-financial-results-and-provides-business-updates",
+   "source": "Nasdaq / press release"
+  },
+  {
+   "date": "2026-09-16",
+   "title": "Conference: Jakafi XR expected to retain ~$750M through the Jakafi patent transition",
+   "url": "https://earningsapi.io/transcripts/incyte-corporation_incy_earnings_call_transcript_2026-09-16",
+   "source": "Transcript"
+  }
+ ],
+ "pros": [
+  "Low valuation: forward P/E {fpe} ({src})",
+  "Fortress balance sheet: {cash} cash, almost no debt",
+  "Growth +38% with operating margin {om}; povorcitinib US launch expected Q1 2027"
+ ],
+ "cons": [
+  "Jakafi patent cliff — the core franchise faces generics",
+  "Part of 2026 Opzelura sales from a one-off CMS settlement ($300–310M)",
+  "Binary pipeline readouts (HS / prurigo nodularis Phase 3 in Q4)",
+  "Q3 earnings Nov 3"
+ ],
+ "take": "Cheap, cash-rich biotech growing fast now, but the stock is a bet that the pipeline outruns the Jakafi cliff.",
+ "metrics": {
+  "sector": "Healthcare",
+  "industry": "Biotechnology",
+  "trailingPE": 14.402548,
+  "forwardPE": 12.944739,
+  "priceToSalesTrailing12Months": 3.937948,
+  "profitMargins": 0.27706,
+  "operatingMargins": 0.41899,
+  "revenueGrowth": 0.377,
+  "earningsGrowth": 0.377,
+  "debtToEquity": 0.603,
+  "totalDebt": 38267000,
+  "totalCash": 4535739904,
+  "freeCashflow": 1180664576,
+  "marketCap": 22917007360,
+  "targetMeanPrice": 128.91667,
+  "recommendationKey": "buy",
+  "dividendYield": 0.0,
+  "returnOnEquity": 0.30667,
+  "fiftyTwoWeekHigh": 132.6,
+  "fiftyTwoWeekLow": 82.82,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 113.06,
+  "summary": "Incyte Corporation, a biopharmaceutical company, engages in the discovery, development, and commercialization of therapeutics in the United States, Europe, Canada, and Japan. The company offers JAKAFI for the treatment of myelofibrosis (MF), polycythemia vera, and steroid-refractory acute graft-versus-host disease; ICLUSIG, a kinase inhibitor to treat chronic myeloid leukemia and Philadelphia-chro",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/INCY/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

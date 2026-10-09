@@ -1,0 +1,1395 @@
+{
+ "schema": 1,
+ "generated_at": "2026-10-09",
+ "tickers": {
+  "ALL": {
+   "name": "The Allstate Corporation",
+   "business": "US personal property & casualty insurer (auto, homeowners) plus protection products.",
+   "news": [
+    {
+     "date": "2026-08",
+     "title": "Q2 adj. net income $8.99/share (+46%); $1.0B buyback in the quarter",
+     "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000117/allcorp63026earningsreleas.htm",
+     "source": "SEC 8-K"
+    },
+    {
+     "date": "2026-09-17",
+     "title": "August catastrophe losses $748M pre-tax; Jul+Aug $1.43B",
+     "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000135/all-20260917.htm",
+     "source": "SEC 8-K"
+    }
+   ],
+   "pros": [
+    "Cheap: forward P/E 8.3 (Yahoo)",
+    "Auto profitability restored; ROE 46.1%",
+    "Large buybacks ($2.6B left on the $4B authorization)"
+   ],
+   "cons": [
+    "Volatile catastrophe losses: Jul+Aug already $1.43B pre-tax",
+    "Auto-insurance pricing tailwind may fade as margins normalize",
+    "Consensus 'hold', mean target $271 (Yahoo)",
+    "Q3 earnings Nov 4"
+   ],
+   "take": "Cheap, cash-returning insurer at peak profitability; cats and a softening pricing cycle are the risks.",
+   "generated_at": "2026-10-09",
+   "sector": "Financial Services",
+   "industry": "Insurance - Property & Casualty",
+   "metrics": {
+    "forwardPE": 8.260671,
+    "trailingPE": 4.6364546,
+    "operatingMargins": 0.22827,
+    "revenueGrowth": 0.118,
+    "debtToEquity": 22.261,
+    "dividendYield": 1.87,
+    "targetMeanPrice": 270.54544,
+    "recommendationKey": "hold",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ALL/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ALL/key-statistics"
+    },
+    {
+     "label": "SEC 8-K",
+     "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000117/allcorp63026earningsreleas.htm"
+    },
+    {
+     "label": "SEC 8-K",
+     "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000135/all-20260917.htm"
+    }
+   ]
+  },
+  "AMGN": {
+   "name": "Amgen Inc.",
+   "business": "Large-cap biopharma: Repatha, Prolia/Xgeva, Evenity, Tezspire, oncology and biosimilars; MariTide obesity drug in Phase 3.",
+   "news": [
+    {
+     "date": "2026-08-04",
+     "title": "Q2 revenue $10.1B (+10%), non-GAAP EPS $6.29; FY26 guide $38.2–39.4B revenue",
+     "url": "https://www.amgen.com/newsroom/press-releases/2026/08/amgen-reports-second-quarter-2026-financial-results",
+     "source": "Amgen"
+    },
+    {
+     "date": "2026-09-16",
+     "title": "Pipeline update: MariTide Phase 3 (MARITIME) enrolling strongly; key obesity readouts ~2027",
+     "url": "https://www.americanbankingnews.com/2026/09/16/amgen-highlights-maritide-imdelltra-pipeline-progress-and-growth-priorities.html",
+     "source": "ABMN"
+    }
+   ],
+   "pros": [
+    "Steady growth (+10%) with operating margin 35.5% (Yahoo)",
+    "Huge free cash flow ($8.65B); dividend yield 2.5%",
+    "Obesity optionality (MariTide) plus Imdelltra/Tezspire growth"
+   ],
+   "cons": [
+    "Leverage: $57.30B debt vs $13.99B cash (Yahoo)",
+    "Price already above the analyst mean target $391; consensus 'hold'",
+    "Biosimilar erosion (Prolia/Xgeva) and drug-pricing policy risk",
+    "Q3 earnings Nov 3"
+   ],
+   "take": "Defensive cash machine with an obesity call option; fair value, not a bargain — fine as a pullback trade, weak as a fundamental upside case.",
+   "generated_at": "2026-10-09",
+   "sector": "Healthcare",
+   "industry": "Drug Manufacturers - General",
+   "metrics": {
+    "forwardPE": 16.867079,
+    "trailingPE": 25.65031,
+    "operatingMargins": 0.35548002,
+    "revenueGrowth": 0.095,
+    "debtToEquity": 490.281,
+    "dividendYield": 2.47,
+    "targetMeanPrice": 391.46103,
+    "recommendationKey": "hold",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/AMGN/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/AMGN/key-statistics"
+    },
+    {
+     "label": "Amgen",
+     "url": "https://www.amgen.com/newsroom/press-releases/2026/08/amgen-reports-second-quarter-2026-financial-results"
+    },
+    {
+     "label": "ABMN",
+     "url": "https://www.americanbankingnews.com/2026/09/16/amgen-highlights-maritide-imdelltra-pipeline-progress-and-growth-priorities.html"
+    }
+   ]
+  },
+  "ARMK": {
+   "name": "Aramark",
+   "business": "Food and facilities services for education, healthcare, business, sports & entertainment and corrections clients.",
+   "news": [
+    {
+     "date": "2026-08",
+     "title": "Fiscal Q3 revenue $5.1B (+9% organic); FY26 organic growth guide raised to 9–10%; record client wins",
+     "url": "https://www.sec.gov/Archives/edgar/data/1584509/000158450926000118/ex991armkq3fy2026.htm",
+     "source": "SEC 8-K"
+    },
+    {
+     "date": "2026-09",
+     "title": "S&P upgrades credit ratings; Moody's outlook to positive",
+     "url": "https://www.aramark.com/newsroom/news/2026/september/aramark-credit-ratings-upgraded-by-s-p-global--moody-s-revises-o",
+     "source": "Aramark"
+    }
+   ],
+   "pros": [
+    "Organic growth 9–10% with ~98% retention",
+    "EPS growth guide +20–25%; credit upgrades",
+    "Analyst consensus 'strong buy', mean target $68 (Yahoo)"
+   ],
+   "cons": [
+    "Thin margins (operating margin 4.4%) (Yahoo)",
+    "Leveraged: debt $6.47B",
+    "Forward P/E 19.7 for a low-margin services business",
+    "Fiscal Q4 earnings Nov 17"
+   ],
+   "take": "Steady contract-services grower deleveraging toward upgrades; fundamentals supportive, low margins cap the upside.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Specialty Business Services",
+   "metrics": {
+    "forwardPE": 19.678556,
+    "trailingPE": 38.69231,
+    "operatingMargins": 0.04422,
+    "revenueGrowth": 0.093,
+    "debtToEquity": 186.724,
+    "dividendYield": 0.86,
+    "targetMeanPrice": 68.5,
+    "recommendationKey": "strong_buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ARMK/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ARMK/key-statistics"
+    },
+    {
+     "label": "SEC 8-K",
+     "url": "https://www.sec.gov/Archives/edgar/data/1584509/000158450926000118/ex991armkq3fy2026.htm"
+    },
+    {
+     "label": "Aramark",
+     "url": "https://www.aramark.com/newsroom/news/2026/september/aramark-credit-ratings-upgraded-by-s-p-global--moody-s-revises-o"
+    }
+   ]
+  },
+  "ATI": {
+   "name": "ATI Inc.",
+   "business": "Specialty materials: titanium, nickel-based alloys and forgings, mainly for jet engines, airframes and defense.",
+   "news": [
+    {
+     "date": "2026-07",
+     "title": "Q2: FY26 guide raised (adj. EBITDA $1.135–1.185B, EPS $4.90–5.18, FCF $550–600M); record $4.4B backlog",
+     "url": "https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Second-Quarter-2026-Results/default.aspx",
+     "source": "ATI IR"
+    },
+    {
+     "date": "2026-09-17",
+     "title": "Morgan Stanley Laguna conference: targets ~$1.35B EBITDA run-rate entering 2027",
+     "url": "https://www.investing.com/news/transcripts/ati-at-morgan-stanley-laguna-conference-transformation-drives-margins-93CH-4906441",
+     "source": "Investing.com"
+    }
+   ],
+   "pros": [
+    "Aerospace & defense ~70% of revenue; defense sales +90% y/y",
+    "Margin expansion (adj. EBITDA margin 22.6%) and pricing resets",
+    "Analyst consensus 'strong buy', mean target $256 (Yahoo)"
+   ],
+   "cons": [
+    "Rich valuation: forward P/E 30.0 (Yahoo)",
+    "Debt/equity 110%",
+    "Exposed to Boeing/Airbus build-rate hiccups",
+    "Q3 earnings Nov 3"
+   ],
+   "take": "Strong aerospace up-cycle story with rising margins; fundamentals back the trend, valuation leaves little room for a miss.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Metal Fabrication",
+   "metrics": {
+    "forwardPE": 30.039747,
+    "trailingPE": 56.140762,
+    "operatingMargins": 0.18198,
+    "revenueGrowth": 0.106,
+    "debtToEquity": 109.699,
+    "dividendYield": 0.0,
+    "targetMeanPrice": 256.0,
+    "recommendationKey": "strong_buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ATI/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ATI/key-statistics"
+    },
+    {
+     "label": "ATI IR",
+     "url": "https://ir.atimaterials.com/news-events/news-details/2026/ATI-Announces-Second-Quarter-2026-Results/default.aspx"
+    },
+    {
+     "label": "Investing.com",
+     "url": "https://www.investing.com/news/transcripts/ati-at-morgan-stanley-laguna-conference-transformation-drives-margins-93CH-4906441"
+    }
+   ]
+  },
+  "BWA": {
+   "name": "BorgWarner Inc.",
+   "business": "Turbochargers, drivetrain/Morse chains, eMotors, inverters and battery systems for combustion, hybrid and EV makers; developing TurboCell turbine generators for data-center power.",
+   "news": [
+    {
+     "date": "2026-10-06",
+     "title": "Morgan Stanley upgrades to Overweight, target $71→$95 on TurboCell AI-power opportunity; shares +~5%",
+     "url": "https://ph.investing.com/news/stock-market-news/borgwarner-jumps-as-morgan-stanley-upgrades-stock-on-ai-power-potential-2616254",
+     "source": "Investing.com"
+    },
+    {
+     "date": "2026-10-03",
+     "title": "J.P. Morgan sets $85 target, Buy",
+     "url": "https://www.ad-hoc-news.de/boerse/news/corporate-news/j-p-morgan-sets-usd-85-00-target-for-borgwarner-stock/70241401",
+     "source": "AD HOC NEWS"
+    },
+    {
+     "date": "2026-08-05",
+     "title": "Q2: adj. EPS $1.42 (+17%), FY26 adj. EPS guide raised to $5.05–5.30, buyback +$1B",
+     "url": "https://last10k.com/sec-filings/bwa/0000908255-26-000051.htm",
+     "source": "10-Q / press release"
+    }
+   ],
+   "pros": [
+    "Cheap: forward P/E 10.4, P/S 0.9 (Yahoo)",
+    "Margin expansion despite flat sales: Q2 adj. operating margin 11.3% (+100 bp)",
+    "Shareholder returns: ~$1.35B buyback authorization through 2029",
+    "Optional upside from data-center power (TurboCell deliveries expected 2027)"
+   ],
+   "cons": [
+    "No top-line growth: FY26 organic sales guided −1.5% to −3.5% (battery business shrinking)",
+    "Cyclical auto-production exposure; estimates were trending down after Q2 (Zacks)",
+    "TurboCell is pre-revenue; the AI-power story could fade",
+    "Q3 earnings Oct 29"
+   ],
+   "take": "Value auto supplier with improving margins and a buyback, plus an AI-power call option — fundamentals support a pullback buy, but growth is not the story.",
+   "generated_at": "2026-10-09",
+   "sector": "Consumer Cyclical",
+   "industry": "Auto Parts",
+   "metrics": {
+    "forwardPE": 10.393121,
+    "trailingPE": 30.76,
+    "operatingMargins": 0.106359996,
+    "revenueGrowth": 0.003,
+    "debtToEquity": 70.11,
+    "dividendYield": 1.1,
+    "targetMeanPrice": 81.26667,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/BWA/key-statistics"
+   },
+   "grade_at_generation": "B",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/BWA/key-statistics"
+    },
+    {
+     "label": "Investing.com",
+     "url": "https://ph.investing.com/news/stock-market-news/borgwarner-jumps-as-morgan-stanley-upgrades-stock-on-ai-power-potential-2616254"
+    },
+    {
+     "label": "AD HOC NEWS",
+     "url": "https://www.ad-hoc-news.de/boerse/news/corporate-news/j-p-morgan-sets-usd-85-00-target-for-borgwarner-stock/70241401"
+    },
+    {
+     "label": "10-Q / press release",
+     "url": "https://last10k.com/sec-filings/bwa/0000908255-26-000051.htm"
+    }
+   ]
+  },
+  "FTI": {
+   "name": "TechnipFMC plc",
+   "business": "Subsea oil & gas systems (integrated iEPCI projects, Subsea 2.0 equipment, flexible pipe) and Surface Technologies.",
+   "news": [
+    {
+     "date": "2026-07-30",
+     "title": "Q2: inbound orders $2.73B, backlog $16.44B; 2026 subsea guide reaffirmed, ~$10B subsea orders targeted",
+     "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-announces-second-quarter-2026-results/",
+     "source": "TechnipFMC"
+    },
+    {
+     "date": "2026-09-15",
+     "title": "iEPCI award for PETRONAS Limbayong deepwater project ($75–250M)",
+     "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-awarded-iepci-contract-for-petronas-limbayong-project-offshore-malaysia/",
+     "source": "TechnipFMC"
+    },
+    {
+     "date": "2026-10",
+     "title": "Petrobras flexible-flowline contract ($75–250M)",
+     "url": "https://www.technipfmc.com/media/yf5g543x/261005-pbr-flexibles-award.pdf",
+     "source": "TechnipFMC"
+    }
+   ],
+   "pros": [
+    "Huge visibility: $16.4B backlog, steady subsea awards",
+    "Strong cash generation: free cash flow $1.46B, ROE 35.8% (Yahoo)",
+    "Subsea margin guide 21–22% adj. EBITDA"
+   ],
+   "cons": [
+    "Oil-price and offshore-capex cyclicality",
+    "Forward P/E 19.3 is not cheap for an oilfield name (Yahoo)",
+    "Stock already close to 52w high 80.70",
+    "Q3 earnings Oct 29"
+   ],
+   "take": "Best-in-class subsea franchise with locked-in backlog; buy-the-dip case is solid as long as offshore spending holds.",
+   "generated_at": "2026-10-09",
+   "sector": "Energy",
+   "industry": "Oil & Gas Equipment & Services",
+   "metrics": {
+    "forwardPE": 19.319141,
+    "trailingPE": 24.477352,
+    "operatingMargins": 0.1769,
+    "revenueGrowth": 0.09,
+    "debtToEquity": 37.898,
+    "dividendYield": 0.29,
+    "targetMeanPrice": 76.0,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/FTI/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/FTI/key-statistics"
+    },
+    {
+     "label": "TechnipFMC",
+     "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-announces-second-quarter-2026-results/"
+    },
+    {
+     "label": "TechnipFMC",
+     "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-awarded-iepci-contract-for-petronas-limbayong-project-offshore-malaysia/"
+    },
+    {
+     "label": "TechnipFMC",
+     "url": "https://www.technipfmc.com/media/yf5g543x/261005-pbr-flexibles-award.pdf"
+    }
+   ]
+  },
+  "GL": {
+   "name": "Globe Life Inc.",
+   "business": "Life and supplemental health insurance sold to middle-income US households (American Income Life, Family Heritage, direct-to-consumer).",
+   "news": [
+    {
+     "date": "2026-07-22",
+     "title": "Q2 net operating EPS $3.61 (+10%); FY26 operating EPS guide raised to $15.55–15.95; $175M buyback",
+     "url": "https://investors.globelifeinsurance.com/news-releases/2026/july/globe-life-inc-reports-second-quarter-2026-results",
+     "source": "Globe Life IR"
+    },
+    {
+     "date": "2026-09-14",
+     "title": "Q2 recap: stock fell ~7% after the release despite the beat",
+     "url": "https://stockstory.org/us/stocks/nyse/gl/news/earnings/life-insurance-stocks-q2-recap-benchmarking-globe-life-nysegl",
+     "source": "StockStory"
+    }
+   ],
+   "pros": [
+    "Cheap: forward P/E 10.0 (Yahoo)",
+    "Steady growth: premiums +7%, health premium +16%",
+    "Consistent buybacks; ROE 20.9%; SEC/DOJ probes into AIL sales practices closed without enforcement action"
+   ],
+   "cons": [
+    "Remaining civil/derivative litigation and agent-practice headline risk",
+    "Life premium growth only +3%; agent recruiting is the key swing factor",
+    "Q3 earnings Oct 28"
+   ],
+   "take": "Fundamentally cheap, steady compounder; the discount reflects lingering reputation/legal risk rather than weak numbers.",
+   "generated_at": "2026-10-09",
+   "sector": "Financial Services",
+   "industry": "Insurance - Life",
+   "metrics": {
+    "forwardPE": 10.013796,
+    "trailingPE": 10.962841,
+    "operatingMargins": 0.24642,
+    "revenueGrowth": 0.08,
+    "debtToEquity": 55.675,
+    "dividendYield": 0.81,
+    "targetMeanPrice": 192.90909,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/GL/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/GL/key-statistics"
+    },
+    {
+     "label": "Globe Life IR",
+     "url": "https://investors.globelifeinsurance.com/news-releases/2026/july/globe-life-inc-reports-second-quarter-2026-results"
+    },
+    {
+     "label": "StockStory",
+     "url": "https://stockstory.org/us/stocks/nyse/gl/news/earnings/life-insurance-stocks-q2-recap-benchmarking-globe-life-nysegl"
+    }
+   ]
+  },
+  "IESC": {
+   "name": "IES Holdings, Inc.",
+   "business": "Electrical and technology infrastructure contractor: Communications, Infrastructure Solutions, Commercial & Industrial and Residential segments; data centers are the main driver.",
+   "news": [
+    {
+     "date": "2026-07-31",
+     "title": "Fiscal Q3: revenue $1.243B (+40%), operating income +60%; backlog $4.5B (+91% since FY25 end)",
+     "url": "https://www.globenewswire.com/news-release/2026/07/31/3336740/0/en/ies-holdings-reports-fiscal-2026-third-quarter-results-and-announces-two-for-one-stock-split.html",
+     "source": "GlobeNewswire"
+    },
+    {
+     "date": "2026-08-24",
+     "title": "2-for-1 stock split goes ex-date (announced Jul 31)",
+     "url": "https://infomemo.theocc.com/infomemos?number=59517",
+     "source": "OCC"
+    }
+   ],
+   "pros": [
+    "Hyper-growth: revenue +40%, C&I segment +109% on data centers",
+    "Record $4.5B backlog gives visibility into FY27",
+    "Net cash: $388M cash vs $77M debt; ROE 44.5% (Yahoo)"
+   ],
+   "cons": [
+    "Heavy dependence on data-center capex — any slowdown hits 3 of 4 segments",
+    "Residential segment weak (housing starts, margin pressure)",
+    "Q3 helped by quick-turn jobs and a $26M securities gain; labor availability is a constraint",
+    "P/S 3.2 after a big run (52w range 170.06–408.25) (Yahoo)"
+   ],
+   "take": "Best growth profile in the group with a net-cash balance sheet; the risk is data-center cycle sentiment, not fundamentals.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Engineering & Construction",
+   "metrics": {
+    "forwardPE": null,
+    "trailingPE": 26.642984,
+    "operatingMargins": 0.14364,
+    "revenueGrowth": 0.396,
+    "debtToEquity": 6.233,
+    "dividendYield": 0.0,
+    "targetMeanPrice": 440.0,
+    "recommendationKey": "none",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/IESC/key-statistics"
+   },
+   "grade_at_generation": "B",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/IESC/key-statistics"
+    },
+    {
+     "label": "GlobeNewswire",
+     "url": "https://www.globenewswire.com/news-release/2026/07/31/3336740/0/en/ies-holdings-reports-fiscal-2026-third-quarter-results-and-announces-two-for-one-stock-split.html"
+    },
+    {
+     "label": "OCC",
+     "url": "https://infomemo.theocc.com/infomemos?number=59517"
+    }
+   ]
+  },
+  "INCY": {
+   "name": "Incyte Corporation",
+   "business": "Biopharma: Jakafi (myelofibrosis/PV), Opzelura cream (vitiligo, eczema), plus an oncology/dermatology pipeline (povorcitinib).",
+   "news": [
+    {
+     "date": "2026-07",
+     "title": "Q2 revenue $1.674B (+38%); FY26 net sales guide $5.13–5.26B, Opzelura raised to $1.05–1.10B",
+     "url": "https://www.nasdaq.com/press-release/incyte-reports-second-quarter-2026-financial-results-and-provides-business-updates",
+     "source": "Nasdaq / press release"
+    },
+    {
+     "date": "2026-09-16",
+     "title": "Conference: Jakafi XR expected to retain ~$750M through the Jakafi patent transition",
+     "url": "https://earningsapi.io/transcripts/incyte-corporation_incy_earnings_call_transcript_2026-09-16",
+     "source": "Transcript"
+    }
+   ],
+   "pros": [
+    "Low valuation: forward P/E 12.9 (Yahoo)",
+    "Fortress balance sheet: $4.54B cash, almost no debt",
+    "Growth +38% with operating margin 41.9%; povorcitinib US launch expected Q1 2027"
+   ],
+   "cons": [
+    "Jakafi patent cliff — the core franchise faces generics",
+    "Part of 2026 Opzelura sales from a one-off CMS settlement ($300–310M)",
+    "Binary pipeline readouts (HS / prurigo nodularis Phase 3 in Q4)",
+    "Q3 earnings Nov 3"
+   ],
+   "take": "Cheap, cash-rich biotech growing fast now, but the stock is a bet that the pipeline outruns the Jakafi cliff.",
+   "generated_at": "2026-10-09",
+   "sector": "Healthcare",
+   "industry": "Biotechnology",
+   "metrics": {
+    "forwardPE": 12.944739,
+    "trailingPE": 14.402548,
+    "operatingMargins": 0.41899,
+    "revenueGrowth": 0.377,
+    "debtToEquity": 0.603,
+    "dividendYield": 0.0,
+    "targetMeanPrice": 128.91667,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/INCY/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/INCY/key-statistics"
+    },
+    {
+     "label": "Nasdaq / press release",
+     "url": "https://www.nasdaq.com/press-release/incyte-reports-second-quarter-2026-financial-results-and-provides-business-updates"
+    },
+    {
+     "label": "Transcript",
+     "url": "https://earningsapi.io/transcripts/incyte-corporation_incy_earnings_call_transcript_2026-09-16"
+    }
+   ]
+  },
+  "IRM": {
+   "name": "Iron Mountain Inc.",
+   "business": "Specialty REIT: records/information storage plus fast-growing data centers, asset lifecycle management (ALM) and digital solutions.",
+   "news": [
+    {
+     "date": "2026-08-05",
+     "title": "Q2 revenue $2.03B (+18.5%), AFFO/share $1.44 (+16%); FY26 guidance raised",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/iron-mountain-irm-swings-profit-065346947.html",
+     "source": "Yahoo Finance"
+    },
+    {
+     "date": "2026-09-17",
+     "title": "CFO at Goldman conference: growth portfolio to expand >20%; ~$1B data-center revenue this year",
+     "url": "https://www.americanbankingnews.com/2026/09/17/iron-mountain-eyes-20-growth-as-data-centers-digital-solutions-drive-cross-sell.html",
+     "source": "ABMN"
+    },
+    {
+     "date": "2026-09-22",
+     "title": "Upgraded to Strong-Buy at Rothschild & Co Redburn",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-iron-mountain-nyse-irm-upgraded-to-strong-buy-at-rothschild-co-redburn-2026-09-22/",
+     "source": "MarketBeat"
+    }
+   ],
+   "pros": [
+    "Growth businesses (data centers, ALM, digital) up >50% y/y; 110 MW leased YTD",
+    "Guidance raised across revenue, EBITDA and AFFO",
+    "Dividend yield 3.1%; analyst mean target $145 (Yahoo)"
+   ],
+   "cons": [
+    "Heavy leverage: ~$19.95B debt vs $205M cash; negative free cash flow from the build-out (Yahoo)",
+    "Expensive on earnings: forward P/E 41.6 (REIT — AFFO is the better yardstick)",
+    "Rate-sensitive; leasable data-center land bank shrinking (325 MW)",
+    "Q3 earnings Oct 29"
+   ],
+   "take": "A legacy storage cash cow funding a data-center growth engine — strong momentum, but leverage and rates are the swing factors.",
+   "generated_at": "2026-10-09",
+   "sector": "Real Estate",
+   "industry": "REIT - Specialty",
+   "metrics": {
+    "forwardPE": 41.64828,
+    "trailingPE": 81.12014,
+    "operatingMargins": 0.19059,
+    "revenueGrowth": 0.185,
+    "debtToEquity": null,
+    "dividendYield": 3.06,
+    "targetMeanPrice": 145.09091,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/IRM/key-statistics"
+   },
+   "grade_at_generation": "C",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/IRM/key-statistics"
+    },
+    {
+     "label": "Yahoo Finance",
+     "url": "https://finance.yahoo.com/markets/stocks/articles/iron-mountain-irm-swings-profit-065346947.html"
+    },
+    {
+     "label": "ABMN",
+     "url": "https://www.americanbankingnews.com/2026/09/17/iron-mountain-eyes-20-growth-as-data-centers-digital-solutions-drive-cross-sell.html"
+    },
+    {
+     "label": "MarketBeat",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-iron-mountain-nyse-irm-upgraded-to-strong-buy-at-rothschild-co-redburn-2026-09-22/"
+    }
+   ]
+  },
+  "LAMR": {
+   "name": "Lamar Advertising Company",
+   "business": "Outdoor-advertising REIT: billboards (incl. digital), transit and logo signs across the US and Canada.",
+   "news": [
+    {
+     "date": "2026-08-06",
+     "title": "Q2 AFFO/share $2.40 (+8.1%); FY26 AFFO/share guide raised to $8.75–8.90",
+     "url": "https://www.globenewswire.com/news-release/2026/08/06/3340021/16126/en/lamar-advertising-company-announces-second-quarter-ended-june-30-2026-operating-results.html",
+     "source": "GlobeNewswire"
+    },
+    {
+     "date": "2026-09-01",
+     "title": "Declares $1.65/share quarterly dividend",
+     "url": "https://www.sec.gov/Archives/edgar/data/1090425/000119312526378592/d81164d8k.htm",
+     "source": "SEC 8-K"
+    },
+    {
+     "date": "2026-09-29",
+     "title": "Shares slide with REITs as Treasury yields rise",
+     "url": "https://kalkine.com/news/real-estate/rate-pressure-on-reits-sends-lamar-advertising-nasdaqlamr-stock-sliding",
+     "source": "Kalkine"
+    }
+   ],
+   "pros": [
+    "Raised AFFO guidance; dividend yield 4.6% (Yahoo)",
+    "High margins: operating margin 33.3%",
+    "Digital billboard conversion supports pricing"
+   ],
+   "cons": [
+    "Rate-sensitive REIT; debt $4.98B (Yahoo)",
+    "Ad spending is cyclical; growth only mid-single-digit (rev +6.5%)",
+    "Consensus 'hold', mean target $162",
+    "Q3 earnings Oct 29"
+   ],
+   "take": "Stable income REIT with raised guidance; upside depends mostly on rates, so fundamentals are a mild plus, not a driver.",
+   "generated_at": "2026-10-09",
+   "sector": "Real Estate",
+   "industry": "REIT - Specialty",
+   "metrics": {
+    "forwardPE": 22.613426,
+    "trailingPE": 26.739964,
+    "operatingMargins": 0.33283,
+    "revenueGrowth": 0.065,
+    "debtToEquity": 500.114,
+    "dividendYield": 4.61,
+    "targetMeanPrice": 162.2,
+    "recommendationKey": "hold",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/LAMR/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/LAMR/key-statistics"
+    },
+    {
+     "label": "GlobeNewswire",
+     "url": "https://www.globenewswire.com/news-release/2026/08/06/3340021/16126/en/lamar-advertising-company-announces-second-quarter-ended-june-30-2026-operating-results.html"
+    },
+    {
+     "label": "SEC 8-K",
+     "url": "https://www.sec.gov/Archives/edgar/data/1090425/000119312526378592/d81164d8k.htm"
+    },
+    {
+     "label": "Kalkine",
+     "url": "https://kalkine.com/news/real-estate/rate-pressure-on-reits-sends-lamar-advertising-nasdaqlamr-stock-sliding"
+    }
+   ]
+  },
+  "LFUS": {
+   "name": "Littelfuse, Inc.",
+   "business": "Circuit protection (fuses, TVS), power semiconductors and sensors for industrial, data-center, automotive and electronics markets.",
+   "news": [
+    {
+     "date": "2026-07-29",
+     "title": "Q2 sales $739M (+20%, +14% organic), adj. EPS $4.19; industrial +52% on data centers",
+     "url": "https://www.sec.gov/Archives/edgar/data/889331/000162828026050382/q22026earningsreleaseex991.htm",
+     "source": "SEC 8-K"
+    },
+    {
+     "date": "2026-09-16",
+     "title": "Senior leadership transition: Electronics + Semiconductor businesses combined under one leader from Jan 2027",
+     "url": "https://www.nasdaq.com/press-release/littelfuse-announces-senior-leadership-transition-2026-09-16",
+     "source": "Nasdaq"
+    }
+   ],
+   "pros": [
+    "Growth re-accelerating (+20% sales) with data-center tailwind",
+    "High-voltage data-center design wins scaling from 2027",
+    "Modest leverage (debt $709M vs cash $631M) (Yahoo)"
+   ],
+   "cons": [
+    "Trailing GAAP net margin slightly negative (-0.3%) (Yahoo)",
+    "Forward P/E 21.2; near 52w high 500.57",
+    "Auto/industrial cyclicality",
+    "Q3 earnings Nov 3"
+   ],
+   "take": "Cyclical recovery plus a data-center story; fundamentals improving, valuation fair — a reasonable pullback buy.",
+   "generated_at": "2026-10-09",
+   "sector": "Technology",
+   "industry": "Electronic Components",
+   "metrics": {
+    "forwardPE": 21.209904,
+    "trailingPE": null,
+    "operatingMargins": 0.18799,
+    "revenueGrowth": 0.204,
+    "debtToEquity": 27.093,
+    "dividendYield": 0.75,
+    "targetMeanPrice": 496.25,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/LFUS/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/LFUS/key-statistics"
+    },
+    {
+     "label": "SEC 8-K",
+     "url": "https://www.sec.gov/Archives/edgar/data/889331/000162828026050382/q22026earningsreleaseex991.htm"
+    },
+    {
+     "label": "Nasdaq",
+     "url": "https://www.nasdaq.com/press-release/littelfuse-announces-senior-leadership-transition-2026-09-16"
+    }
+   ]
+  },
+  "MOG-A": {
+   "name": "Moog Inc. (Class A)",
+   "business": "Precision motion and fluid controls for military/commercial aircraft, space & defense and industrial markets (incl. data-center cooling).",
+   "news": [
+    {
+     "date": "2026-07-31",
+     "title": "Record fiscal Q3: sales $1.117B (+15%), adj. EPS $3.72; FY26 guide raised to $4.4B sales / $11.65 adj. EPS",
+     "url": "https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/2026/q3/Moog-FY26-Q3-Results.pdf",
+     "source": "Moog press release"
+    },
+    {
+     "date": "2026-07-31",
+     "title": "12-month backlog $3.3B, up 23%",
+     "url": "https://www.stocktitan.net/sec-filings/MOG/8-k-moog-inc-reports-material-event-1527efd11e32.html",
+     "source": "StockTitan (8-K)"
+    },
+    {
+     "date": "2026-09",
+     "title": "$16.5M Navy V-22 swashplate actuator overhaul award",
+     "url": "https://app.govly.com/public/signals/190404",
+     "source": "Govly"
+    }
+   ],
+   "pros": [
+    "Double-digit growth: Q3 sales +15%, backlog +23%",
+    "FY26 guidance raised on every metric (adj. op. margin 14.1% vs 13.4%)",
+    "Defense + commercial aero up-cycle; ROE 18.1% (Yahoo)"
+   ],
+   "cons": [
+    "Not cheap: forward P/E 30.2 (Yahoo)",
+    "FY26 EPS raise partly one-offs (IEEPA tariff refund $30M, R&D tax credits)",
+    "Thin cash ($67M) vs debt $1.15B",
+    "Fiscal Q4 earnings Oct 30"
+   ],
+   "take": "Quality aerospace/defense compounder with real momentum; valuation and one-off-boosted EPS argue for buying only near support.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Aerospace & Defense",
+   "metrics": {
+    "forwardPE": 30.154379,
+    "trailingPE": 30.592482,
+    "operatingMargins": 0.14516,
+    "revenueGrowth": 0.152,
+    "debtToEquity": 51.557,
+    "dividendYield": 0.33,
+    "targetMeanPrice": 446.4,
+    "recommendationKey": "none",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/MOG-A/key-statistics"
+   },
+   "grade_at_generation": "B",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/MOG-A/key-statistics"
+    },
+    {
+     "label": "Moog press release",
+     "url": "https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/2026/q3/Moog-FY26-Q3-Results.pdf"
+    },
+    {
+     "label": "StockTitan (8-K)",
+     "url": "https://www.stocktitan.net/sec-filings/MOG/8-k-moog-inc-reports-material-event-1527efd11e32.html"
+    },
+    {
+     "label": "Govly",
+     "url": "https://app.govly.com/public/signals/190404"
+    }
+   ]
+  },
+  "PH": {
+   "name": "Parker-Hannifin Corporation",
+   "business": "Motion and control technologies: aerospace systems, hydraulics, filtration, fluid connectors.",
+   "news": [
+    {
+     "date": "2026-08-06",
+     "title": "Record fiscal Q4: sales $5.8B (+9.8%), adj. EPS $9.27; orders +19%; FY27 adj. EPS guide $34.25–35.25",
+     "url": "https://investors.parker.com/news-events/press-releases/detail/509/parker-reports-record-fiscal-2026-fourth-quarter-and-full",
+     "source": "Parker IR"
+    },
+    {
+     "date": "2026-08-13",
+     "title": "Completes $9.25B Filtration Group acquisition (~$1.8B FY27 sales, EPS accretive)",
+     "url": "https://investors.parker.com/news-events/press-releases/detail/510/parker-completes-acquisition-of-filtration-group-corporation",
+     "source": "Parker IR"
+    }
+   ],
+   "pros": [
+    "Record backlog $12.8B; orders accelerating",
+    "Margin leader: operating margin 23.5% (Yahoo)",
+    "Aerospace + filtration mix shift supports multiple"
+   ],
+   "cons": [
+    "Forward P/E 24.0 (Yahoo) — premium valuation",
+    "Debt $8.73B rises with the Filtration Group deal",
+    "Industrial cyclicality",
+    "Q1 FY27 earnings Oct 29"
+   ],
+   "take": "Top-tier industrial compounder; strong fundamentals, premium price. (Only graded with a larger account — 1 share > position cap.)",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "metrics": {
+    "forwardPE": 23.983091,
+    "trailingPE": 33.67326,
+    "operatingMargins": 0.23458,
+    "revenueGrowth": 0.098,
+    "debtToEquity": 56.66,
+    "dividendYield": 0.84,
+    "targetMeanPrice": 1155.2887,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/PH/key-statistics"
+   },
+   "grade_at_generation": "C",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/PH/key-statistics"
+    },
+    {
+     "label": "Parker IR",
+     "url": "https://investors.parker.com/news-events/press-releases/detail/509/parker-reports-record-fiscal-2026-fourth-quarter-and-full"
+    },
+    {
+     "label": "Parker IR",
+     "url": "https://investors.parker.com/news-events/press-releases/detail/510/parker-completes-acquisition-of-filtration-group-corporation"
+    }
+   ]
+  },
+  "RHP": {
+   "name": "Ryman Hospitality Properties, Inc.",
+   "business": "Lodging REIT owning large group-meeting resorts (Gaylord Hotels, JW Marriott/Ritz-Carlton) plus Opry Entertainment.",
+   "news": [
+    {
+     "date": "2026-08-06",
+     "title": "Q2 beat; FY26 same-store RevPAR growth guide raised to 3.5–4.5%",
+     "url": "https://www.globenewswire.com/news-release/2026/08/06/3340801/0/en/ryman-hospitality-properties-inc-reports-second-quarter-2026-results.html",
+     "source": "GlobeNewswire"
+    },
+    {
+     "date": "2026-09-01",
+     "title": "Closes $1.38B Grande Lakes Orlando acquisition; updates 2026 outlook",
+     "url": "https://www.globenewswire.com/news-release/2026/09/01/3354609/0/en/ryman-hospitality-properties-inc-closes-acquisition-of-grande-lakes-orlando-resort-and-updates-2026-outlook.html",
+     "source": "GlobeNewswire"
+    },
+    {
+     "date": "2026-09-15",
+     "title": "Declares $1.20 Q3 dividend",
+     "url": "https://www.globenewswire.com/news-release/2026/09/15/3362671/0/en/ryman-hospitality-properties-inc-declares-third-quarter-dividend.html",
+     "source": "GlobeNewswire"
+    }
+   ],
+   "pros": [
+    "Group-meeting demand strong; guidance raised",
+    "Acquisitive growth (Grande Lakes)",
+    "Dividend yield 4.0%; consensus 'strong buy', mean target $140 (Yahoo)"
+   ],
+   "cons": [
+    "Leverage: debt $4.13B (Yahoo), more after the acquisition",
+    "Hotel/group travel is economically sensitive",
+    "Possible sale of the Entertainment segment adds uncertainty",
+    "Q3 earnings Nov 2"
+   ],
+   "take": "Well-run group-hotel REIT with raised guidance and analyst support; leverage and the travel cycle are the main risks.",
+   "generated_at": "2026-10-09",
+   "sector": "Real Estate",
+   "industry": "REIT - Hotel & Motel",
+   "metrics": {
+    "forwardPE": 25.284067,
+    "trailingPE": 29.344282,
+    "operatingMargins": 0.23305,
+    "revenueGrowth": 0.136,
+    "debtToEquity": 334.57,
+    "dividendYield": 4.02,
+    "targetMeanPrice": 139.7857,
+    "recommendationKey": "strong_buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/RHP/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/RHP/key-statistics"
+    },
+    {
+     "label": "GlobeNewswire",
+     "url": "https://www.globenewswire.com/news-release/2026/08/06/3340801/0/en/ryman-hospitality-properties-inc-reports-second-quarter-2026-results.html"
+    },
+    {
+     "label": "GlobeNewswire",
+     "url": "https://www.globenewswire.com/news-release/2026/09/01/3354609/0/en/ryman-hospitality-properties-inc-closes-acquisition-of-grande-lakes-orlando-resort-and-updates-2026-outlook.html"
+    },
+    {
+     "label": "GlobeNewswire",
+     "url": "https://www.globenewswire.com/news-release/2026/09/15/3362671/0/en/ryman-hospitality-properties-inc-declares-third-quarter-dividend.html"
+    }
+   ]
+  },
+  "ROK": {
+   "name": "Rockwell Automation, Inc.",
+   "business": "Industrial automation: PLCs/controllers, drives, motion, software and lifecycle services.",
+   "news": [
+    {
+     "date": "2026-08-04",
+     "title": "Fiscal Q3: FY26 guide raised — sales +7.5–9.5%, adj. EPS $13.00–13.30",
+     "url": "https://www.rockwellautomation.com/en-us/company/news/press-releases/Rockwell-Automation-Reports-Third-Quarter-2026-Results.html",
+     "source": "Rockwell"
+    },
+    {
+     "date": "2026-09-30",
+     "title": "Goldman cuts target to $485; Deutsche Bank raises to $500",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-rockwell-automation-nyse-rok-given-new-48500-price-target-at-the-goldman-sachs-group-2026-09-30/",
+     "source": "MarketBeat"
+    }
+   ],
+   "pros": [
+    "Recovery in industrial automation; guidance raised",
+    "Strong FCF ($1.30B, ~100% conversion target)",
+    "Operating margin 21.0%; ROE 30.6% (Yahoo)"
+   ],
+   "cons": [
+    "Expensive: forward P/E 29.2 (Yahoo)",
+    "Mixed analyst views (consensus near hold, Wells Fargo Equal Weight)",
+    "Cyclical capex exposure",
+    "Fiscal Q4 earnings Nov 4"
+   ],
+   "take": "High-quality cyclical in recovery mode; the fundamentals are fine but already priced — rely on the chart setup.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "metrics": {
+    "forwardPE": 29.164797,
+    "trailingPE": 40.72004,
+    "operatingMargins": 0.20968,
+    "revenueGrowth": 0.079,
+    "debtToEquity": 103.347,
+    "dividendYield": 1.25,
+    "targetMeanPrice": 477.1154,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ROK/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ROK/key-statistics"
+    },
+    {
+     "label": "Rockwell",
+     "url": "https://www.rockwellautomation.com/en-us/company/news/press-releases/Rockwell-Automation-Reports-Third-Quarter-2026-Results.html"
+    },
+    {
+     "label": "MarketBeat",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-rockwell-automation-nyse-rok-given-new-48500-price-target-at-the-goldman-sachs-group-2026-09-30/"
+    }
+   ]
+  },
+  "ROST": {
+   "name": "Ross Stores, Inc.",
+   "business": "Off-price apparel and home retailer (Ross Dress for Less, dd's DISCOUNTS).",
+   "news": [
+    {
+     "date": "2026-08",
+     "title": "Q2 sales $6.27B (+13%), comps +10%; FY EPS guide raised to $8.61–8.77; 115 new stores planned",
+     "url": "https://www.prnewswire.com/news-releases/ross-stores-reports-strong-second-quarter-sales-and-earnings-results-302856807.html",
+     "source": "PR Newswire"
+    },
+    {
+     "date": "2026-09-18",
+     "title": "Consensus 'Moderate Buy'; several targets raised (e.g. Truist $310)",
+     "url": "https://www.americanbankingnews.com/2026/09/18/ross-stores-inc-nasdaqrost-given-consensus-recommendation-of-moderate-buy-by-brokerages.html",
+     "source": "ABMN"
+    }
+   ],
+   "pros": [
+    "Strong comps (+10%) and store growth",
+    "Large cash pile: $4.29B cash vs $4.74B total debt (Yahoo)",
+    "ROE 42.6%; off-price wins in a cautious consumer environment"
+   ],
+   "cons": [
+    "Full valuation: forward P/E 24.7 (Yahoo)",
+    "Q2 EPS included ~$0.60 tariff refunds — not recurring",
+    "H2 comps guided lower (6–7% Q3, 4–5% Q4)",
+    "Q3 earnings Nov 12"
+   ],
+   "take": "Fundamentally strong retailer with momentum; the one-off tariff boost and a full multiple are the caveats.",
+   "generated_at": "2026-10-09",
+   "sector": "Consumer Cyclical",
+   "industry": "Apparel Retail",
+   "metrics": {
+    "forwardPE": 24.710352,
+    "trailingPE": 26.81076,
+    "operatingMargins": 0.13578,
+    "revenueGrowth": 0.133,
+    "debtToEquity": 70.281,
+    "dividendYield": 0.79,
+    "targetMeanPrice": 270.55557,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ROST/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ROST/key-statistics"
+    },
+    {
+     "label": "PR Newswire",
+     "url": "https://www.prnewswire.com/news-releases/ross-stores-reports-strong-second-quarter-sales-and-earnings-results-302856807.html"
+    },
+    {
+     "label": "ABMN",
+     "url": "https://www.americanbankingnews.com/2026/09/18/ross-stores-inc-nasdaqrost-given-consensus-recommendation-of-moderate-buy-by-brokerages.html"
+    }
+   ]
+  },
+  "ST": {
+   "name": "Sensata Technologies Holding plc",
+   "business": "Sensors, electrical protection and power-distribution components for automotive, heavy-vehicle, industrial and aerospace markets.",
+   "news": [
+    {
+     "date": "2026-07-29",
+     "title": "Q2 revenue $990.6M (+5.0%, +4.4% organic), adj. EPS $0.98 (+12.6%)",
+     "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Reports-Second-Quarter-2026-Financial-Results/default.aspx",
+     "source": "Sensata IR"
+    },
+    {
+     "date": "2026-09-08",
+     "title": "Launches OmniNode high-voltage power-distribution platform for commercial EVs",
+     "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Introduces-OmniNode-an-Off-the-Shelf-High-Voltage-Power-Distribution-Solution-for-Commercial-Vehicles/default.aspx",
+     "source": "Sensata IR"
+    },
+    {
+     "date": "2026-09-08",
+     "title": "Barclays upgrades to Overweight, $55 target",
+     "url": "https://www.marketscreener.com/news/barclays-upgrades-sensata-technologies-to-overweight-from-equalweight-price-target-is-55-ce785bd8dd89ff22",
+     "source": "MarketScreener"
+    }
+   ],
+   "pros": [
+    "Cheap on forward earnings: forward P/E 10.3, P/S 1.6 (Yahoo)",
+    "Earnings growing faster than sales (adj. EPS +12.6%)",
+    "Solid free cash flow ($504M) supports deleveraging/buybacks"
+   ],
+   "cons": [
+    "Low growth (organic +4.4%) and auto-cycle exposure",
+    "Leverage: $2.44B debt vs $403M cash (Yahoo)",
+    "GAAP margin thin (net margin 2.4%); trailing P/E 70.2",
+    "Q3 earnings Oct 27 (guide $957–987M revenue)"
+   ],
+   "take": "Value/self-help story with an analyst upgrade tailwind; fundamentals are adequate but not a growth reason to own it.",
+   "generated_at": "2026-10-09",
+   "sector": "Technology",
+   "industry": "Scientific & Technical Instruments",
+   "metrics": {
+    "forwardPE": 10.307613,
+    "trailingPE": 70.23333,
+    "operatingMargins": 0.16394,
+    "revenueGrowth": 0.05,
+    "debtToEquity": 82.598,
+    "dividendYield": 1.13,
+    "targetMeanPrice": 53.0,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/ST/key-statistics"
+   },
+   "grade_at_generation": "C",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/ST/key-statistics"
+    },
+    {
+     "label": "Sensata IR",
+     "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Reports-Second-Quarter-2026-Financial-Results/default.aspx"
+    },
+    {
+     "label": "Sensata IR",
+     "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Introduces-OmniNode-an-Off-the-Shelf-High-Voltage-Power-Distribution-Solution-for-Commercial-Vehicles/default.aspx"
+    },
+    {
+     "label": "MarketScreener",
+     "url": "https://www.marketscreener.com/news/barclays-upgrades-sensata-technologies-to-overweight-from-equalweight-price-target-is-55-ce785bd8dd89ff22"
+    }
+   ]
+  },
+  "SWK": {
+   "name": "Stanley Black & Decker, Inc.",
+   "business": "Power tools and hand tools (DEWALT, STANLEY, CRAFTSMAN) and engineered fastening.",
+   "news": [
+    {
+     "date": "2026-07-29",
+     "title": "Q2 sales $4.0B (flat, +3% organic), adj. EPS $1.57; FY26 adj. EPS guide raised to $5.20–5.80",
+     "url": "https://newsroom.stanleyblackanddecker.com/2026-07-29-Stanley-Black-Decker-Reports-Solid-2Q-2026-Results",
+     "source": "SWK newsroom"
+    },
+    {
+     "date": "2026-09-04",
+     "title": "Agrees to sell Excel Industries (Hustler mowers, ~$300M revenue) to Bad Boy Mowers",
+     "url": "https://newsroom.stanleyblackanddecker.com/2026-09-04-Stanley-Black-Decker-Announces-Agreement-to-Sell-Excel-Industries-to-Bad-Boy-Mowers",
+     "source": "SWK newsroom"
+    }
+   ],
+   "pros": [
+    "Turnaround: guidance raised, portfolio pruning continues",
+    "Valuation: forward P/E 13.8, P/S 0.9; dividend yield 3.8% (Yahoo)",
+    "Free cash flow guide raised to $600–800M"
+   ],
+   "cons": [
+    "No growth: sales flat y/y (+3% organic)",
+    "Tariff exposure; Q2 EPS included a $0.17 tariff-refund benefit",
+    "Debt $5.21B vs cash $592M (Yahoo)",
+    "Q3 earnings Nov 4"
+   ],
+   "take": "Cheap turnaround with a high yield, but sales are not growing — a fundamentals-neutral name; trade it on the chart.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Tools & Accessories",
+   "metrics": {
+    "forwardPE": 13.828899,
+    "trailingPE": 21.464546,
+    "operatingMargins": 0.08443,
+    "revenueGrowth": 0.004,
+    "debtToEquity": 58.172,
+    "dividendYield": 3.77,
+    "targetMeanPrice": 101.09091,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/SWK/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/SWK/key-statistics"
+    },
+    {
+     "label": "SWK newsroom",
+     "url": "https://newsroom.stanleyblackanddecker.com/2026-07-29-Stanley-Black-Decker-Reports-Solid-2Q-2026-Results"
+    },
+    {
+     "label": "SWK newsroom",
+     "url": "https://newsroom.stanleyblackanddecker.com/2026-09-04-Stanley-Black-Decker-Announces-Agreement-to-Sell-Excel-Industries-to-Bad-Boy-Mowers"
+    }
+   ]
+  },
+  "URI": {
+   "name": "United Rentals, Inc.",
+   "business": "Largest US equipment-rental company (general and specialty rentals).",
+   "news": [
+    {
+     "date": "2026-07-22",
+     "title": "Record Q2: revenue $4.4B, adj. EPS $12.76; FY26 revenue guide raised to $17.5–17.8B",
+     "url": "https://investors.unitedrentals.com/press-releases/press-releases-details/2026/United-Rentals-Announces-Record-Second-Quarter-Results-and-Raises-Full-Year-2026-Guidance/default.aspx",
+     "source": "URI IR"
+    },
+    {
+     "date": "2026-09-19",
+     "title": "Management: large-project pipeline accelerating, specialty demand strong",
+     "url": "https://www.marketbeat.com/instant-alerts/event-united-rentals-sees-large-project-pipeline-accelerate-as-specialty-demand-stays-strong-2026-09-19/",
+     "source": "MarketBeat"
+    }
+   ],
+   "pros": [
+    "Mega-project demand (data centers, manufacturing) driving raised guidance",
+    "Strong FCF ($1.71B) funds buybacks/M&A (Yahoo)",
+    "Forward P/E 18.3"
+   ],
+   "cons": [
+    "Leverage: debt $15.38B (Yahoo)",
+    "Diesel cost $5.34/gal YTD vs $3.66 a year earlier",
+    "Cyclical construction exposure",
+    "Q3 earnings Oct 28"
+   ],
+   "take": "Cycle leader with raised guidance and a long project pipeline; fundamentals supportive. (Only graded with a larger account — 1 share > position cap.)",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Rental & Leasing Services",
+   "metrics": {
+    "forwardPE": 18.304743,
+    "trailingPE": 25.226976,
+    "operatingMargins": 0.25986,
+    "revenueGrowth": 0.118,
+    "debtToEquity": 166.793,
+    "dividendYield": 0.76,
+    "targetMeanPrice": 1265.9524,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/URI/key-statistics"
+   },
+   "grade_at_generation": "C",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/URI/key-statistics"
+    },
+    {
+     "label": "URI IR",
+     "url": "https://investors.unitedrentals.com/press-releases/press-releases-details/2026/United-Rentals-Announces-Record-Second-Quarter-Results-and-Raises-Full-Year-2026-Guidance/default.aspx"
+    },
+    {
+     "label": "MarketBeat",
+     "url": "https://www.marketbeat.com/instant-alerts/event-united-rentals-sees-large-project-pipeline-accelerate-as-specialty-demand-stays-strong-2026-09-19/"
+    }
+   ]
+  },
+  "WELL": {
+   "name": "Welltower Inc.",
+   "business": "Healthcare REIT focused on senior housing (operating portfolio), plus outpatient medical properties in the US, Canada and UK.",
+   "news": [
+    {
+     "date": "2026-07-27",
+     "title": "Q2: FY26 normalized FFO guide raised to $6.36–6.44/share",
+     "url": "https://welltower.investorroom.com/2026-07-27-Welltower-Reports-Second-Quarter-2026-Results",
+     "source": "Welltower"
+    },
+    {
+     "date": "2026-09-26",
+     "title": "Jefferies starts at Strong-Buy; JPMorgan upgrade to Overweight ($260)",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-welltower-nyse-well-raised-to-strong-buy-at-jefferies-financial-group-2026-09-26/",
+     "source": "MarketBeat"
+    }
+   ],
+   "pros": [
+    "Senior-housing demographic tailwind; revenue +39.1% y/y (Yahoo)",
+    "FFO guidance raised; active acquirer (Amica portfolio)",
+    "Moderate leverage: debt/equity 41% (Yahoo)"
+   ],
+   "cons": [
+    "Very expensive: forward P/E 70.7, P/S 12.7 (Yahoo) — premium REIT multiple",
+    "Rate-sensitive; acquisition-driven growth carries execution risk",
+    "Q3 earnings Oct 26"
+   ],
+   "take": "Best-in-class senior-housing growth REIT with analyst momentum; fundamentals strong but the premium multiple limits margin of safety.",
+   "generated_at": "2026-10-09",
+   "sector": "Real Estate",
+   "industry": "REIT - Healthcare Facilities",
+   "metrics": {
+    "forwardPE": 70.72798,
+    "trailingPE": 100.85874,
+    "operatingMargins": 0.16561002,
+    "revenueGrowth": 0.391,
+    "debtToEquity": 41.375,
+    "dividendYield": 1.54,
+    "targetMeanPrice": 262.04544,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/WELL/key-statistics"
+   },
+   "grade_at_generation": "D",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/WELL/key-statistics"
+    },
+    {
+     "label": "Welltower",
+     "url": "https://welltower.investorroom.com/2026-07-27-Welltower-Reports-Second-Quarter-2026-Results"
+    },
+    {
+     "label": "MarketBeat",
+     "url": "https://www.marketbeat.com/instant-alerts/analyst-welltower-nyse-well-raised-to-strong-buy-at-jefferies-financial-group-2026-09-26/"
+    }
+   ]
+  },
+  "WTS": {
+   "name": "Watts Water Technologies, Inc.",
+   "business": "Plumbing, heating, water-quality and flow-control products (valves, boilers, thermal storage) for commercial and residential buildings.",
+   "news": [
+    {
+     "date": "2026-08-05",
+     "title": "Record Q2: sales $763M (+19%, +12% organic), adj. EPS $3.66; FY26 sales outlook raised (8–11% organic)",
+     "url": "https://www.nasdaq.com/press-release/watts-water-technologies-reports-record-second-quarter-2026-results-2026-08-05",
+     "source": "Business Wire / Nasdaq"
+    },
+    {
+     "date": "2026-08-06",
+     "title": "Data-center sales more than tripled y/y; data-center TAM estimate roughly doubled to ~$2B",
+     "url": "https://vectorshift.ai/research/companies/watts-water/earnings/2026-q2",
+     "source": "Q2 call transcript"
+    }
+   ],
+   "pros": [
+    "Double-digit organic growth with pricing power (~6% price)",
+    "New data-center leg (CoolVault thermal storage) adds a secular driver",
+    "Net cash ($348M cash vs $212M debt); operating margin 20.9% (Yahoo)"
+   ],
+   "cons": [
+    "Premium valuation: forward P/E 24.9 (Yahoo)",
+    "Adj. operating margin −60 bp (acquisition dilution, tariffs/inflation)",
+    "Part of Q2 demand was pull-forward; Middle East softness",
+    "Q3 earnings Nov 4"
+   ],
+   "take": "High-quality industrial with a balance-sheet cushion and a data-center kicker; fundamentals fine, valuation already prices quality.",
+   "generated_at": "2026-10-09",
+   "sector": "Industrials",
+   "industry": "Specialty Industrial Machinery",
+   "metrics": {
+    "forwardPE": 24.853642,
+    "trailingPE": 30.46987,
+    "operatingMargins": 0.20912,
+    "revenueGrowth": 0.186,
+    "debtToEquity": 9.674,
+    "dividendYield": 0.66,
+    "targetMeanPrice": 404.0,
+    "recommendationKey": "buy",
+    "as_of": "2026-10-09",
+    "source": "https://finance.yahoo.com/quote/WTS/key-statistics"
+   },
+   "grade_at_generation": "C",
+   "sources": [
+    {
+     "label": "Yahoo Finance key statistics (2026-10-09)",
+     "url": "https://finance.yahoo.com/quote/WTS/key-statistics"
+    },
+    {
+     "label": "Business Wire / Nasdaq",
+     "url": "https://www.nasdaq.com/press-release/watts-water-technologies-reports-record-second-quarter-2026-results-2026-08-05"
+    },
+    {
+     "label": "Q2 call transcript",
+     "url": "https://vectorshift.ai/research/companies/watts-water/earnings/2026-q2"
+    }
+   ]
+  }
+ }
+}

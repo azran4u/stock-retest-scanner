@@ -1,0 +1,65 @@
+{
+ "ticker": "ST",
+ "name": "Sensata Technologies Holding plc",
+ "business": "Sensors, electrical protection and power-distribution components for automotive, heavy-vehicle, industrial and aerospace markets.",
+ "news": [
+  {
+   "date": "2026-07-29",
+   "title": "Q2 revenue $990.6M (+5.0%, +4.4% organic), adj. EPS $0.98 (+12.6%)",
+   "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Reports-Second-Quarter-2026-Financial-Results/default.aspx",
+   "source": "Sensata IR"
+  },
+  {
+   "date": "2026-09-08",
+   "title": "Launches OmniNode high-voltage power-distribution platform for commercial EVs",
+   "url": "https://investors.sensata.com/news/news-details/2026/Sensata-Technologies-Introduces-OmniNode-an-Off-the-Shelf-High-Voltage-Power-Distribution-Solution-for-Commercial-Vehicles/default.aspx",
+   "source": "Sensata IR"
+  },
+  {
+   "date": "2026-09-08",
+   "title": "Barclays upgrades to Overweight, $55 target",
+   "url": "https://www.marketscreener.com/news/barclays-upgrades-sensata-technologies-to-overweight-from-equalweight-price-target-is-55-ce785bd8dd89ff22",
+   "source": "MarketScreener"
+  }
+ ],
+ "pros": [
+  "Cheap on forward earnings: forward P/E {fpe}, P/S {ps} ({src})",
+  "Earnings growing faster than sales (adj. EPS +12.6%)",
+  "Solid free cash flow ({fcf}) supports deleveraging/buybacks"
+ ],
+ "cons": [
+  "Low growth (organic +4.4%) and auto-cycle exposure",
+  "Leverage: {debt} debt vs {cash} cash ({src})",
+  "GAAP margin thin (net margin {pm}); trailing P/E {tpe}",
+  "Q3 earnings Oct 27 (guide $957–987M revenue)"
+ ],
+ "take": "Value/self-help story with an analyst upgrade tailwind; fundamentals are adequate but not a growth reason to own it.",
+ "metrics": {
+  "sector": "Technology",
+  "industry": "Scientific & Technical Instruments",
+  "trailingPE": 70.23333,
+  "forwardPE": 10.307613,
+  "priceToSalesTrailing12Months": 1.6244751,
+  "profitMargins": 0.023810001,
+  "operatingMargins": 0.16394,
+  "revenueGrowth": 0.05,
+  "earningsGrowth": 0.707,
+  "debtToEquity": 82.598,
+  "totalDebt": 2444900096,
+  "totalCash": 403300000,
+  "freeCashflow": 504049504,
+  "marketCap": 6132880896,
+  "targetMeanPrice": 53.0,
+  "recommendationKey": "buy",
+  "dividendYield": 1.13,
+  "returnOnEquity": 0.03079,
+  "fiftyTwoWeekHigh": 53.89,
+  "fiftyTwoWeekLow": 28.16,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 42.14,
+  "summary": "Sensata Technologies Holding plc develops, manufactures, and sells sensors and sensor-rich solutions, electrical protection components and systems, and other products used in mission-critical systems and applications in the United States, Europe, Asia, and internationally. It operates through three segments: Automotive; Industrials; and Aerospace, Defense, and Commercial Equipment. The company off",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ST/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

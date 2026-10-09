@@ -1,0 +1,59 @@
+{
+ "ticker": "PH",
+ "name": "Parker-Hannifin Corporation",
+ "business": "Motion and control technologies: aerospace systems, hydraulics, filtration, fluid connectors.",
+ "news": [
+  {
+   "date": "2026-08-06",
+   "title": "Record fiscal Q4: sales $5.8B (+9.8%), adj. EPS $9.27; orders +19%; FY27 adj. EPS guide $34.25–35.25",
+   "url": "https://investors.parker.com/news-events/press-releases/detail/509/parker-reports-record-fiscal-2026-fourth-quarter-and-full",
+   "source": "Parker IR"
+  },
+  {
+   "date": "2026-08-13",
+   "title": "Completes $9.25B Filtration Group acquisition (~$1.8B FY27 sales, EPS accretive)",
+   "url": "https://investors.parker.com/news-events/press-releases/detail/510/parker-completes-acquisition-of-filtration-group-corporation",
+   "source": "Parker IR"
+  }
+ ],
+ "pros": [
+  "Record backlog $12.8B; orders accelerating",
+  "Margin leader: operating margin {om} ({src})",
+  "Aerospace + filtration mix shift supports multiple"
+ ],
+ "cons": [
+  "Forward P/E {fpe} ({src}) — premium valuation",
+  "Debt {debt} rises with the Filtration Group deal",
+  "Industrial cyclicality",
+  "Q1 FY27 earnings Oct 29"
+ ],
+ "take": "Top-tier industrial compounder; strong fundamentals, premium price. (Only graded with a larger account — 1 share > position cap.)",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Specialty Industrial Machinery",
+  "trailingPE": 33.67326,
+  "forwardPE": 23.983091,
+  "priceToSalesTrailing12Months": 5.591967,
+  "profitMargins": 0.16968,
+  "operatingMargins": 0.23458,
+  "revenueGrowth": 0.098,
+  "earningsGrowth": 0.193,
+  "debtToEquity": 56.66,
+  "totalDebt": 8732999680,
+  "totalCash": 501000000,
+  "freeCashflow": 2961750016,
+  "marketCap": 120221704192,
+  "targetMeanPrice": 1155.2887,
+  "recommendationKey": "buy",
+  "dividendYield": 0.84,
+  "returnOnEquity": 0.25076,
+  "fiftyTwoWeekHigh": 1099.94,
+  "fiftyTwoWeekLow": 715.37,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 953.29,
+  "summary": "Parker-Hannifin Corporation engages in the manufacture and sale of motion and control technologies and systems for aerospace and defense, in-plant and industrial equipment, transportation, off-highway, energy, and HVAC and refrigeration markets in North America, EMEA, Asia Pacific, and Latin America. It operates through two segments: Diversified Industrial and Aerospace Systems. The company offers",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/PH/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

@@ -6,6 +6,7 @@
 <title>Stock Retest Scanner — TradingView charts</title>
 <script src="sizing.js"></script>
 <script src="filters.js"></script>
+<script src="fundamentals.js"></script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
           --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
@@ -184,7 +185,7 @@ function card(r) {
       <dt>SL</dt><dd>${f2(r.tv_sl)}</dd>
       <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
       <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
-    </dl>${posHtml(r)}</div></div>`;
+    </dl>${posHtml(r)}${Fundamentals.details(r)}</div></div>`;
 }
 
 /** Evidence chips E1–E8 (+ failing must-haves for stocks without a grade). */
@@ -325,6 +326,8 @@ async function loadReport(path) {
 
 async function init() {
   SrsFilters.injectCss();
+  Fundamentals.injectCss();
+  await Fundamentals.load();  // analysis/analysis.json (fundamentals.py) — collapsible section on cards that have it
   Sizing.mount(document.getElementById("sizingBar"), () => render(false));
   const gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => render(false));
   mountSettings();

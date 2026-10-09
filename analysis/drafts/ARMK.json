@@ -1,0 +1,59 @@
+{
+ "ticker": "ARMK",
+ "name": "Aramark",
+ "business": "Food and facilities services for education, healthcare, business, sports & entertainment and corrections clients.",
+ "news": [
+  {
+   "date": "2026-08",
+   "title": "Fiscal Q3 revenue $5.1B (+9% organic); FY26 organic growth guide raised to 9–10%; record client wins",
+   "url": "https://www.sec.gov/Archives/edgar/data/1584509/000158450926000118/ex991armkq3fy2026.htm",
+   "source": "SEC 8-K"
+  },
+  {
+   "date": "2026-09",
+   "title": "S&P upgrades credit ratings; Moody's outlook to positive",
+   "url": "https://www.aramark.com/newsroom/news/2026/september/aramark-credit-ratings-upgraded-by-s-p-global--moody-s-revises-o",
+   "source": "Aramark"
+  }
+ ],
+ "pros": [
+  "Organic growth 9–10% with ~98% retention",
+  "EPS growth guide +20–25%; credit upgrades",
+  "Analyst consensus '{rec}', mean target ${tgt} ({src})"
+ ],
+ "cons": [
+  "Thin margins (operating margin {om}) ({src})",
+  "Leveraged: debt {debt}",
+  "Forward P/E {fpe} for a low-margin services business",
+  "Fiscal Q4 earnings Nov 17"
+ ],
+ "take": "Steady contract-services grower deleveraging toward upgrades; fundamentals supportive, low margins cap the upside.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Specialty Business Services",
+  "trailingPE": 38.69231,
+  "forwardPE": 19.678556,
+  "priceToSalesTrailing12Months": 0.7350053,
+  "profitMargins": 0.01929,
+  "operatingMargins": 0.04422,
+  "revenueGrowth": 0.093,
+  "earningsGrowth": 0.333,
+  "debtToEquity": 186.724,
+  "totalDebt": 6468355072,
+  "totalCash": 520393984,
+  "freeCashflow": 374142496,
+  "marketCap": 14586374144,
+  "targetMeanPrice": 68.5,
+  "recommendationKey": "strong_buy",
+  "dividendYield": 0.86,
+  "returnOnEquity": 0.11694,
+  "fiftyTwoWeekHigh": 62.65,
+  "fiftyTwoWeekLow": 35.07,
+  "mostRecentQuarter": 1783036800,
+  "currentPrice": 55.33,
+  "summary": "Aramark provides food and facilities services to education, healthcare, business and industry, sports, leisure, and corrections clients in the United States and internationally. The company operates in two segments, Food and Support Services United States, and Food and Support Services International. It offers food-related managed services, including dining, catering, food service management, and ",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ARMK/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

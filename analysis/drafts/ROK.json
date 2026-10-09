@@ -1,0 +1,59 @@
+{
+ "ticker": "ROK",
+ "name": "Rockwell Automation, Inc.",
+ "business": "Industrial automation: PLCs/controllers, drives, motion, software and lifecycle services.",
+ "news": [
+  {
+   "date": "2026-08-04",
+   "title": "Fiscal Q3: FY26 guide raised — sales +7.5–9.5%, adj. EPS $13.00–13.30",
+   "url": "https://www.rockwellautomation.com/en-us/company/news/press-releases/Rockwell-Automation-Reports-Third-Quarter-2026-Results.html",
+   "source": "Rockwell"
+  },
+  {
+   "date": "2026-09-30",
+   "title": "Goldman cuts target to $485; Deutsche Bank raises to $500",
+   "url": "https://www.marketbeat.com/instant-alerts/analyst-rockwell-automation-nyse-rok-given-new-48500-price-target-at-the-goldman-sachs-group-2026-09-30/",
+   "source": "MarketBeat"
+  }
+ ],
+ "pros": [
+  "Recovery in industrial automation; guidance raised",
+  "Strong FCF ({fcf}, ~100% conversion target)",
+  "Operating margin {om}; ROE {roe} ({src})"
+ ],
+ "cons": [
+  "Expensive: forward P/E {fpe} ({src})",
+  "Mixed analyst views (consensus near hold, Wells Fargo Equal Weight)",
+  "Cyclical capex exposure",
+  "Fiscal Q4 earnings Nov 4"
+ ],
+ "take": "High-quality cyclical in recovery mode; the fundamentals are fine but already priced — rely on the chart setup.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Specialty Industrial Machinery",
+  "trailingPE": 40.72004,
+  "forwardPE": 29.164797,
+  "priceToSalesTrailing12Months": 5.382142,
+  "profitMargins": 0.13385001,
+  "operatingMargins": 0.20968,
+  "revenueGrowth": 0.079,
+  "earningsGrowth": 0.404,
+  "debtToEquity": 103.347,
+  "totalDebt": 3612999936,
+  "totalCash": 479000000,
+  "freeCashflow": 1303874944,
+  "marketCap": 48293957632,
+  "targetMeanPrice": 477.1154,
+  "recommendationKey": "buy",
+  "dividendYield": 1.25,
+  "returnOnEquity": 0.30629,
+  "fiftyTwoWeekHigh": 497.36,
+  "fiftyTwoWeekLow": 332.71,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 434.89,
+  "summary": "Rockwell Automation, Inc., together with its subsidiaries, provides industrial automation and digital transformation solutions in North America, Europe, the Middle East, Africa, the Asia Pacific, and Latin America. It operates in three segments: Intelligent Devices, Software & Control, and Lifecycle Services. The company offers drives, motion, advanced material handling, safety, sensing, industria",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ROK/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

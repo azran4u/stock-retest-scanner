@@ -1,0 +1,65 @@
+{
+ "ticker": "IRM",
+ "name": "Iron Mountain Inc.",
+ "business": "Specialty REIT: records/information storage plus fast-growing data centers, asset lifecycle management (ALM) and digital solutions.",
+ "news": [
+  {
+   "date": "2026-08-05",
+   "title": "Q2 revenue $2.03B (+18.5%), AFFO/share $1.44 (+16%); FY26 guidance raised",
+   "url": "https://finance.yahoo.com/markets/stocks/articles/iron-mountain-irm-swings-profit-065346947.html",
+   "source": "Yahoo Finance"
+  },
+  {
+   "date": "2026-09-17",
+   "title": "CFO at Goldman conference: growth portfolio to expand >20%; ~$1B data-center revenue this year",
+   "url": "https://www.americanbankingnews.com/2026/09/17/iron-mountain-eyes-20-growth-as-data-centers-digital-solutions-drive-cross-sell.html",
+   "source": "ABMN"
+  },
+  {
+   "date": "2026-09-22",
+   "title": "Upgraded to Strong-Buy at Rothschild & Co Redburn",
+   "url": "https://www.marketbeat.com/instant-alerts/analyst-iron-mountain-nyse-irm-upgraded-to-strong-buy-at-rothschild-co-redburn-2026-09-22/",
+   "source": "MarketBeat"
+  }
+ ],
+ "pros": [
+  "Growth businesses (data centers, ALM, digital) up >50% y/y; 110 MW leased YTD",
+  "Guidance raised across revenue, EBITDA and AFFO",
+  "Dividend yield {div}; analyst mean target ${tgt} ({src})"
+ ],
+ "cons": [
+  "Heavy leverage: ~{debt} debt vs {cash} cash; negative free cash flow from the build-out ({src})",
+  "Expensive on earnings: forward P/E {fpe} (REIT — AFFO is the better yardstick)",
+  "Rate-sensitive; leasable data-center land bank shrinking (325 MW)",
+  "Q3 earnings Oct 29"
+ ],
+ "take": "A legacy storage cash cow funding a data-center growth engine — strong momentum, but leverage and rates are the swing factors.",
+ "metrics": {
+  "sector": "Real Estate",
+  "industry": "REIT - Specialty",
+  "trailingPE": 81.12014,
+  "forwardPE": 41.64828,
+  "priceToSalesTrailing12Months": 4.4707046,
+  "profitMargins": 0.055359997,
+  "operatingMargins": 0.19059,
+  "revenueGrowth": 0.185,
+  "earningsGrowth": null,
+  "debtToEquity": null,
+  "totalDebt": 19947120640,
+  "totalCash": 204792992,
+  "freeCashflow": -436093504,
+  "marketCap": 33809571840,
+  "targetMeanPrice": 145.09091,
+  "recommendationKey": "buy",
+  "dividendYield": 3.06,
+  "returnOnEquity": null,
+  "fiftyTwoWeekHigh": 134.68,
+  "fiftyTwoWeekLow": 77.77,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 113.5682,
+  "summary": "Iron Mountain Incorporated is trusted by more than 240,000 customers in 61 countries, including approximately 95% of the Fortune 1000, to help unlock value and intelligence from their assets through services that transcend the physical and digital worlds. Our broad range of solutions address their information management, digital transformation, information security, data center and asset lifecycle",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/IRM/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

@@ -1,0 +1,65 @@
+{
+ "ticker": "FTI",
+ "name": "TechnipFMC plc",
+ "business": "Subsea oil & gas systems (integrated iEPCI projects, Subsea 2.0 equipment, flexible pipe) and Surface Technologies.",
+ "news": [
+  {
+   "date": "2026-07-30",
+   "title": "Q2: inbound orders $2.73B, backlog $16.44B; 2026 subsea guide reaffirmed, ~$10B subsea orders targeted",
+   "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-announces-second-quarter-2026-results/",
+   "source": "TechnipFMC"
+  },
+  {
+   "date": "2026-09-15",
+   "title": "iEPCI award for PETRONAS Limbayong deepwater project ($75–250M)",
+   "url": "https://www.technipfmc.com/en/investors/financial-news-releases/press-release/technipfmc-awarded-iepci-contract-for-petronas-limbayong-project-offshore-malaysia/",
+   "source": "TechnipFMC"
+  },
+  {
+   "date": "2026-10",
+   "title": "Petrobras flexible-flowline contract ($75–250M)",
+   "url": "https://www.technipfmc.com/media/yf5g543x/261005-pbr-flexibles-award.pdf",
+   "source": "TechnipFMC"
+  }
+ ],
+ "pros": [
+  "Huge visibility: $16.4B backlog, steady subsea awards",
+  "Strong cash generation: free cash flow {fcf}, ROE {roe} ({src})",
+  "Subsea margin guide 21–22% adj. EBITDA"
+ ],
+ "cons": [
+  "Oil-price and offshore-capex cyclicality",
+  "Forward P/E {fpe} is not cheap for an oilfield name ({src})",
+  "Stock already close to 52w high {hi}",
+  "Q3 earnings Oct 29"
+ ],
+ "take": "Best-in-class subsea franchise with locked-in backlog; buy-the-dip case is solid as long as offshore spending holds.",
+ "metrics": {
+  "sector": "Energy",
+  "industry": "Oil & Gas Equipment & Services",
+  "trailingPE": 24.477352,
+  "forwardPE": 19.319141,
+  "priceToSalesTrailing12Months": 2.6438851,
+  "profitMargins": 0.11282,
+  "operatingMargins": 0.1769,
+  "revenueGrowth": 0.09,
+  "earningsGrowth": 0.406,
+  "debtToEquity": 37.898,
+  "totalDebt": 1242700032,
+  "totalCash": 991800000,
+  "freeCashflow": 1463362560,
+  "marketCap": 27549548544,
+  "targetMeanPrice": 76.0,
+  "recommendationKey": "buy",
+  "dividendYield": 0.29,
+  "returnOnEquity": 0.35814,
+  "fiftyTwoWeekHigh": 80.7,
+  "fiftyTwoWeekLow": 35.29,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 70.25,
+  "summary": "TechnipFMC plc engages in the oil and natural gas projects, technologies, systems, and services businesses in Europe, Central Asia, North America, Latin America, the Asia Pacific, Africa, the Middle East, and internationally. It operates through two segments, Subsea and Surface Technologies. The Subsea segment engages in design, engineering, procurement, manufacturing, fabrication, installation, a",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/FTI/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

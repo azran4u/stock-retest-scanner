@@ -1,0 +1,58 @@
+{
+ "ticker": "WELL",
+ "name": "Welltower Inc.",
+ "business": "Healthcare REIT focused on senior housing (operating portfolio), plus outpatient medical properties in the US, Canada and UK.",
+ "news": [
+  {
+   "date": "2026-07-27",
+   "title": "Q2: FY26 normalized FFO guide raised to $6.36–6.44/share",
+   "url": "https://welltower.investorroom.com/2026-07-27-Welltower-Reports-Second-Quarter-2026-Results",
+   "source": "Welltower"
+  },
+  {
+   "date": "2026-09-26",
+   "title": "Jefferies starts at Strong-Buy; JPMorgan upgrade to Overweight ($260)",
+   "url": "https://www.marketbeat.com/instant-alerts/analyst-welltower-nyse-well-raised-to-strong-buy-at-jefferies-financial-group-2026-09-26/",
+   "source": "MarketBeat"
+  }
+ ],
+ "pros": [
+  "Senior-housing demographic tailwind; revenue +{rg} y/y ({src})",
+  "FFO guidance raised; active acquirer (Amica portfolio)",
+  "Moderate leverage: debt/equity {de}% ({src})"
+ ],
+ "cons": [
+  "Very expensive: forward P/E {fpe}, P/S {ps} ({src}) — premium REIT multiple",
+  "Rate-sensitive; acquisition-driven growth carries execution risk",
+  "Q3 earnings Oct 26"
+ ],
+ "take": "Best-in-class senior-housing growth REIT with analyst momentum; fundamentals strong but the premium multiple limits margin of safety.",
+ "metrics": {
+  "sector": "Real Estate",
+  "industry": "REIT - Healthcare Facilities",
+  "trailingPE": 100.85874,
+  "forwardPE": 70.72798,
+  "priceToSalesTrailing12Months": 12.698011,
+  "profitMargins": 0.12149999,
+  "operatingMargins": 0.16561002,
+  "revenueGrowth": 0.391,
+  "earningsGrowth": 0.356,
+  "debtToEquity": 41.375,
+  "totalDebt": 19720804352,
+  "totalCash": 1965164032,
+  "freeCashflow": 2756164352,
+  "marketCap": 162067447808,
+  "targetMeanPrice": 262.04544,
+  "recommendationKey": "buy",
+  "dividendYield": 1.54,
+  "returnOnEquity": 0.03836,
+  "fiftyTwoWeekHigh": 255.2,
+  "fiftyTwoWeekLow": 163.75,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 224.915,
+  "summary": "Welltower Inc., an S&P 500 company, is positioned at the center of the silver economy, focusing on rental housing for aging seniors across the United States, United Kingdom, and Canada. Their portfolio of 2,500+ seniors and wellness housing communities are positioned at the intersection of housing and hospitality, creating vibrant communities for mature renters and older adults. They believe our r",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/WELL/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

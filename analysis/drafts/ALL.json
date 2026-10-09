@@ -1,0 +1,59 @@
+{
+ "ticker": "ALL",
+ "name": "The Allstate Corporation",
+ "business": "US personal property & casualty insurer (auto, homeowners) plus protection products.",
+ "news": [
+  {
+   "date": "2026-08",
+   "title": "Q2 adj. net income $8.99/share (+46%); $1.0B buyback in the quarter",
+   "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000117/allcorp63026earningsreleas.htm",
+   "source": "SEC 8-K"
+  },
+  {
+   "date": "2026-09-17",
+   "title": "August catastrophe losses $748M pre-tax; Jul+Aug $1.43B",
+   "url": "https://www.sec.gov/Archives/edgar/data/899051/000089905126000135/all-20260917.htm",
+   "source": "SEC 8-K"
+  }
+ ],
+ "pros": [
+  "Cheap: forward P/E {fpe} ({src})",
+  "Auto profitability restored; ROE {roe}",
+  "Large buybacks ($2.6B left on the $4B authorization)"
+ ],
+ "cons": [
+  "Volatile catastrophe losses: Jul+Aug already $1.43B pre-tax",
+  "Auto-insurance pricing tailwind may fade as margins normalize",
+  "Consensus 'hold', mean target ${tgt} ({src})",
+  "Q3 earnings Nov 4"
+ ],
+ "take": "Cheap, cash-returning insurer at peak profitability; cats and a softening pricing cycle are the risks.",
+ "metrics": {
+  "sector": "Financial Services",
+  "industry": "Insurance - Property & Casualty",
+  "trailingPE": 4.6364546,
+  "forwardPE": 8.260671,
+  "priceToSalesTrailing12Months": 0.83543307,
+  "profitMargins": 0.18971,
+  "operatingMargins": 0.22827,
+  "revenueGrowth": 0.118,
+  "earningsGrowth": 0.612,
+  "debtToEquity": 22.261,
+  "totalDebt": 7496999936,
+  "totalCash": 5714999808,
+  "freeCashflow": 15158625280,
+  "marketCap": 58594770944,
+  "targetMeanPrice": 270.54544,
+  "recommendationKey": "hold",
+  "dividendYield": 1.87,
+  "returnOnEquity": 0.46113998,
+  "fiftyTwoWeekHigh": 277.22,
+  "fiftyTwoWeekLow": 188.08,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 231.73,
+  "summary": "The Allstate Corporation, together with its subsidiaries, provides property and casualty, and other insurance products in the United States and Canada. It operates in four segments: Allstate Protection; Run-off Property-Liability; Protection Services; and Corporate and Other. The company offers private passenger auto, homeowners, other personal lines and commercial insurance through exclusive agen",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/ALL/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

@@ -396,3 +396,15 @@ SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of
 - **Screener universe**: always live-scraped each run. `screener_tickers.json` is a write-only snapshot for debugging — never reused as input.
 - **Quote fundamentals** (short float, inst own): cached in `cache/fv_{TICKER}.json` with TTL **3 days** (`FV_TTL_DAYS`). Stale or incomplete entries are re-fetched.
 - **Earnings**: `cache/earn_{TICKER}.json` = `{earnings_date, source, fetched_at}`; the date is reused until it has passed, then refetched (TradingView → Yahoo). Misses retried after 20h (`EARN_MISS_TTL_HOURS`).
+
+## 15. Fundamentals analysis for graded tickers (2026-10-09)
+
+Eyal wants, for every stock with a grade **A/B/C/D**, a short fundamental read: sector / industry, main business (1 line), 2–3 recent news items (date + source link, last ~60 days; the latest earnings release counts even if a bit older), 2–4 pros and 2–4 cons / risks for buying now (growth, margins, valuation vs peers / history, balance sheet, guidance, catalysts) and a one-line take. ~120–180 words. **Never invent figures**: every number comes from a cited source (news / filings) or from Yahoo Finance key statistics (yfinance, filled in by the script); if a number isn't found, leave it out.
+
+- Data: `analysis/analysis.json` (keyed by ticker; `generated_at`, `grade_at_generation`, `metrics` + `sources` per ticker). Drafts: `analysis/drafts/T.json`.
+- Shown on the dashboard: collapsible **Fundamentals** section on every chart card that has an analysis (`index.html`), and a **fundamentals** column in `table.html` (hover = tooltip, click = expandable row with news + sources). Each shows its "as of" date; older than 14 days = amber "stale".
+- **Not part of the nightly routine** (needs web research). Refresh for newly graded tickers / analyses older than 14 days, run in the publish checkout:
+  1. `python fundamentals.py status --include-untradable` (graded tickers with default E/V/N/X + default sizing; `todo` prints just the tickers that need work)
+  2. `python fundamentals.py scaffold T …` → fill `analysis/drafts/T.json` from web research (WebSearch / WebFetch; cite every news item). Text may use `{fpe} {ps} {om} {pm} {rg} {roe} {de} {div} {cash} {debt} {fcf} {tgt} {rec} {lo} {hi} {src}` placeholders, filled from Yahoo key stats at merge.
+  3. `python fundamentals.py merge analysis/drafts/T.json …` (validates: required fields, dated + linked news, 2–4 pros/cons, no unresolved placeholders) → commit + push.
+- Grade-independent: analyses stay in the file when a ticker loses its grade; the dashboard shows them wherever the ticker appears.

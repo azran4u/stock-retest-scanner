@@ -1,0 +1,58 @@
+{
+ "ticker": "GL",
+ "name": "Globe Life Inc.",
+ "business": "Life and supplemental health insurance sold to middle-income US households (American Income Life, Family Heritage, direct-to-consumer).",
+ "news": [
+  {
+   "date": "2026-07-22",
+   "title": "Q2 net operating EPS $3.61 (+10%); FY26 operating EPS guide raised to $15.55–15.95; $175M buyback",
+   "url": "https://investors.globelifeinsurance.com/news-releases/2026/july/globe-life-inc-reports-second-quarter-2026-results",
+   "source": "Globe Life IR"
+  },
+  {
+   "date": "2026-09-14",
+   "title": "Q2 recap: stock fell ~7% after the release despite the beat",
+   "url": "https://stockstory.org/us/stocks/nyse/gl/news/earnings/life-insurance-stocks-q2-recap-benchmarking-globe-life-nysegl",
+   "source": "StockStory"
+  }
+ ],
+ "pros": [
+  "Cheap: forward P/E {fpe} ({src})",
+  "Steady growth: premiums +7%, health premium +16%",
+  "Consistent buybacks; ROE {roe}; SEC/DOJ probes into AIL sales practices closed without enforcement action"
+ ],
+ "cons": [
+  "Remaining civil/derivative litigation and agent-practice headline risk",
+  "Life premium growth only +3%; agent recruiting is the key swing factor",
+  "Q3 earnings Oct 28"
+ ],
+ "take": "Fundamentally cheap, steady compounder; the discount reflects lingering reputation/legal risk rather than weak numbers.",
+ "metrics": {
+  "sector": "Financial Services",
+  "industry": "Insurance - Life",
+  "trailingPE": 10.962841,
+  "forwardPE": 10.013796,
+  "priceToSalesTrailing12Months": 2.0504496,
+  "profitMargins": 0.19577,
+  "operatingMargins": 0.24642,
+  "revenueGrowth": 0.08,
+  "earningsGrowth": 0.197,
+  "debtToEquity": 55.675,
+  "totalDebt": 3427248896,
+  "totalCash": 455380992,
+  "freeCashflow": 1163503360,
+  "marketCap": 12696297472,
+  "targetMeanPrice": 192.90909,
+  "recommendationKey": "buy",
+  "dividendYield": 0.81,
+  "returnOnEquity": 0.20944999,
+  "fiftyTwoWeekHigh": 191.55,
+  "fiftyTwoWeekLow": 127.85,
+  "mostRecentQuarter": 1782777600,
+  "currentPrice": 165.21,
+  "summary": "Globe Life Inc., through its subsidiaries, provides various life and supplemental health insurance products to lower middle- and middle-income families in the United States. It operates in three segments: Life Insurance, Supplemental Health Insurance, and Investments. The company offers whole, term, and other life insurance products, as well as life insurance for children; Medicare supplement and ",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/GL/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}

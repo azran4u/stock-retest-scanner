@@ -1,0 +1,65 @@
+{
+ "ticker": "MOG-A",
+ "name": "Moog Inc. (Class A)",
+ "business": "Precision motion and fluid controls for military/commercial aircraft, space & defense and industrial markets (incl. data-center cooling).",
+ "news": [
+  {
+   "date": "2026-07-31",
+   "title": "Record fiscal Q3: sales $1.117B (+15%), adj. EPS $3.72; FY26 guide raised to $4.4B sales / $11.65 adj. EPS",
+   "url": "https://www.moog.com/content/dam/moog/literature/Corporate/Investors/press-releases-pdf/2026/q3/Moog-FY26-Q3-Results.pdf",
+   "source": "Moog press release"
+  },
+  {
+   "date": "2026-07-31",
+   "title": "12-month backlog $3.3B, up 23%",
+   "url": "https://www.stocktitan.net/sec-filings/MOG/8-k-moog-inc-reports-material-event-1527efd11e32.html",
+   "source": "StockTitan (8-K)"
+  },
+  {
+   "date": "2026-09",
+   "title": "$16.5M Navy V-22 swashplate actuator overhaul award",
+   "url": "https://app.govly.com/public/signals/190404",
+   "source": "Govly"
+  }
+ ],
+ "pros": [
+  "Double-digit growth: Q3 sales +15%, backlog +23%",
+  "FY26 guidance raised on every metric (adj. op. margin 14.1% vs 13.4%)",
+  "Defense + commercial aero up-cycle; ROE {roe} ({src})"
+ ],
+ "cons": [
+  "Not cheap: forward P/E {fpe} ({src})",
+  "FY26 EPS raise partly one-offs (IEEPA tariff refund $30M, R&D tax credits)",
+  "Thin cash ({cash}) vs debt {debt}",
+  "Fiscal Q4 earnings Oct 30"
+ ],
+ "take": "Quality aerospace/defense compounder with real momentum; valuation and one-off-boosted EPS argue for buying only near support.",
+ "metrics": {
+  "sector": "Industrials",
+  "industry": "Aerospace & Defense",
+  "trailingPE": 30.592482,
+  "forwardPE": 30.154379,
+  "priceToSalesTrailing12Months": 2.6567473,
+  "profitMargins": 0.087340005,
+  "operatingMargins": 0.14516,
+  "revenueGrowth": 0.152,
+  "earningsGrowth": 1.59,
+  "debtToEquity": 51.557,
+  "totalDebt": 1145543936,
+  "totalCash": 66821000,
+  "freeCashflow": 333472640,
+  "marketCap": 11471771648,
+  "targetMeanPrice": 446.4,
+  "recommendationKey": "none",
+  "dividendYield": 0.33,
+  "returnOnEquity": 0.18106002,
+  "fiftyTwoWeekHigh": 448.85,
+  "fiftyTwoWeekLow": 192.33,
+  "mostRecentQuarter": 1782518400,
+  "currentPrice": 362.215,
+  "summary": "Moog Inc. designs, manufactures, and integrates precision motion and fluid controls and controls systems for original equipment manufacturers and end users in the aerospace, defense, and industrial markets in the United States, Germany, and internationally. The company operates through four segments: Space and Defense, Military Aircraft, Commercial Aircraft, and Industrial. Its Space and Defense s",
+  "as_of": "2026-10-09",
+  "source": "https://finance.yahoo.com/quote/MOG-A/key-statistics"
+ },
+ "generated_at": "2026-10-09"
+}
