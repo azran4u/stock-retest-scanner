@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T23:13:54+03:00",
+  "generated_at": "2026-10-09T23:44:54+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -60,19 +60,19 @@
     },
     {
       "ticker": "DGX",
-      "symbol": "",
+      "symbol": "NYSE:DGX",
       "flag": "target hit",
       "detail": "close 231.34 >= TP 226.84",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
-      "rr": 3.7428,
+      "rr": 3.74,
       "latest_close": 231.335,
       "last_bar": "2026-10-09",
       "weekly_atr": 12.4968,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "EOG",
@@ -238,19 +238,19 @@
     },
     {
       "ticker": "AIZ",
-      "symbol": "",
+      "symbol": "NYSE:AIZ",
       "flag": "",
       "detail": "",
       "zone_bottom": 239.39,
       "zone_top": 244.73,
       "sl": 231.66,
       "tp": 286.63,
-      "rr": 4.1374,
+      "rr": 4.14,
       "latest_close": 270.27,
       "last_bar": "2026-10-09",
       "weekly_atr": 11.4594,
       "dist_above_top_atr": 2.2287,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ALL",
@@ -446,35 +446,35 @@
     },
     {
       "ticker": "BPOP",
-      "symbol": "",
+      "symbol": "NASDAQ:BPOP",
       "flag": "",
       "detail": "",
       "zone_bottom": 143.39,
       "zone_top": 146.69,
       "sl": 136.59,
       "tp": 176.59,
-      "rr": 3.5147,
+      "rr": 3.51,
       "latest_close": 154.97,
       "last_bar": "2026-10-09",
       "weekly_atr": 6.9827,
       "dist_above_top_atr": 1.1858,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "BWA",
-      "symbol": "",
+      "symbol": "NYSE:BWA",
       "flag": "",
       "detail": "",
       "zone_bottom": 59.77,
       "zone_top": 62.15,
       "sl": 56.67,
       "tp": 75.26,
-      "rr": 3.0947,
+      "rr": 3.09,
       "latest_close": 61.39,
       "last_bar": "2026-10-09",
       "weekly_atr": 4.6878,
       "dist_above_top_atr": -0.1621,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "CAH",
@@ -622,19 +622,19 @@
     },
     {
       "ticker": "DGX",
-      "symbol": "",
+      "symbol": "NYSE:DGX",
       "flag": "target hit",
       "detail": "close 231.34 >= TP 226.84",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
-      "rr": 3.7428,
+      "rr": 3.74,
       "latest_close": 231.335,
       "last_bar": "2026-10-09",
       "weekly_atr": 12.4968,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "DLTR",
@@ -846,19 +846,19 @@
     },
     {
       "ticker": "FTI",
-      "symbol": "",
+      "symbol": "NYSE:FTI",
       "flag": "",
       "detail": "",
       "zone_bottom": 63.6,
       "zone_top": 64.55,
       "sl": 59.83,
       "tp": 79.75,
-      "rr": 3.6981,
+      "rr": 3.7,
       "latest_close": 69.84,
       "last_bar": "2026-10-09",
       "weekly_atr": 5.4286,
       "dist_above_top_atr": 0.9745,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "FWONK",
@@ -958,19 +958,19 @@
     },
     {
       "ticker": "IRM",
-      "symbol": "",
+      "symbol": "NYSE:IRM",
       "flag": "",
       "detail": "",
-      "zone_bottom": 114.84,
-      "zone_top": 116.65,
-      "sl": 108.82,
-      "tp": 137.81,
-      "rr": 2.9876,
+      "zone_bottom": 108.69,
+      "zone_top": 109.25,
+      "sl": 102.16,
+      "tp": 131.15,
+      "rr": 2.99,
       "latest_close": 113.6027,
       "last_bar": "2026-10-09",
       "weekly_atr": 8.1666,
-      "dist_above_top_atr": -0.3731,
-      "read_date": "2026-10-08"
+      "dist_above_top_atr": 0.533,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ITW",
@@ -1006,19 +1006,19 @@
     },
     {
       "ticker": "JBL",
-      "symbol": "",
+      "symbol": "NYSE:JBL",
       "flag": "",
       "detail": "",
       "zone_bottom": 290.79,
       "zone_top": 301.46,
       "sl": 276.77,
       "tp": 417.39,
-      "rr": 5.8696,
+      "rr": 5.87,
       "latest_close": 300.525,
       "last_bar": "2026-10-09",
       "weekly_atr": 34.1845,
       "dist_above_top_atr": -0.0274,
-      "read_date": "2026-10-06"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "LAMR",
@@ -1102,19 +1102,19 @@
     },
     {
       "ticker": "MDB",
-      "symbol": "",
+      "symbol": "NASDAQ:MDB",
       "flag": "",
       "detail": "",
       "zone_bottom": 288.09,
       "zone_top": 297.71,
       "sl": 242.41,
       "tp": 452.39,
-      "rr": 3.1588,
+      "rr": 3.16,
       "latest_close": 381.52,
       "last_bar": "2026-10-09",
       "weekly_atr": 55.2671,
       "dist_above_top_atr": 1.5165,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "MLI",
@@ -1134,19 +1134,19 @@
     },
     {
       "ticker": "MOG-A",
-      "symbol": "",
+      "symbol": "NYSE:MOG.A",
       "flag": "",
       "detail": "",
       "zone_bottom": 344.29,
       "zone_top": 353.61,
-      "sl": 316.8,
-      "tp": 439.61,
-      "rr": 2.7125,
+      "sl": 318.54,
+      "tp": 435.65,
+      "rr": 2.61,
       "latest_close": 360.935,
       "last_bar": "2026-10-09",
       "weekly_atr": 34.0338,
       "dist_above_top_atr": 0.2152,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "MSI",
@@ -1182,19 +1182,19 @@
     },
     {
       "ticker": "MUSA",
-      "symbol": "",
+      "symbol": "NYSE:MUSA",
       "flag": "",
       "detail": "",
       "zone_bottom": 504.85,
       "zone_top": 520.14,
       "sl": 473.12,
       "tp": 620.64,
-      "rr": 3.0185,
+      "rr": 3.02,
       "latest_close": 534.41,
       "last_bar": "2026-10-09",
       "weekly_atr": 41.7689,
       "dist_above_top_atr": 0.3416,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "NEM",
@@ -1310,19 +1310,19 @@
     },
     {
       "ticker": "PH",
-      "symbol": "",
+      "symbol": "NYSE:PH",
       "flag": "",
       "detail": "",
       "zone_bottom": 927.47,
       "zone_top": 951.29,
       "sl": 895.21,
       "tp": 1077.95,
-      "rr": 2.7097,
+      "rr": 2.71,
       "latest_close": 951.445,
       "last_bar": "2026-10-09",
       "weekly_atr": 54.2203,
       "dist_above_top_atr": 0.0029,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "PKG",
@@ -1438,35 +1438,35 @@
     },
     {
       "ticker": "ROST",
-      "symbol": "",
+      "symbol": "NASDAQ:ROST",
       "flag": "",
       "detail": "",
       "zone_bottom": 205.24,
       "zone_top": 212.6,
       "sl": 197.13,
       "tp": 253.89,
-      "rr": 3.3966,
+      "rr": 3.4,
       "latest_close": 220.35,
       "last_bar": "2026-10-09",
       "weekly_atr": 12.3849,
       "dist_above_top_atr": 0.6258,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "RPRX",
-      "symbol": "",
+      "symbol": "NASDAQ:RPRX",
       "flag": "",
       "detail": "",
       "zone_bottom": 50.92,
       "zone_top": 52.75,
       "sl": 49.82,
       "tp": 63.46,
-      "rr": 3.2625,
+      "rr": 3.26,
       "latest_close": 56.5,
       "last_bar": "2026-10-09",
       "weekly_atr": 2.9364,
       "dist_above_top_atr": 1.2771,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "RS",
@@ -1966,19 +1966,19 @@
     },
     {
       "ticker": "WTS",
-      "symbol": "",
+      "symbol": "NYSE:WTS",
       "flag": "",
       "detail": "",
       "zone_bottom": 337.04,
       "zone_top": 343.78,
       "sl": 330.54,
       "tp": 388.28,
-      "rr": 2.9467,
+      "rr": 2.95,
       "latest_close": 348.38,
       "last_bar": "2026-10-09",
       "weekly_atr": 20.1754,
       "dist_above_top_atr": 0.228,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     }
   ]
 }
