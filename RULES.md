@@ -19,20 +19,20 @@ Single driver: **Grok Bot** owns TradingView on this desktop (drawings + watchli
 
 ## 1. FinViz base filter (user-maintained)
 
-Start from the FinViz technical screener the user keeps updated. Recent snapshot used:
+Start from the FinViz technical screener the user keeps updated. Current screen (user change 2026-10-09):
 
-- Country: USA  
-- Average volume: Over 100K  
-- Institutional ownership: Over 80%  
+- Institutional ownership: Over 60%  
 - Price: Over $10  
+- Short float: Low (< 5%)  
 - Price **above** SMA200  
 - Price **below** SMA50  
-- View / sort: as set by user (e.g. technical view, order by company)
+- View / sort: overview, order by ticker  
+- (Dropped vs the previous screen: Country USA, Average volume over 100K, Institutional ownership over 80% → now 60%.)
+
+Screener URL (`stock_screen.SCREENER_URL`; pages via `&r=21`, `&r=41`, …):  
+`https://finviz.com/screener?v=111&f=sh_instown_o60,sh_price_o10,sh_short_low,ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker`
 
 Do **not** change FinViz filters unless the user asks. If the user tightens the screener, use the new result set.
-
-Screener URL pattern (example):  
-`https://finviz.com/screener?v=171&f=geo_usa,sh_avgvol_o100,sh_instown_o80,sh_price_o10,ta_sma200_pa,ta_sma50_pb&ft=3&o=company`
 
 ---
 

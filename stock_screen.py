@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore")
 
 SCREENER_URL = (
     "https://finviz.com/screener"
-    "?v=111&f=geo_usa,sh_avgvol_o100,sh_instown_o80,sh_price_o10,"
+    "?v=111&f=sh_instown_o60,sh_price_o10,sh_short_low,"
     "ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker"
 )
 DOLLAR_VOL_MIN = 50_000_000
