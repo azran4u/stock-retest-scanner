@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T17:12:43+03:00",
+  "generated_at": "2026-10-09T17:16:18+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 110,
+  "checked": 112,
   "flagged": 11,
   "flagged_tickers": [
     {
@@ -251,6 +251,22 @@
       "weekly_atr": 11.4594,
       "dist_above_top_atr": 2.2287,
       "read_date": "2026-10-07"
+    },
+    {
+      "ticker": "ALL",
+      "symbol": "NYSE:ALL",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 214.48,
+      "zone_top": 225.81,
+      "sl": 200.87,
+      "tp": 264.36,
+      "rr": 2.86,
+      "latest_close": 230.84,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 14.1076,
+      "dist_above_top_atr": 0.3565,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ALSN",
@@ -1627,6 +1643,22 @@
       "weekly_atr": 6.0123,
       "dist_above_top_atr": -0.3967,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "TGT",
+      "symbol": "NYSE:TGT",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 139.02,
+      "zone_top": 143.51,
+      "sl": 131.28,
+      "tp": 164.92,
+      "rr": 2.51,
+      "latest_close": 153.74,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 9.1377,
+      "dist_above_top_atr": 1.1195,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "THC",
