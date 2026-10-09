@@ -343,7 +343,6 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
             df.at[i, c] = r[c]
         for c in rf.SOURCE_COLS:
             df.at[i, c] = _csv_val(r[c])
-        df.at[i, "needs_drawing"] = _csv_val(rf.compute_needs_drawing(r))
         h = _hist_upto(hist_map, str(row["ticker"]).strip(), report_date)
         nz = rf.compute_near_zone(h, r)
         for c, v in nz.items():
@@ -355,6 +354,8 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
                                        str(row["ticker"]).strip())
         for c in rf.TECH_COLS:
             df.at[i, c] = _csv_val(tech.get(c))
+        r["f_technical"] = tech.get("f_technical")  # needs_drawing requires technical (after overrides)
+        df.at[i, "needs_drawing"] = _csv_val(rf.compute_needs_drawing(r))
         for c, v in rf.compute_evidence(h, r).items():  # reversal evidence (grade inputs)
             df.at[i, c] = _csv_val(v)
         if h is not None and len(h) >= 2 and "f_weekly_reversal" in df.columns:
@@ -613,6 +614,29 @@ def bot_approve(tickers: List[str], approve: bool = True, note: str = "") -> Dic
     return appr
 
 
+def bot_reject(tickers: List[str], reject: bool = True, note: str = "", by: str = "Eyal") -> Dict[str, Any]:
+    """Mark bot drawings rejected by the user (bot_drawings.json: rejected / rejected_at / rejected_by /
+    rejected_note). A rejected bot drawing never counts (f_rr False, not PASS), is not in grok_review,
+    and counts as no drawing for needs_drawing. If the user edits the levels it becomes user-owned."""
+    import report_filters as rf
+
+    reg = dict(rf.load_bot_registry())
+    now = datetime.now(TZ).isoformat(timespec="seconds")
+    for raw in tickers:
+        t = csv_ticker(raw)
+        if t not in reg:
+            raise SystemExit(f"{t}: not in the bot registry")
+        e = dict(reg[t])
+        if reject:
+            e.update({"rejected": True, "rejected_at": now, "rejected_by": by, "rejected_note": note})
+        else:
+            for k in ("rejected", "rejected_at", "rejected_by", "rejected_note"):
+                e.pop(k, None)
+        reg[t] = e
+    _write_json_key(rf.BOT_REGISTRY, "tickers", reg, **_BOT_META)
+    return reg
+
+
 def bot_unregister(tickers: List[str]) -> Dict[str, Any]:
     """Remove tickers from the bot registry (e.g. the user drew them himself)."""
     import report_filters as rf
@@ -730,7 +754,7 @@ def main() -> None:
     u.add_argument("--drawing-status", default=None, help="short status, e.g. 'user drawing (no rectangle)'")
     u.add_argument("--drawing-note", default=None, help="free-text note shown as tooltip")
     bp = sub.add_parser("bot", help="bot drawings: register / approve / unapprove / list / shots")
-    bp.add_argument("action", choices=["register", "unregister", "approve", "unapprove", "list", "shots"])
+    bp.add_argument("action", choices=["register", "unregister", "approve", "unapprove", "reject", "unreject", "list", "shots"])
     bp.add_argument("tickers", nargs="*")
     bp.add_argument("--csv", type=Path, default=BOT_CSV)
     bp.add_argument("--drawn-at", default=None, help="ISO time the bot drew them (default now)")
@@ -817,6 +841,11 @@ def main() -> None:
                 ap.error("give tickers")
             appr = bot_approve(args.tickers, args.action == "approve", args.note)
             print(f"approved bot drawings: {len(appr)} ({', '.join(sorted(appr)) or 'none'})")
+        elif args.action in ("reject", "unreject"):
+            if not args.tickers:
+                ap.error("give tickers")
+            reg = bot_reject(args.tickers, args.action == "reject", args.note)
+            print("rejected bot drawings: " + (", ".join(sorted(t for t, e in reg.items() if e.get("rejected"))) or "none"))
         elif args.action == "shots":
             done = bot_attach_shots()
             print(f"bot screenshots attached: {len(done)}" + (": " + ", ".join(done) if done else ""))

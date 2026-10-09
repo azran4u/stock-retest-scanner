@@ -926,6 +926,13 @@ def drawing_source(ticker: str, rec: Optional[Dict[str, Any]],
                 note = f"bot drawing (review needed, awaiting nightly read): {lv}"
     elif found and (override == "bot" or str((rec or {}).get("source") or "") == "bot"):
         src, status, note = "bot", "bot drawing on chart", "bot drawing (review needed)"
+    if src == "bot" and b and b.get("rejected"):
+        # the user rejected this bot drawing: never counts (f_rr False), not in grok_review,
+        # and counts as "no drawing" for needs_drawing
+        why = str(b.get("rejected_note") or "").strip()
+        return {"tv_source": "bot-rejected", "f_bot_review": False, "tv_bot_status": "bot drawing rejected",
+                "tv_bot_note": f"bot drawing rejected{': ' + why if why else ''} "
+                               f"({b.get('rejected_by') or 'Eyal'} {str(b.get('rejected_at') or '')[:10]}; {lv})"}
     if src == "bot":
         a = approved.get(t)
         ref = rec if found else b
@@ -938,7 +945,7 @@ def drawing_source(ticker: str, rec: Optional[Dict[str, Any]],
 def apply_source(r: Dict[str, Any], ticker: str, rec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Fill SOURCE_COLS; a bot drawing awaiting review never counts: f_rr = False."""
     r.update(drawing_source(ticker, rec))
-    if r["f_bot_review"]:
+    if r["f_bot_review"] or r["tv_source"] == "bot-rejected":
         r["f_rr"] = False
     return r
 
@@ -947,6 +954,8 @@ def tv_note(r: Dict[str, Any]) -> str:
     """filter_notes entry explaining a False f_rr."""
     if _truthy(r.get("f_bot_review")):
         return "TV drawing by the bot - review needed (f_rr False until approved)"
+    if str(r.get("tv_source") or "") == "bot-rejected":
+        return "TV drawing by the bot - rejected by the user (f_rr False)"
     return ({"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}", "no": "TV drawing not found"}
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
@@ -988,14 +997,19 @@ def apply_user_overrides(r: Dict[str, Any], ticker: str) -> Dict[str, Any]:
 
 def compute_needs_drawing(r: Dict[str, Any]) -> bool:
     """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
-    AND no TradingView drawing (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
+    AND f_technical (after user overrides; since 2026-10-09)
+    AND no TradingView drawing (a bot drawing the user rejected counts as no drawing) (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
     Tickers with a bot drawing (tv_source bot / bot-approved, even before the nightly read
     confirms it) are excluded: they show as "review needed" instead; so are charts where the user
     drew only Fib / horizontal lines (tv_source user-lines), and tickers the user marked not technical
     (user_overrides.json technical=false)."""
     if user_technical(str(r.get("ticker") or "")) is False:  # the user marked it not technical
         return False
-    return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS) and str(r.get("tv_found")) != "yes"
+    if not _truthy(r.get("f_technical")):  # only technical stocks (Eyal 2026-10-09)
+        return False
+    rejected = str(r.get("tv_source") or "") == "bot-rejected"
+    return bool(all(_truthy(r.get(f)) for f in NEEDS_DRAWING_FILTERS)
+                and (str(r.get("tv_found")) != "yes" or rejected)
                 and str(r.get("tv_source") or "") not in ("bot", "bot-approved", "user-lines"))
 
 
