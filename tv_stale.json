@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T23:56:01+03:00",
+  "generated_at": "2026-10-10T00:00:55+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 112,
+  "checked": 115,
   "flagged": 10,
   "flagged_tickers": [
     {
@@ -605,6 +605,22 @@
       "read_date": "2026-10-09"
     },
     {
+      "ticker": "DE",
+      "symbol": "NYSE:DE",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 523.02,
+      "tp": 655.58,
+      "rr": 2.73,
+      "latest_close": 654.08,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 44.833,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-10"
+    },
+    {
       "ticker": "DGX",
       "symbol": "NYSE:DGX",
       "flag": "target hit",
@@ -829,6 +845,22 @@
       "read_date": "2026-09-30"
     },
     {
+      "ticker": "FNV",
+      "symbol": "NYSE:FNV",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 201.79,
+      "tp": 277.77,
+      "rr": 2.92,
+      "latest_close": 247.82,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 19.3068,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-10"
+    },
+    {
       "ticker": "FTI",
       "symbol": "NYSE:FTI",
       "flag": "",
@@ -1003,6 +1035,22 @@
       "weekly_atr": 34.1845,
       "dist_above_top_atr": -0.0274,
       "read_date": "2026-10-09"
+    },
+    {
+      "ticker": "KEX",
+      "symbol": "NYSE:KEX",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 129.49,
+      "zone_top": 131.81,
+      "sl": 123.37,
+      "tp": 149.96,
+      "rr": 2.6,
+      "latest_close": 136.24,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 8.2836,
+      "dist_above_top_atr": 0.5348,
+      "read_date": "2026-10-10"
     },
     {
       "ticker": "LAMR",
