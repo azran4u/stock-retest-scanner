@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-10T00:00:55+03:00",
+  "generated_at": "2026-10-10T00:05:17+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 115,
+  "checked": 118,
   "flagged": 10,
   "flagged_tickers": [
     {
@@ -1165,6 +1165,22 @@
       "read_date": "2026-10-06"
     },
     {
+      "ticker": "MNST",
+      "symbol": "NASDAQ:MNST",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 42.65,
+      "zone_top": 43.63,
+      "sl": 40.79,
+      "tp": 48.6,
+      "rr": 2.94,
+      "latest_close": 43.695,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 2.4221,
+      "dist_above_top_atr": 0.0268,
+      "read_date": "2026-10-10"
+    },
+    {
       "ticker": "MOG-A",
       "symbol": "NYSE:MOG.A",
       "flag": "",
@@ -1262,7 +1278,7 @@
     },
     {
       "ticker": "NUE",
-      "symbol": "",
+      "symbol": "NYSE:NUE",
       "flag": "",
       "detail": "",
       "zone_bottom": 215.19,
@@ -1274,7 +1290,7 @@
       "last_bar": "2026-10-09",
       "weekly_atr": 17.9593,
       "dist_above_top_atr": 1.673,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-10"
     },
     {
       "ticker": "OKE",
@@ -1419,6 +1435,22 @@
       "weekly_atr": 13.4242,
       "dist_above_top_atr": -0.9907,
       "read_date": "2026-10-07"
+    },
+    {
+      "ticker": "PYPL",
+      "symbol": "NASDAQ:PYPL",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 49.93,
+      "zone_top": 51.83,
+      "sl": 46.14,
+      "tp": 60.88,
+      "rr": 1.9,
+      "latest_close": 55.075,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 4.3515,
+      "dist_above_top_atr": 0.7457,
+      "read_date": "2026-10-10"
     },
     {
       "ticker": "R",
@@ -1755,6 +1787,22 @@
       "weekly_atr": 1.938,
       "dist_above_top_atr": 0.5624,
       "read_date": "2026-10-09"
+    },
+    {
+      "ticker": "UBS",
+      "symbol": "NYSE:UBS",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 46.94,
+      "zone_top": 48.07,
+      "sl": 44.93,
+      "tp": 54.86,
+      "rr": 2.96,
+      "latest_close": 47.86,
+      "last_bar": "2026-10-09",
+      "weekly_atr": 2.3732,
+      "dist_above_top_atr": -0.0885,
+      "read_date": "2026-10-10"
     },
     {
       "ticker": "UMBF",
