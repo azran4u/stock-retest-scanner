@@ -633,12 +633,14 @@ def merge_files(paths: List[Path], grok_target: bool = True) -> None:
               f"f_near_zone={n_near} (PASS {n_near_pass}); needs_drawing={n_nd}; "
               f"bot review needed={n_bot}; technical={n_tech}")
     if grok_target and first is not None:
-        from export_daily_report import write_grok_target, write_needs_drawing_target
+        from export_daily_report import write_grok_target, write_needs_drawing_target, write_review_target
 
         gp = write_grok_target(first, _report_date(paths), GROK_TARGET_DIR)
         print(f"grok target {gp}: {json.loads(gp.read_text())['symbols']}")
         np_ = write_needs_drawing_target(first, _report_date(paths), GROK_TARGET_DIR)
         print(f"needs-drawing target {np_}: {json.loads(np_.read_text())['symbols']}")
+        rp = write_review_target(first, _report_date(paths), GROK_TARGET_DIR)
+        print(f"review target {rp}: {json.loads(rp.read_text())['symbols']}")
     try:  # obsolete-drawing report for ALL found drawings (latest cached closes, no network)
         stale_check(refresh=False)
     except Exception as e:  # never block the merge

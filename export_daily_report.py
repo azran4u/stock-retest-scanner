@@ -304,6 +304,34 @@ def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path
     return jp
 
 
+REVIEW_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]  # = read targets / needs_drawing
+
+
+def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path:
+    """grok_review_target.{json,txt} (TradingView watchlist `grok_review`): EXCHANGE:TICKER (TV
+    spelling) for every row whose drawing is a bot drawing still "review needed" (f_bot_review:
+    tv_source == bot — not approved, levels not edited by the user) AND that is in the read-target
+    universe (f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history, the same universe
+    as grok_needs_drawing)."""
+    t = lambda v: v is True or str(v) == "True"  # noqa: E731
+    mask = pd.Series(True, index=df.index)
+    for c in ["f_bot_review"] + REVIEW_FILTERS:
+        mask &= df[c].map(t) if c in df.columns else False
+    syms = []
+    for _, r in df[mask].iterrows():
+        m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
+        syms.append(m.group(1) if m else str(r["ticker"]).replace("-", "."))
+    syms = sorted(set(syms))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jp = out_dir / "grok_review_target.json"
+    jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
+                              "rule": "f_bot_review (bot drawing, review needed: not approved / not edited) AND "
+                                      "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history"},
+                             indent=2) + "\n")
+    (out_dir / "grok_review_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
+    return jp
+
+
 def write_reports(df: pd.DataFrame, out_dir: Path, report_date: str) -> Dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     dated = out_dir / f"{report_date}.csv"
@@ -397,6 +425,8 @@ def main() -> None:
         print(f"  grok target {gp}")
         np_ = write_needs_drawing_target(df, args.date, args.grok_target_dir)
         print(f"  needs-drawing target {np_}")
+        rp = write_review_target(df, args.date, args.grok_target_dir)
+        print(f"  review target {rp}")
     try:  # obsolete-drawing report (tv_stale.{json,csv}) for every found drawing; cached closes only
         import tv_drawings  # noqa: E402
 
