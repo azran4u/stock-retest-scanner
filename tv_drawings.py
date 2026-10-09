@@ -412,6 +412,53 @@ def _rec_as_row(t: str, rec: Dict[str, Any]) -> Dict[str, Any]:
     return r
 
 
+def _tv_symbol_lookup(t: str) -> str:
+    """EXCHANGE:SYMBOL (TV spelling) for a CSV ticker: newest report tradingview_url that has it,
+    else stock_screen.resolve_exchange (FinViz cache -> yfinance)."""
+    import re as _re
+
+    tv_t = t.replace("-", ".")
+    for f in sorted((REPO / "historical-reports").glob("20*.csv"), reverse=True):
+        try:
+            df = pd.read_csv(f, dtype=str, usecols=["ticker", "tradingview_url"])
+        except Exception:
+            continue
+        hit = df[df["ticker"] == t]
+        if len(hit):
+            m = _re.search(r"symbol=([^&]+)", str(hit["tradingview_url"].iloc[0] or ""))
+            if m:
+                return m.group(1)
+    import stock_screen as ss
+
+    return f"{ss.resolve_exchange(t)}:{tv_t}"
+
+
+OBSOLETE_JSON = GROK_TARGET_DIR / "grok_obsolete_target.json"
+OBSOLETE_TXT = GROK_TARGET_DIR / "grok_obsolete_target.txt"
+
+
+def write_obsolete_target(flagged: List[Dict[str, Any]]) -> Path:
+    """grok_obsolete_target.{json,txt} (TradingView watchlist `grok_obsolete`): EXCHANGE:SYMBOL for
+    every drawing tv_stale flags as possibly obsolete (broken / target hit / far), whether or not the
+    ticker is still in today's FinViz list. Written by every full stale_check (export, merge, `stale`)."""
+    syms, flags = [], {}
+    for r in flagged:
+        sym = r.get("symbol") or ""
+        if ":" not in sym:
+            sym = _tv_symbol_lookup(r["ticker"])
+        syms.append(sym)
+        flags[sym] = r["flag"]
+    syms = sorted(set(syms))
+    OBSOLETE_JSON.write_text(json.dumps({
+        "generated_at": datetime.now(TZ).isoformat(timespec="seconds"), "count": len(syms),
+        "symbols": syms, "flags": flags,
+        "rule": "tv_stale flag set (broken: price below SL since the read; target hit: close >= TP; "
+                "far: close > zone top + stale_far_atr x weekly ATR) for any found drawing in tv_drawings.json, "
+                "in or out of today's screen"}, indent=2) + "\n")
+    OBSOLETE_TXT.write_text("\n".join(syms) + ("\n" if syms else ""))
+    return OBSOLETE_JSON
+
+
 def stale_check(tickers: Optional[List[str]] = None, as_of: Optional[date] = None, refresh: bool = True,
                 write: bool = True, quiet: bool = False) -> List[Dict[str, Any]]:
     """Obsolete-drawing check for every found drawing in the store (or `tickers`).
@@ -467,6 +514,13 @@ def stale_check(tickers: Optional[List[str]] = None, as_of: Optional[date] = Non
             (REPO / "tv_stale.json").write_text(STALE_JSON.read_text())
         except Exception:
             pass
+    if write and not tickers:
+        try:
+            ot = write_obsolete_target(flagged)
+            if not quiet:
+                print(f"obsolete target {ot}: {json.loads(ot.read_text())['symbols']}")
+        except Exception as e:  # never block the stale check
+            print(f"[obsolete target] skipped: {e}")
     if not quiet:
         by = {}
         for r in flagged:

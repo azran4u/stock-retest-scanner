@@ -239,6 +239,7 @@ Artifacts (typical paths on the bot computer):
 | **grok_upload** | Leave alone unless user asks |
 | **grok_needs_drawing** | Read-target stocks with no TradingView drawing (`grok_needs_drawing_target.txt`) |
 | **grok_review** | Read-target stocks whose bot drawing still needs the user's review (`grok_review_target.txt`, see §12 “`grok_review` watchlist”) |
+| **grok_obsolete** | Drawings that may be obsolete — every `tv_stale` flag (broken / target hit / far above zone) for any found drawing in `tv_drawings.json`, **in or out of today's screen** (`grok_obsolete_target.{json,txt}`, `EXCHANGE:SYMBOL`; written by every full stale check: daily export, `tv_drawings.py merge` and `tv_drawings.py stale`; exchange from the drawing's symbol → newest report `tradingview_url` → FinViz/yfinance; since 2026-10-09) |
 
 After the daily report, sync **`Grok`** to the full PASS set (see §12). Drawings for new PASSes can follow on this same bot.
 
