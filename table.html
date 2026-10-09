@@ -177,11 +177,13 @@
       <input type="search" id="searchBox" placeholder="Ticker, kind, note…"/>
     </label>
     <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). = exactly status=PASS (Grok watchlist)">PASS-equivalent</button>
-    <button type="button" class="btn" id="btnClear">Clear filters</button>
+    <button type="button" class="btn" id="btnMustPreset" title="Check all 9 must-haves with the current E and V: FinViz list (every row), short float < 5%, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2 (counted drawing). Stocks shown = the graded ones (A–D)">Must-haves</button>
+    <button type="button" class="btn" id="btnClear" title="Clears filters, search, sort and resets E / V / N / X to 14 / $50M / 5 / 3">Clear filters</button>
     <button type="button" class="btn" id="btnExportTV" title="Download the rows shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <div class="matchcount" id="matchCount">—</div>
   </div>
   <div id="sizingBar"></div>
+  <div id="gradeBar"></div>
   <div id="staleBanner" class="stale-banner"></div>
   <div class="filters" id="filterBox"></div>
   <div class="schema-note" id="schemaNote" style="display:none"></div>
@@ -191,7 +193,8 @@
     <div class="card"><div class="label">FinViz list</div><div class="value" id="cScanned">—</div></div>
     <div class="card"><div class="label">Matching filters</div><div class="value" id="cMatch" style="color:var(--accent)">—</div></div>
     <div class="card pass"><div class="label">status = PASS</div><div class="value" id="cPass">—</div></div>
-    <div class="card warn"><div class="label">Earnings ≤14d</div><div class="value" id="cBlackout">—</div></div>
+    <div class="card"><div class="label">Graded (all must-haves)</div><div class="value" id="cGraded" style="color:var(--pass)">—</div></div>
+    <div class="card warn"><div class="label" id="cBlackoutLabel">Earnings ≤14d</div><div class="value" id="cBlackout">—</div></div>
   </div>
 
   <div class="charts">
@@ -226,13 +229,14 @@
 const { FILTERS, CORE, isTrueFlag, todayJerusalemISO, liveDaysToEarnings, enrichEarningsLive, rowPasses } = SrsFilters;
 
 const PREFERRED_COLS = [
-  "ticker","status","failed_filters",
+  "ticker","grade","evidence","mh_failed","status","failed_filters",
   ...FILTERS.map(f => f.col),
   "current_price","dollar_vol_30d","short_float_pct","earnings_date","days_to_earnings",
   "weekly_bars","tech_new_high_atr","tech_hh","tech_hl","tech_structure","tech_ema30_slope_pct","tech_ema_rising",
   "tv_found","tv_source","tv_bot_status","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
   "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
+  "ev_missing","ev_ma_support_mas","ev_fib_levels","ev_pullback_high","ev_pullback_high_date",
   "smooth_pullback","inst_own_pct","avg_vol_30d","earnings_known","earnings_blackout",
   "filter_notes","finviz_url","reason"
 ];
@@ -241,6 +245,7 @@ const PREFERRED_COLS = [
 // (tv_*). The computed values stay in the CSV as internal info only (not part of status).
 const HIDDEN_COLS = new Set([
   "tradingview_url", "tv_screenshot", "f_tradable", "f_not_tradable", "f_tv_stale", "tv_stale_detail", "tv_bot_note", "tech_detail",
+  "ev_first_reaction_detail", "ev_double_bottom_detail", "ev_ma_support_detail", "ev_fib_detail", "ev_count",
   "zone_lo","zone_hi","entry","sl","tp","rr","sl_atr_mult","atrs_from_entry","f_rr_computed",
 ]);
 const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
@@ -328,6 +333,10 @@ const COL_LABELS = {
   tv_zone_dist_atr: "dist to zone (ATR)", tv_price: "close (zone calc)", tv_weekly_atr: "weekly ATR(14)",
   tv_zone_dist: "dist to zone ($)",
   tv_stale: "drawing obsolete?",
+  grade: "grade", evidence: "evidence E1–E8", mh_failed: "must-have fails", ev_missing: "evidence missing",
+  ev_first_reaction: "E3 first reaction", ev_double_bottom: "E4 double bottom", ev_ma_support: "E7 MA support", ev_fib: "E8 fib",
+  ev_ma_support_mas: "E7 MA(s)", ev_fib_levels: "E8 fib level(s)", ev_pullback_high: "pullback high", ev_pullback_high_date: "pullback high week",
+  f_rr_x: "E6 TV R:R ≥ X", f_must_haves: "all must-haves", f_weekly_reversal: "E1 weekly reversal", f_daily_reversal: "E2 daily reversal", f_smooth_streak: "E5 smooth ≥ N",
   tv_source: "drawing by", tv_bot_status: "drawing status", f_technical: "technical", f_bot_review: "bot review needed",
   tech_new_high_atr: "new high (ATR)", tech_hh: "higher highs", tech_hl: "higher lows", tech_structure: "HH/HL score",
   tech_ema30_slope_pct: "30w EMA 26w %", tech_ema_rising: "30w EMA rising",
@@ -399,6 +408,9 @@ function infoBadges(r) {
 }
 
 function fmt(col, val, row) {
+  if (col === "grade") return row && row.grade ? SrsFilters.gradeBadge(row, false) : "";
+  if (col === "evidence") return row ? SrsFilters.evidenceChips(row) : "";
+  if (col === "mh_failed") return val ? `<span class="mhfail">${escAttr(val)}</span>` : "";
   if (col === "earnings_date") return val ? String(val).slice(0, 10) : "";
   if (col === "ticker") {
     const name = val == null ? "" : String(val);
@@ -445,6 +457,11 @@ function fmt(col, val, row) {
 
 function cmpCol(a, b, col, dir) {
   if (!col) return 0;
+  if (col === "grade" || col === "evidence") {  // grade: A first (asc) · evidence: count of items present
+    const k = r => col === "grade" ? (SrsFilters.GRADE_RANK[r.grade] ?? 9) : -(toNum(r.ev_count) ?? -1);
+    const x = k(a), y = k(b);
+    return x === y ? 0 : (dir === "asc" ? x - y : y - x);
+  }
   const av = a[col], bv = b[col];
   if (NUM_COLS.has(col)) {
     const an = toNum(av), bn = toNum(bv);
@@ -532,7 +549,7 @@ const axisOpts = {
 
 function renderCharts(rows) {
   const availF = FILTERS.filter(f => available.has(f.col));
-  const fLabels = availF.map(f => f.label);
+  const fLabels = availF.map(f => SrsFilters.labelOf(f));
   const fAll = availF.map(f => allRows.filter(r => isTrueFlag(r[f.col])).length);
   const fSel = availF.map(f => rows.filter(r => isTrueFlag(r[f.col])).length);
   const rrVals = rows.filter(r => r.tv_found === "yes").map(r => toNum(r.tv_rr)).filter(n => n !== null);
@@ -617,6 +634,7 @@ function applySavedState(hdr) {
 }
 
 let currentRows = [];
+let gradeBar = null;
 let currentReportDate = "latest";
 
 /** Export = shared TradingView watchlist format (filters.js), symbols as in the row's TradingView link. */
@@ -632,6 +650,13 @@ function updateExportButton(n) {
 
 function refresh(persist = true) {
   if (persist) saveState();
+  if (headers.includes("tv_entry")) applySizing();
+  SrsFilters.applyLive(allRows);  // E / V / N / X: earnings, $vol, smooth, R:R ≥ X, must-haves, grade
+  const P = SrsFilters.loadParams();
+  document.getElementById("cBlackoutLabel").textContent = `Earnings ≤${P.earnDays}d`;
+  document.getElementById("cBlackout").textContent = allRows.filter(r => isTrueFlag(r.earnings_blackout)).length;
+  document.getElementById("cGraded").textContent = headers.includes("ev_fib")
+    ? allRows.filter(r => r.f_must_haves === "True").length + " (" + SrsFilters.GRADES.map(g => g + " " + allRows.filter(r => r.grade === g).length).join(" · ") + ")" : "n/a";
   const rows = filteredRows().slice().sort(compareRows);
   currentRows = rows;
   updateExportButton(rows.length);
@@ -651,6 +676,9 @@ async function loadReport(path, dateLabel) {
   const text = await res.text();
   allRows = enrichEarningsLive(parseCSV(text));
   if (headers.includes("tv_entry")) { headers.push(...POS_COLS.filter(c => !headers.includes(c))); applySizing(); }
+  if (headers.includes("tv_rr") && !headers.includes("f_rr_x")) headers.push("f_rr_x");
+  if (headers.includes("ev_fib")) headers.push(...["grade", "evidence", "mh_failed", "f_must_haves", "ev_missing", "ev_count"].filter(c => !headers.includes(c)));
+  SrsFilters.applyLive(allRows);
   const hdr = new Set(headers);
   // f_rr means TV R:R only in reports that carry the TradingView columns (older CSVs: computed → disabled)
   available = SrsFilters.availableFilters(headers);
@@ -667,12 +695,11 @@ async function loadReport(path, dateLabel) {
   const nBo = allRows.filter(r => isTrueFlag(r.earnings_blackout)).length;
   document.getElementById("cScanned").textContent = allRows.length;
   document.getElementById("cPass").textContent = nPass;
-  document.getElementById("cBlackout").textContent = nBo;
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); charts[k] = null; } });
   refresh(false);  // restoring on load must not rewrite storage
   loadStaleBanner(allRows.map(r => r.ticker));
   document.getElementById("footerNote").textContent =
-    `Report ${dateLabel} · ${allRows.length} FinViz tickers · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS = all core filters incl. TV R:R ≥ 2 · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
+    `Report ${dateLabel} · ${allRows.length} FinViz tickers · grade A/B/C/D = reversal evidence E1–E8 for stocks passing all 9 must-haves (A all 8, B 1 missing, C 2, D 3+; – = a must-have fails; computed live from E/V/N/X) · zone / entry / SL / TP / R:R = TradingView drawings only (read-only) · status=PASS = all core filters incl. TV R:R ≥ 2 · earnings days computed live from earnings_date · Chart.js CDN · historical-reports/`;
 }
 
 
@@ -710,6 +737,7 @@ function applySizing() {
 async function init() {
   SrsFilters.injectCss();
   Sizing.mount(document.getElementById("sizingBar"), () => { applySizing(); refresh(false); });
+  gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => refresh(false));
   let reports = [];
   try {
     const res = await fetch("reports.json?t=" + Date.now());
@@ -729,6 +757,7 @@ async function init() {
   document.getElementById("btnExportTV").addEventListener("click", exportTVWatchlist);
   document.getElementById("btnClear").addEventListener("click", () => {
     checked = new Set();
+    SrsFilters.resetParams(); if (gradeBar && gradeBar.sync) gradeBar.sync();
     document.getElementById("searchBox").value = "";
     defaultSort(new Set(headers));
     clearSavedState();
@@ -736,6 +765,9 @@ async function init() {
   });
   document.getElementById("btnPassPreset").addEventListener("click", () => {
     checked = new Set(CORE.filter(c => available.has(c))); refresh();
+  });
+  document.getElementById("btnMustPreset").addEventListener("click", () => {
+    checked = new Set(SrsFilters.MUST.filter(c => available.has(c))); refresh();
   });
   document.addEventListener("click", (ev) => {
     const a = ev.target && ev.target.closest && ev.target.closest("a.tv-app");

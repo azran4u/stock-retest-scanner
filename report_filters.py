@@ -117,6 +117,14 @@ STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
 # technical = clear weekly uptrend (every row with >= tech_min_weekly_bars weekly bars; else empty)
 TECH_COLS = ["f_technical", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
              "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail"]
+# reversal evidence at the TV zone (compute_evidence; grade is computed live in the browser)
+EVIDENCE_COLS = [
+    "ev_pullback_high", "ev_pullback_high_date",
+    "ev_first_reaction", "ev_first_reaction_detail",
+    "ev_double_bottom", "ev_double_bottom_detail",
+    "ev_ma_support", "ev_ma_support_mas", "ev_ma_support_detail",
+    "ev_fib", "ev_fib_levels", "ev_fib_detail",
+]
 # drawing source: tv_source = user / bot / bot-approved / "" ; f_bot_review = bot drawing awaiting
 # the user's approval (does NOT count toward f_rr / PASS / grok); tv_bot_status / tv_bot_note = detail
 SOURCE_COLS = ["tv_source", "f_bot_review", "tv_bot_status", "tv_bot_note"]
@@ -127,7 +135,7 @@ REPORT_COLS = [
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
-    *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS,
+    *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS, *EVIDENCE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "daily_reversal_kind", "daily_reversal_date",
@@ -341,6 +349,7 @@ def compute_row(
     r.update(compute_near_zone(hist, r))
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
     r.update(compute_technical(hist))
+    r.update(compute_evidence(hist, r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
     as_of = _as_of_ts(report_date)
@@ -566,6 +575,204 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
                 "tech_hl": f"{hl}/{nl}", "tech_structure": round(struct, 2),
                 "tech_ema30_slope_pct": round(slope, 1), "tech_ema_rising": bool(ok3),
                 "tech_detail": "; ".join(why)})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# reversal evidence at the TradingView zone (grade A/B/C/D is computed live in the browser)
+# ---------------------------------------------------------------------------
+# E3 ev_first_reaction, E4 ev_double_bottom, E8 ev_fib need a TV zone (tv_found=yes with zone
+# top/bottom; else empty). E7 ev_ma_support needs only price history (every row with enough
+# daily bars). E1/E2 = f_weekly_reversal / f_daily_reversal, E5 = smooth_streak_weeks >= N,
+# E6 = tv_rr >= X are existing columns (thresholds N / X are browser inputs).
+EVIDENCE_CONFIG: Dict[str, Any] = {
+    "ev_pullback_lookback_weeks": 52,     # pullback high = highest weekly High in the last 52 weeks
+    "ev_first_reaction_atr": 0.5,         # E3: later weekly close >= zone top + 0.5 weekly ATR
+    "ev_dbl_push_atr": 1.0,               # E4: push up = daily High >= zone top + 1 daily ATR
+    "ev_dbl_recent_days": 10,             # E4: 2nd touch within the last 10 sessions ...
+    "ev_dbl_near_atr": 1.0,               # E4: ... or latest close within 1 daily ATR of the zone
+    "ev_ma_periods": (50, 100, 150, 200), # E7: daily SMAs
+    "ev_ma_near_atr": 1.0,                # E7: latest low <= SMA + 1 daily ATR and close >= SMA
+    "ev_ma_past_sessions": 504,           # E7: earlier touches in the past ~2 years ...
+    "ev_ma_exclude_recent": 20,           # ... excluding the last 20 sessions (the current touch)
+    "ev_ma_bounce_atr": 2.0,              # ... that rose >= 2 daily ATR above the SMA ...
+    "ev_ma_bounce_sessions": 20,          # ... within 20 sessions
+    "ev_ma_cooldown": 10,                 # touches < 10 sessions apart = one touch
+    "ev_fib_levels": (0.382, 0.5, 0.618), # E8 retracements
+    "ev_fib_leg_weeks": 52,               # E8: swing low = lowest weekly Low in the 52 weeks up to the swing high
+    "ev_fib_tol_atr": 0.25,               # E8: level inside [zone bottom - 0.25 wATR, zone top + 0.25 wATR]
+}
+CONFIG.update(EVIDENCE_CONFIG)
+
+
+def _sma_touch_events(lo: np.ndarray, cl: np.ndarray, sma: np.ndarray, atr: np.ndarray,
+                      start: int, end: int) -> List[int]:
+    """Earlier MA-support touches in [start, end): price came from above (previous close above
+    the SMA), the day's low came within near_atr x ATR of the SMA or below it (low <= SMA + near
+    ATR), the close held (close >= SMA), the low is a local low (lowest low of +/- 5 sessions), and
+    within bounce_sessions a close rose >= bounce_atr x ATR above the touch day's SMA. Touches
+    closer than `cooldown` sessions count once."""
+    C = CONFIG
+    near, up, win, cool = (float(C["ev_ma_near_atr"]), float(C["ev_ma_bounce_atr"]),
+                           int(C["ev_ma_bounce_sessions"]), int(C["ev_ma_cooldown"]))
+    ev, last = [], -10 ** 9
+    for t in range(max(start, 1), end):
+        s, a = sma[t], atr[t]
+        if not (np.isfinite(s) and np.isfinite(a) and a > 0 and np.isfinite(sma[t - 1])):
+            continue
+        if t - last < cool or cl[t - 1] <= sma[t - 1]:
+            continue
+        if lo[t] <= s + near * a and cl[t] >= s and lo[t] <= float(np.min(lo[max(0, t - 5):t + 6])):
+            fut = cl[t + 1:t + 1 + win]
+            if len(fut) and float(np.max(fut)) >= s + up * a:
+                ev.append(t)
+                last = t
+    return ev
+
+
+def compute_evidence(hist: Optional[pd.DataFrame], r: Dict[str, Any]) -> Dict[str, Any]:
+    """Reversal evidence at the TradingView zone (see RULES.md "Grades").
+
+    hist = cached daily OHLCV cut at the report date; weekly = W-FRI bars (current week may be
+    partial); weekly ATR = ATR(14) on weekly bars, daily ATR = ATR(14) on daily bars (latest).
+    Pullback high = the bar with the highest weekly High in the last 52 weeks; the current
+    pullback = everything after it.
+      E3 first reaction: a pullback week (after the high week) with Low <= zone top, followed by a
+         LATER week whose Close >= zone top + 0.5 weekly ATR.
+      E4 daily double bottom: after the pullback high, a 1st daily touch (Low <= zone top), then a
+         push (a later daily High >= zone top + 1 daily ATR), then a 2nd touch after the push:
+         a daily Low <= zone top within the last 10 sessions, OR the latest close within 1 daily
+         ATR of the zone (dist to [bottom, top] <= 1 ATR); and the latest close is not below
+         zone bottom - 1 daily ATR (not broken down).
+      E7 MA support (no zone needed): for SMA 50/100/150/200 (daily closes), the latest daily low is
+         <= SMA + 1 daily ATR (within 1 ATR above it, or below it) AND the latest close >= SMA (held),
+         AND the same SMA held before: >= 1 earlier touch in the 504 sessions before the last 20
+         (see _sma_touch_events).
+      E8 fib: swing high = pullback high; swing low = lowest weekly Low in the 52 weeks up to (and
+         incl.) the swing-high week; a 0.382 / 0.5 / 0.618 retracement H - f x (H - L) lies inside
+         [zone bottom - 0.25 weekly ATR, zone top + 0.25 weekly ATR].
+    """
+    C = CONFIG
+    out: Dict[str, Any] = {c: None for c in EVIDENCE_COLS}
+    if hist is None or len(hist) < 30:
+        return out
+    try:
+        d = hist[["Open", "High", "Low", "Close"]].astype(float)
+        lo, hi, cl = d["Low"].values, d["High"].values, d["Close"].values
+        datr = ss.atr_series(d, 14).values
+        a_d = float(datr[-1]) if np.isfinite(datr[-1]) else None
+        n = len(d)
+        # --- E7 MA support (every row) ------------------------------------------
+        mas, det = [], []
+        if a_d and a_d > 0:
+            past_end = n - int(C["ev_ma_exclude_recent"])
+            past_start = max(1, n - int(C["ev_ma_past_sessions"]) - int(C["ev_ma_exclude_recent"]))
+            for p in C["ev_ma_periods"]:
+                p = int(p)
+                if n < p + 30:
+                    continue
+                sma = pd.Series(cl).rolling(p, min_periods=p).mean().values
+                s = float(sma[-1])
+                # reached as support: latest low within 1 daily ATR above the SMA (or below it), close held >= SMA
+                near = lo[-1] <= s + float(C["ev_ma_near_atr"]) * a_d and cl[-1] >= s
+                if not near:
+                    continue
+                ev = _sma_touch_events(lo, cl, sma, datr, past_start, past_end)
+                if ev:
+                    mas.append(f"SMA{p}")
+                    det.append(f"SMA{p} {s:.2f} (latest low {lo[-1]:.2f} / close {cl[-1]:.2f}); held before "
+                               f"{len(ev)}x, last {pd.Timestamp(d.index[ev[-1]]).date().isoformat()}")
+            out["ev_ma_support"] = bool(mas)
+            out["ev_ma_support_mas"] = ",".join(mas)
+            out["ev_ma_support_detail"] = "; ".join(det) if det else "no SMA50/100/150/200 support with an earlier bounce"
+        # --- zone-based evidence (TV drawings with a zone only) -------------------
+        if str(r.get("tv_found")) != "yes":
+            return out
+        top, bot = _num(r.get("tv_zone_top")), _num(r.get("tv_zone_bottom"))
+        if top is None or bot is None:
+            return out
+        if bot > top:
+            top, bot = bot, top
+        w = ss.to_weekly(d.assign(Volume=0.0))
+        watr_s = ss.atr_series(w, 14).dropna()
+        if len(w) < 20 or not len(watr_s) or not a_d:
+            return out
+        a_w = float(watr_s.iloc[-1])
+        lb = int(C["ev_pullback_lookback_weeks"])
+        w0 = max(0, len(w) - lb)
+        ih = w0 + int(np.argmax(w["High"].values[w0:]))
+        H = float(w["High"].iloc[ih])
+        hdate = pd.Timestamp(w.index[ih])
+        out["ev_pullback_high"] = round(H, 4)
+        out["ev_pullback_high_date"] = hdate.date().isoformat()
+        # E3 first reaction (weekly)
+        wl, wc = w["Low"].values, w["Close"].values
+        thr = top + float(C["ev_first_reaction_atr"]) * a_w
+        fr, frd = False, f"no weekly low <= zone top {top:g} since the {hdate.date()} high"
+        for i in range(ih + 1, len(w)):
+            if wl[i] <= top:
+                later = [j for j in range(i + 1, len(w)) if wc[j] >= thr]
+                if later:
+                    j = later[0]
+                    fr = True
+                    frd = (f"week {pd.Timestamp(w.index[i]).date()} low {wl[i]:.2f} <= zone top {top:g}; "
+                           f"week {pd.Timestamp(w.index[j]).date()} close {wc[j]:.2f} >= {thr:.2f} (top + "
+                           f"{float(C['ev_first_reaction_atr']):g} wATR {a_w:.2f})")
+                    break
+                frd = (f"entered zone week {pd.Timestamp(w.index[i]).date()} (low {wl[i]:.2f}) but no later "
+                       f"weekly close >= {thr:.2f}")
+        out["ev_first_reaction"], out["ev_first_reaction_detail"] = fr, frd
+        # E4 daily double bottom (after the pullback-high week starts)
+        wk_start = hdate - pd.Timedelta(days=6)
+        di = np.where(d.index >= wk_start)[0]
+        db, dbd = False, "no daily touch of the zone in the pullback"
+        if len(di):
+            s0 = int(di[0])
+            # skip the days before the pullback high day itself
+            s0 = s0 + int(np.argmax(hi[s0:])) if n - s0 > 0 else s0
+            push_thr = top + float(C["ev_dbl_push_atr"]) * a_d
+            t1 = next((t for t in range(s0, n) if lo[t] <= top), None)
+            if t1 is not None:
+                tp_ = next((t for t in range(t1 + 1, n) if hi[t] >= push_thr), None)
+                if tp_ is None:
+                    dbd = f"1st touch {d.index[t1].date()} (low {lo[t1]:.2f}), no push to {push_thr:.2f} yet"
+                else:
+                    recent = int(C["ev_dbl_recent_days"])
+                    t2 = [t for t in range(max(tp_ + 1, n - recent), n) if lo[t] <= top]
+                    p = cl[-1]
+                    dist = 0.0 if bot <= p <= top else (p - top if p > top else bot - p)
+                    near = dist <= float(C["ev_dbl_near_atr"]) * a_d and n - 1 > tp_
+                    broken = p < bot - a_d
+                    if (t2 or near) and not broken:
+                        db = True
+                        second = (f"2nd touch {d.index[t2[-1]].date()} low {lo[t2[-1]]:.2f}" if t2
+                                  else f"close {p:.2f} within {dist / a_d:.2f} dATR of the zone")
+                        dbd = (f"1st touch {d.index[t1].date()} low {lo[t1]:.2f}; push {d.index[tp_].date()} "
+                               f"high {hi[tp_]:.2f} >= {push_thr:.2f}; {second}")
+                    elif broken:
+                        dbd = f"close {p:.2f} below zone bottom - 1 dATR (broken down)"
+                    else:
+                        dbd = (f"1st touch {d.index[t1].date()}, push {d.index[tp_].date()}; no 2nd touch "
+                               f"in the last {recent} sessions and close {p:.2f} is {dist / a_d:.2f} dATR from the zone")
+        out["ev_double_bottom"], out["ev_double_bottom_detail"] = db, dbd
+        # E8 fib confluence
+        l0 = max(0, ih - int(C["ev_fib_leg_weeks"]) + 1)
+        il = l0 + int(np.argmin(wl[l0:ih + 1]))
+        L = float(wl[il])
+        tol = float(C["ev_fib_tol_atr"]) * a_w
+        hits, lv = [], []
+        if H > L:
+            for f in C["ev_fib_levels"]:
+                x = H - float(f) * (H - L)
+                lv.append(f"{float(f):g}={x:.2f}")
+                if bot - tol <= x <= top + tol:
+                    hits.append(f"{float(f):g}")
+        out["ev_fib"] = bool(hits)
+        out["ev_fib_levels"] = ",".join(hits)
+        out["ev_fib_detail"] = (f"swing {L:.2f} ({pd.Timestamp(w.index[il]).date()}) -> {H:.2f} ({hdate.date()}): "
+                                f"{', '.join(lv)}; zone {bot:g}-{top:g} +/- {tol:.2f}")
+    except Exception as e:  # pragma: no cover
+        out["ev_fib_detail"] = f"evidence error: {e}"
     return out
 
 
@@ -833,6 +1040,37 @@ def apply_filters_to_report(
     return out.iloc[order].reset_index(drop=True)
 
 
+def add_evidence_columns(df: pd.DataFrame, report_date: date,
+                         hist_map: Optional[Dict[str, pd.DataFrame]] = None) -> pd.DataFrame:
+    """Add / refresh only EVIDENCE_COLS from the cached history (uses the row's tv_* zone)."""
+    if hist_map is None:
+        hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
+    df = df.copy()
+    vals: Dict[str, List[Any]] = {c: [] for c in EVIDENCE_COLS}
+    for _, row in df.iterrows():
+        t = str(row["ticker"]).strip()
+        raw = hist_map.get(t)
+        hist = None
+        if raw is not None and not getattr(raw, "empty", True):
+            d = ss._normalize_ohlcv_index(raw)
+            d = d[d.index.normalize() <= pd.Timestamp(report_date)]
+            hist = d[["Open", "High", "Low", "Close", "Volume"]].dropna()
+        r = {k: ("" if (isinstance(v, float) and np.isnan(v)) else v) for k, v in row.items()}
+        e = compute_evidence(hist, r)
+        for c in EVIDENCE_COLS:
+            v = e.get(c)
+            vals[c].append("" if v is None else ("True" if v is True else "False" if v is False else str(v)))
+    for c in EVIDENCE_COLS:
+        df[c] = pd.Series(vals[c], index=df.index, dtype=object)
+    known = [c for c in REPORT_COLS if c in df.columns]
+    return df[known + [c for c in df.columns if c not in REPORT_COLS]]
+
+
+def summarize_evidence(df: pd.DataFrame) -> Dict[str, int]:
+    return {c: int(df[c].map(lambda v: v is True or str(v) == "True").sum())
+            for c in ("ev_first_reaction", "ev_double_bottom", "ev_ma_support", "ev_fib") if c in df.columns}
+
+
 def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     s = {f: int(df[f].astype(bool).sum()) for f in ALL_FILTERS}
     if "needs_drawing" in df.columns:
@@ -840,6 +1078,7 @@ def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     for f in INFO_FILTERS + ["f_tv_stale", "f_technical", "f_bot_review"]:
         if f in df.columns:
             s[f] = int(df[f].map(lambda v: v is True or str(v) == "True").sum())
+    s.update(summarize_evidence(df))
     s["rows"] = int(len(df))
     s["pass"] = int((df["status"] == "PASS").sum())
     return s
@@ -849,8 +1088,9 @@ def add_cli_overrides(ap: argparse.ArgumentParser) -> None:
     for k, v in CONFIG.items():
         flag = "--" + k.replace("_", "-")
         if isinstance(v, tuple):
-            ap.add_argument(flag, type=lambda s: tuple(x.strip() for x in s.split(",") if x.strip()),
-                            default=None, help=f"comma list (default {','.join(v)})")
+            conv = type(v[0]) if v else str
+            ap.add_argument(flag, type=lambda s, conv=conv: tuple(conv(x.strip()) for x in s.split(",") if x.strip()),
+                            default=None, help=f"comma list (default {','.join(str(x) for x in v)})")
         else:
             ap.add_argument(flag, type=type(v), default=None, help=f"default {v}")
 
@@ -872,6 +1112,9 @@ def main() -> None:
                     help="report CSV to recompute in place (repeatable)")
     ap.add_argument("--date", required=True, help="report date YYYY-MM-DD (as-of for history/earnings)")
     ap.add_argument("--out", type=Path, default=None, help="write here instead of in place (single --report)")
+    ap.add_argument("--evidence-only", action="store_true",
+                    help="only add / refresh the reversal-evidence columns (ev_*); every other column, "
+                         "status and the Grok targets are left untouched")
     add_cli_overrides(ap)
     args = ap.parse_args()
     changed = apply_cli_overrides(args)
@@ -880,6 +1123,13 @@ def main() -> None:
     rd = date.fromisoformat(args.date)
     hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     for p in args.report:
+        if args.evidence_only:  # strings in, strings out: every existing value is kept byte-identical
+            df = pd.read_csv(p, dtype=str, keep_default_na=False)
+            out = add_evidence_columns(df, rd, hist_map)
+            dest = args.out if args.out else p
+            out.to_csv(dest, index=False)
+            print(f"{dest}: evidence {summarize_evidence(out)}")
+            continue
         df = pd.read_csv(p)
         out = apply_filters_to_report(df, rd, hist_map=hist_map)  # includes TV drawings (f_rr)
         dest = args.out if args.out else p

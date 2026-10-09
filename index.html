@@ -42,6 +42,8 @@
   .pill.stale { background: rgba(248,81,73,.12); color: #ff9b94; border: 1px solid rgba(248,81,73,.45); white-space: nowrap; }
   .stale-banner { display:none; margin:8px 0 2px; padding:8px 12px; border:1px solid rgba(248,81,73,.45); border-radius:8px; background:rgba(248,81,73,.07); font-size:.85rem; line-height:1.9; }
 
+  .gradebox { display:flex; align-items:center; gap:8px; }
+  .evrow { margin-top:8px; }
   .rr { font-size:2rem; font-weight:800; line-height:1; text-align:right; }
   .rr small { display:block; font-size:.7rem; color:var(--muted); font-weight:500; }
   .rr.good { color:var(--pass); } .rr.bad { color:var(--warn); }
@@ -65,18 +67,21 @@
 <header>
   <nav><strong>TradingView charts (main dashboard)</strong> · <a href="table.html">Full report table →</a></nav>
   <h1>Stock Retest Scanner — TradingView charts</h1>
-  <div class="sub">One card per ticker read from TradingView: drawn (tv_found = yes) and, after them, read-but-no-drawing charts ("needs drawing") · zone / entry / SL / TP / R:R from the user's drawings (read-only) · screenshot from the nightly read · sorted by R:R desc</div>
+  <div class="sub">One card per ticker read from TradingView: drawn (tv_found = yes) and, after them, read-but-no-drawing charts ("needs drawing") · zone / entry / SL / TP / R:R from the user's drawings (read-only) · screenshot from the nightly read · sorted by R:R desc · grade A–D = reversal evidence E1–E8 at the zone for stocks passing all 9 must-haves (A all 8, B 1 missing, C 2, D 3+; – = a must-have fails)</div>
   <div class="controls">
     <span>Report <select id="reportSel"></select></span>
     <label><input type="checkbox" id="fPass"/> PASS only</label>
     <label title="Search ticker, status, notes"><input type="search" id="searchBox" placeholder="Ticker, note…" style="background:transparent;border:0;color:inherit;outline:none;width:9em"/></label>
     <button type="button" class="btn" id="btnPassPreset" title="Check the core filters (dollar vol, short float, earnings, history, TV R:R ≥ 2). = exactly status=PASS (Grok watchlist)">PASS-equivalent</button>
-    <button type="button" class="btn" id="btnClear">Clear filters</button>
+    <button type="button" class="btn" id="btnMustPreset" title="Check all 9 must-haves with the current E and V: FinViz list (every row), short float < 5%, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2 (counted drawing). Cards shown = the graded ones (A–D)">Must-haves</button>
+    <span>Sort <select id="sortSel"><option value="rr">TV R:R ↓ (default)</option><option value="grade">Grade, then R:R ↓</option></select></span>
+    <button type="button" class="btn" id="btnClear" title="Clears filters, search, sort and resets E / V / N / X to 14 / $50M / 5 / 3">Clear filters</button>
     <button type="button" class="btn" id="btnExportTV" title="Download the cards shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <span id="count"></span>
   </div>
   <div class="filters" id="filterBox"></div>
   <div id="sizingBar"></div>
+  <div id="gradeBar"></div>
   <div id="staleBanner" class="stale-banner"></div>
 </header>
 <main>
@@ -166,7 +171,8 @@ function card(r) {
       ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}
       ${infoBadges(r) ? `<div style="margin-top:4px">${infoBadges(r)}</div>` : ""}
       ${r.tv_stale ? `<div style="margin-top:4px"><span class="pill stale" title="${esc(r.tv_stale_detail)}">drawing may be obsolete: ${esc(r.tv_stale)}</span></div>` : ""}</div>
-      <div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div>
+      <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div></div>
+    ${gradeLine(r)}
     <dl>
       <dt>Zone</dt><dd>${f2(r.tv_zone_bottom)}–${f2(r.tv_zone_top)}</dd>
       <dt>To zone</dt><dd class="${near ? "near" : "far"}">${distLabel(r)}</dd>
@@ -176,6 +182,13 @@ function card(r) {
       <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
       <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
     </dl>${posHtml(r)}</div></div>`;
+}
+
+/** Evidence chips E1–E8 (+ failing must-haves for stocks without a grade). */
+function gradeLine(r) {
+  if (!r.grade) return "";
+  return `<div class="evrow">${SrsFilters.evidenceChips(r)}` +
+    (r.grade === "-" ? `<div class="mhfail" style="margin-top:3px">no grade — must-have fails: ${esc(r.mh_failed)}</div>` : "") + `</div>`;
 }
 
 function posHtml(r) {
@@ -208,7 +221,8 @@ function ndCard(r) {
   return `<div class="card nd">${shot}
     <div class="body"><div class="top"><div><div class="tk">${tkHtml(r)}</div>
       <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}${infoBadges(r)}</div>
-      <div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div>
+      <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div></div>
+    ${gradeLine(r)}
     <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl>
     ${r.tv_bot_note ? `<div class="muted" style="font-size:.75rem;margin-top:4px">${esc(r.tv_bot_status)}: ${esc(r.tv_bot_note)}</div>` : ""}</div></div>`;
 }
@@ -234,7 +248,8 @@ async function loadStaleBanner(reportTickers) {
 
 function saveState() {
   try { localStorage.setItem(STATE_KEY, JSON.stringify({ pass: document.getElementById("fPass").checked,
-    checked: [...checked], search: document.getElementById("searchBox").value })); } catch (_) {}
+    checked: [...checked], search: document.getElementById("searchBox").value,
+    sort: document.getElementById("sortSel").value })); } catch (_) {}
 }
 
 function loadState() {
@@ -242,6 +257,7 @@ function loadState() {
     const st = JSON.parse(localStorage.getItem(STATE_KEY) || "{}") || {};
     document.getElementById("fPass").checked = !!st.pass;
     document.getElementById("searchBox").value = typeof st.search === "string" ? st.search : "";
+    document.getElementById("sortSel").value = st.sort === "grade" ? "grade" : "rr";
     const c = new Set(Array.isArray(st.checked) ? st.checked : []);
     for (const [k, col] of Object.entries(OLD_TOGGLES)) if (st[k] === true) c.add(col);
     checked = c;
@@ -258,24 +274,28 @@ function render(persist = true) {
   const onlyPass = document.getElementById("fPass").checked;
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
   applySizingFlags();
+  SrsFilters.applyLive(rows);  // E / V / N / X: earnings, $vol, smooth, R:R ≥ X, must-haves, grade
   // drawn tickers + read-but-not-found tickers that have a screenshot ("needs drawing" cards)
   // + bot drawings awaiting the nightly read / review + user lines-only charts
   const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot)
     || r.tv_source === "bot" || r.tv_source === "bot-approved" || r.tv_source === "user-lines");
   const active = [...checked].filter(c => available.has(c));
+  const bySort = document.getElementById("sortSel").value;
   const sel = drawn
     .filter(r => !onlyPass || String(r.status).toUpperCase() === "PASS")
     .filter(r => SrsFilters.rowPasses(r, active))
     .filter(r => !q || `${r.ticker || ""} ${r.reason || ""} ${r.status || ""} ${r.failed_filters || ""} ${r.filter_notes || ""} ${r.tv_bot_note || ""} ${r.tv_stale_detail || ""}`.toLowerCase().includes(q))
-    .sort((a, b) => (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
+    .sort((a, b) => (bySort === "grade" ? (SrsFilters.GRADE_RANK[a.grade] ?? 9) - (SrsFilters.GRADE_RANK[b.grade] ?? 9) : 0)
+      || (num(b.tv_rr) ?? -1e9) - (num(a.tv_rr) ?? -1e9) || a.ticker.localeCompare(b.ticker));
   shownRows = sel;
   SrsFilters.renderFilterBox(document.getElementById("filterBox"), drawn, available, checked, () => render());
   const b = document.getElementById("btnExportTV");
   b.textContent = `Export TV watchlist (${sel.length})`; b.disabled = sel.length === 0;
   const nDrawn = drawn.filter(r => r.tv_found === "yes").length;
   const nBot = drawn.filter(r => r.f_bot_review === "True").length;
+  const gc = SrsFilters.GRADES.map(g => `${g} ${drawn.filter(r => r.grade === g).length}`).join(" · ");
   document.getElementById("count").textContent =
-    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn incl. ${nBot} bot drawings to review, ${drawn.length - nDrawn} without a drawing)`;
+    `${sel.length} of ${drawn.length} cards (${nDrawn} drawn incl. ${nBot} bot drawings to review, ${drawn.length - nDrawn} without a drawing) · graded: ${gc}`;
   document.getElementById("grid").innerHTML = sel.length ? sel.map(card).join("")
     : `<div class="empty">No cards match${drawn.length ? " the selected filters" : " (no TradingView drawings in this report)"}.</div>`;
 }
@@ -284,7 +304,6 @@ async function loadReport(path) {
   const res = await fetch(path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
   rows = SrsFilters.enrichEarningsLive(parseCSV(await res.text()));
   const hdr = rows.length ? Object.keys(rows[0]) : [];
-  if (hdr.includes("tv_entry")) hdr.push("f_tradable", "f_not_tradable");
   available = SrsFilters.availableFilters(hdr);
   render(false);
   loadStaleBanner(rows.map(r => r.ticker));
@@ -293,6 +312,7 @@ async function loadReport(path) {
 async function init() {
   SrsFilters.injectCss();
   Sizing.mount(document.getElementById("sizingBar"), () => render(false));
+  const gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => render(false));
   loadState();
   let reports = [];
   try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}
@@ -303,12 +323,18 @@ async function init() {
   sel.addEventListener("change", () => { currentReportDate = (sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest"; loadReport(sel.value); });
   currentReportDate = (sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "latest").replace(/[^0-9A-Za-z_-]/g, "") || "latest";
   document.getElementById("fPass").addEventListener("change", () => render());
+  document.getElementById("sortSel").addEventListener("change", () => render());
+  document.getElementById("btnMustPreset").addEventListener("click", () => {
+    checked = new Set(SrsFilters.MUST.filter(c => available.has(c))); render();
+  });
   document.getElementById("searchBox").addEventListener("input", () => render());
   document.getElementById("btnPassPreset").addEventListener("click", () => {
     checked = new Set(SrsFilters.CORE.filter(c => available.has(c))); render();
   });
   document.getElementById("btnClear").addEventListener("click", () => {
     checked = new Set(); document.getElementById("fPass").checked = false; document.getElementById("searchBox").value = "";
+    document.getElementById("sortSel").value = "rr";
+    SrsFilters.resetParams(); gradeBar.sync();
     try { localStorage.removeItem(STATE_KEY); } catch (_) {}
     render(false);
   });

@@ -325,7 +325,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
     df = df.copy()
     if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
-    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS + rf.SOURCE_COLS + rf.TECH_COLS:
+    for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS + rf.SOURCE_COLS + rf.TECH_COLS + rf.EVIDENCE_COLS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
     for c in ("f_rr", "status", "failed_filters", "reason", "needs_drawing"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
@@ -349,6 +349,8 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         for c in rf.STALE_COLS:
             df.at[i, c] = _csv_val(st[c])
         for c, v in rf.compute_technical(h).items():
+            df.at[i, c] = _csv_val(v)
+        for c, v in rf.compute_evidence(h, r).items():  # reversal evidence (grade inputs)
             df.at[i, c] = _csv_val(v)
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
                  if n and "(f_rr False)" not in n]
