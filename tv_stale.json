@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-08T23:59:51+03:00",
+  "generated_at": "2026-10-09T16:42:23+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 109,
+  "checked": 110,
   "flagged": 11,
   "flagged_tickers": [
     {
@@ -619,6 +619,22 @@
       "weekly_atr": 12.4968,
       "dist_above_top_atr": null,
       "read_date": "2026-10-07"
+    },
+    {
+      "ticker": "DLTR",
+      "symbol": "NASDAQ:DLTR",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 116.09,
+      "zone_top": 118.1,
+      "sl": 105.32,
+      "tp": 130.89,
+      "rr": 1.15,
+      "latest_close": 118.62,
+      "last_bar": "2026-10-08",
+      "weekly_atr": 9.2536,
+      "dist_above_top_atr": 0.0562,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "DOC",

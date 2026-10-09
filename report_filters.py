@@ -90,7 +90,11 @@ CONFIG: Dict[str, Any] = {
     "stale_close_basis": "low",
     # "technical" = clear weekly uptrend (informational, NOT part of status); port of
     # /workspace/drawing-learn/technical.py (calibrated on the user's 54 drawings)
-    "tech_newhi_atr": 1.0,           # recent 26w high >= 1 ATR above the prior 2.5y high
+    # v2 (2026-10-09, tuned on Eyal's calls: 11 "no clear uptrend" negatives vs his 82 own drawings):
+    # clear uptrend = near/at new highs AND a meaningfully rising 30w EMA; HH/HL structure is informational
+    "tech_newhi_atr": -1.0,          # recent 26w high >= prior 2.5y high - 1 weekly ATR (v1: +1.0)
+    "tech_ema_min_pct": 8.0,         # 30w EMA up >= 8% vs 26 weeks ago (v1: > 0%) -> rejects sideways
+    "tech_use_structure": False,     # v1 also required the HH/HL score >= tech_structure_min
     "tech_newhi_lookback_weeks": 130,  # prior-high window = weeks 27..130 back
     "tech_recent_weeks": 26,
     "tech_structure_weeks": 78,      # HH/HL swing window
@@ -556,15 +560,16 @@ def _swing_pivots(a: np.ndarray, k: int, kind: str) -> List[int]:
 
 
 def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
-    """'Technical' = clear weekly uptrend (all three, W-FRI weekly bars from the cached daily
-    history cut at the report date; the current week may be partial):
-      1. NEW HIGH: recent high (max High of the last 26 weeks) >= 1.0 weekly ATR(14) above the
-         highest High of the 2.5 years before it (weeks 27-130 back).
-      2. STRUCTURE: over the last 78 weeks, with strength-3 swing pivots (3 weeks each side),
-         (share of higher highs + share of higher lows) / 2 >= 0.5. The recent high counts as
-         the latest swing high; swing lows after it (the current pullback) are ignored.
-      3. TREND: 30-week EMA higher than 26 weeks ago (price may be below it in the pullback).
-    Fewer than tech_min_weekly_bars weekly bars -> every column empty. Informational only.
+    """'Technical' = CLEAR weekly uptrend, v2 (2026-10-09, tuned on the user's calls). Both, on W-FRI
+    weekly bars from the cached daily history cut at the report date (current week may be partial):
+      1. NEAR / AT NEW HIGHS: recent high (max High of the last 26 weeks) >= the highest High of the
+         2.5 years before it (weeks 27-130 back) - 1.0 weekly ATR(14)   (tech_newhi_atr = -1.0).
+      2. RISING, NOT SIDEWAYS: the 30-week EMA is >= 8% higher than 26 weeks ago (tech_ema_min_pct).
+    The current pullback is not judged (price may be below the EMA / the last swing low).
+    HH/HL structure (strength-3 swings over 78 weeks) is still reported (tech_hh / tech_hl /
+    tech_structure) but no longer required (tech_use_structure = False). v1 needed new high >= +1 ATR,
+    structure >= 0.5 and EMA slope > 0. Fewer than tech_min_weekly_bars weekly bars -> every column
+    empty. A user override (user_overrides.json) is applied afterwards (apply_user_overrides).
     """
     C = CONFIG
     out: Dict[str, Any] = {c: None for c in TECH_COLS}
@@ -596,20 +601,23 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
     except Exception as e:  # pragma: no cover
         out["tech_detail"] = f"technical error: {e}"
         return out
-    ok1, ok2, ok3 = newhi >= float(C["tech_newhi_atr"]), struct >= float(C["tech_structure_min"]), slope > 0
+    ok1 = newhi >= float(C["tech_newhi_atr"])
+    ok2 = struct >= float(C["tech_structure_min"]) or not bool(C.get("tech_use_structure", False))
+    ok3 = slope >= float(C.get("tech_ema_min_pct", 0.0))
     tech = bool(ok1 and ok2 and ok3)
     if tech:
-        why = [f"uptrend: new high {newhi:+.1f} ATR above prior 2.5y high, {hh}/{nh} HH and {hl}/{nl} HL, "
-               f"30w EMA {slope:+.0f}% in 26w"]
+        why = [f"clear uptrend: recent high {newhi:+.1f} ATR vs prior 2.5y high, 30w EMA {slope:+.1f}% in 26w "
+               f"({hh}/{nh} HH, {hl}/{nl} HL)"]
     else:
         why = []
         if not ok1:
-            why.append(f"no new high: recent high {rh:.2f} is {newhi:+.2f} ATR vs prior 2.5y high {prior:.2f} "
-                       f"(needs >= +{float(C['tech_newhi_atr']):g})")
+            why.append(f"not near a new high: recent 26w high {rh:.2f} is {newhi:+.2f} ATR vs prior 2.5y high "
+                       f"{prior:.2f} (needs >= {float(C['tech_newhi_atr']):+g})")
         if not ok2:
             why.append(f"choppy swings: {hh}/{nh} higher highs, {hl}/{nl} higher lows")
         if not ok3:
-            why.append(f"30w EMA falling ({slope:+.0f}% in 26w)")
+            why.append(f"sideways / not rising enough: 30w EMA {slope:+.1f}% in 26w "
+                       f"(needs >= +{float(C.get('tech_ema_min_pct', 0.0)):g}%)")
     out.update({"f_technical": tech, "tech_new_high_atr": round(newhi, 2), "tech_hh": f"{hh}/{nh}",
                 "tech_hl": f"{hl}/{nl}", "tech_structure": round(struct, 2),
                 "tech_ema30_slope_pct": round(slope, 1), "tech_ema_rising": bool(ok3),

@@ -362,7 +362,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
             for c, v in rf.compute_reversals(h, report_date, r).items():
                 df.at[i, c] = _csv_val(v) if isinstance(v, bool) else v
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
-                 if n and "(f_rr False)" not in n]
+                 if n and "(f_rr False" not in n]  # incl. "(f_rr False until approved)" (bot drawings)
         if not r["f_rr"]:
             notes.append(rf.tv_note(r))
         if "filter_notes" in df.columns:
