@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T23:51:28+03:00",
+  "generated_at": "2026-10-09T23:56:01+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -190,19 +190,19 @@
     },
     {
       "ticker": "ADP",
-      "symbol": "",
+      "symbol": "NASDAQ:ADP",
       "flag": "",
       "detail": "",
       "zone_bottom": 260.49,
       "zone_top": 262.33,
       "sl": 246.47,
       "tp": 284.1,
-      "rr": 1.4199,
+      "rr": 1.42,
       "latest_close": 271.42,
       "last_bar": "2026-10-09",
       "weekly_atr": 14.1847,
       "dist_above_top_atr": 0.6408,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "AIT",
@@ -542,7 +542,7 @@
     },
     {
       "ticker": "CPAY",
-      "symbol": "",
+      "symbol": "NYSE:CPAY",
       "flag": "",
       "detail": "",
       "zone_bottom": 379.7,
@@ -554,7 +554,7 @@
       "last_bar": "2026-10-09",
       "weekly_atr": 20.2779,
       "dist_above_top_atr": 0.8191,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "CSX",
@@ -734,19 +734,19 @@
     },
     {
       "ticker": "EQIX",
-      "symbol": "",
+      "symbol": "NASDAQ:EQIX",
       "flag": "",
       "detail": "",
-      "zone_bottom": 996.85,
-      "zone_top": 1011.9,
-      "sl": 948.29,
-      "tp": 1094.77,
+      "zone_bottom": 943.63,
+      "zone_top": 956.74,
+      "sl": 887.82,
+      "tp": 1034.3,
       "rr": 1.65,
       "latest_close": 1011.2,
       "last_bar": "2026-10-09",
       "weekly_atr": 60.322,
-      "dist_above_top_atr": -0.0116,
-      "read_date": "2026-10-06"
+      "dist_above_top_atr": 0.9028,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ESS",
@@ -846,19 +846,19 @@
     },
     {
       "ticker": "FWONK",
-      "symbol": "",
+      "symbol": "NASDAQ:FWONK",
       "flag": "",
       "detail": "",
       "zone_bottom": 93.9,
       "zone_top": 95.69,
       "sl": 87.59,
       "tp": 105.43,
-      "rr": 1.4951,
+      "rr": 1.5,
       "latest_close": 96.245,
       "last_bar": "2026-10-09",
       "weekly_atr": 5.8539,
       "dist_above_top_atr": 0.0948,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "GL",
@@ -1662,19 +1662,19 @@
     },
     {
       "ticker": "THG",
-      "symbol": "",
+      "symbol": "NYSE:THG",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 213.42,
       "tp": 230.72,
-      "rr": 0.8058,
+      "rr": 0.81,
       "latest_close": 221.6,
       "last_bar": "2026-10-09",
       "weekly_atr": 9.9593,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "TRV",
@@ -1822,19 +1822,19 @@
     },
     {
       "ticker": "VOYA",
-      "symbol": "",
+      "symbol": "NYSE:VOYA",
       "flag": "",
       "detail": "",
-      "zone_bottom": 96.63,
-      "zone_top": 97.3,
-      "sl": 91.53,
-      "tp": 103.7,
-      "rr": 1.3957,
+      "zone_bottom": 90.93,
+      "zone_top": 92.55,
+      "sl": 86.93,
+      "tp": 103.83,
+      "rr": 2.33,
       "latest_close": 94.48,
       "last_bar": "2026-10-09",
       "weekly_atr": 5.2845,
-      "dist_above_top_atr": -0.5336,
-      "read_date": "2026-10-07"
+      "dist_above_top_atr": 0.3652,
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "VRSN",
@@ -1854,35 +1854,35 @@
     },
     {
       "ticker": "VRTX",
-      "symbol": "",
+      "symbol": "NASDAQ:VRTX",
       "flag": "",
       "detail": "",
       "zone_bottom": 496.62,
       "zone_top": 507.84,
       "sl": 469.92,
       "tp": 546.93,
-      "rr": 1.3479,
+      "rr": 1.35,
       "latest_close": 510.54,
       "last_bar": "2026-10-09",
       "weekly_atr": 31.0779,
       "dist_above_top_atr": 0.0869,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "WAB",
-      "symbol": "",
+      "symbol": "NYSE:WAB",
       "flag": "",
       "detail": "",
       "zone_bottom": 273.48,
       "zone_top": 278.51,
       "sl": 259.64,
       "tp": 301.16,
-      "rr": 1.4744,
+      "rr": 1.47,
       "latest_close": 284.38,
       "last_bar": "2026-10-09",
       "weekly_atr": 15.8337,
       "dist_above_top_atr": 0.3707,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "WDC",
