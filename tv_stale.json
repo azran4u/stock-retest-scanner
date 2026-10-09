@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-09T23:44:54+03:00",
+  "generated_at": "2026-10-09T23:48:16+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -190,19 +190,19 @@
   "all": [
     {
       "ticker": "ADM",
-      "symbol": "",
+      "symbol": "NYSE:ADM",
       "flag": "",
       "detail": "",
       "zone_bottom": 74.83,
       "zone_top": 75.83,
       "sl": 70.38,
       "tp": 86.58,
-      "rr": 2.2271,
+      "rr": 2.23,
       "latest_close": 82.65,
       "last_bar": "2026-10-09",
       "weekly_atr": 5.2223,
       "dist_above_top_atr": 1.3059,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ADP",
@@ -318,19 +318,19 @@
     },
     {
       "ticker": "ARMK",
-      "symbol": "",
+      "symbol": "NYSE:ARMK",
       "flag": "",
       "detail": "",
       "zone_bottom": 55.21,
       "zone_top": 55.8,
       "sl": 52.77,
       "tp": 61.88,
-      "rr": 2.3741,
+      "rr": 2.37,
       "latest_close": 55.32,
       "last_bar": "2026-10-09",
       "weekly_atr": 2.9416,
       "dist_above_top_atr": -0.1632,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ASB",
@@ -350,51 +350,51 @@
     },
     {
       "ticker": "ATI",
-      "symbol": "",
+      "symbol": "NYSE:ATI",
       "flag": "",
       "detail": "",
       "zone_bottom": 174.75,
       "zone_top": 184.47,
       "sl": 169.21,
       "tp": 229.84,
-      "rr": 2.5897,
+      "rr": 2.59,
       "latest_close": 189.85,
       "last_bar": "2026-10-09",
       "weekly_atr": 20.1086,
       "dist_above_top_atr": 0.2675,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "AXTA",
-      "symbol": "",
+      "symbol": "NYSE:AXTA",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.5,
       "zone_top": 32.3,
       "sl": 30.14,
       "tp": 38.04,
-      "rr": 2.6744,
+      "rr": 2.67,
       "latest_close": 32.6705,
       "last_bar": "2026-10-09",
       "weekly_atr": 2.178,
       "dist_above_top_atr": 0.1701,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "BAX",
-      "symbol": "",
+      "symbol": "NYSE:BAX",
       "flag": "",
       "detail": "",
       "zone_bottom": 21.76,
       "zone_top": 22.36,
       "sl": 19.87,
       "tp": 27.15,
-      "rr": 2.434,
+      "rr": 2.43,
       "latest_close": 24.18,
       "last_bar": "2026-10-09",
       "weekly_atr": 1.9951,
       "dist_above_top_atr": 0.9122,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "BDX",
@@ -1022,19 +1022,19 @@
     },
     {
       "ticker": "LAMR",
-      "symbol": "",
+      "symbol": "NASDAQ:LAMR",
       "flag": "",
       "detail": "",
       "zone_bottom": 145.49,
       "zone_top": 147.28,
       "sl": 140.13,
       "tp": 159.92,
-      "rr": 2.3205,
+      "rr": 2.32,
       "latest_close": 147.065,
       "last_bar": "2026-10-09",
       "weekly_atr": 6.2661,
       "dist_above_top_atr": -0.0343,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "LFUS",
@@ -1050,7 +1050,7 @@
       "last_bar": "2026-10-09",
       "weekly_atr": 39.8953,
       "dist_above_top_atr": 0.7041,
-      "read_date": "2026-09-30"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "LH",
@@ -1406,19 +1406,19 @@
     },
     {
       "ticker": "RHP",
-      "symbol": "",
+      "symbol": "NYSE:RHP",
       "flag": "",
       "detail": "",
       "zone_bottom": 114.4,
       "zone_top": 117.25,
       "sl": 108.83,
       "tp": 134.08,
-      "rr": 2.6123,
+      "rr": 2.61,
       "latest_close": 119.8401,
       "last_bar": "2026-10-09",
       "weekly_atr": 6.6361,
       "dist_above_top_atr": 0.3903,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ROK",
@@ -1434,7 +1434,7 @@
       "last_bar": "2026-10-09",
       "weekly_atr": 26.1101,
       "dist_above_top_atr": 0.7476,
-      "read_date": "2026-09-30"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "ROST",
@@ -1550,19 +1550,19 @@
     },
     {
       "ticker": "SSB",
-      "symbol": "",
+      "symbol": "NYSE:SSB",
       "flag": "",
       "detail": "",
-      "zone_bottom": 98.71,
+      "zone_bottom": 98.53,
       "zone_top": 99.77,
-      "sl": 94.54,
-      "tp": 111.18,
-      "rr": 2.5862,
+      "sl": 94.78,
+      "tp": 111.42,
+      "rr": 2.59,
       "latest_close": 99.81,
       "last_bar": "2026-10-09",
       "weekly_atr": 4.6007,
       "dist_above_top_atr": 0.0087,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "SSNC",
@@ -1582,19 +1582,19 @@
     },
     {
       "ticker": "ST",
-      "symbol": "",
+      "symbol": "NYSE:ST",
       "flag": "",
       "detail": "",
       "zone_bottom": 41.31,
       "zone_top": 41.96,
       "sl": 38.46,
       "tp": 51.55,
-      "rr": 2.5863,
+      "rr": 2.59,
       "latest_close": 41.67,
       "last_bar": "2026-10-09",
       "weekly_atr": 3.1669,
       "dist_above_top_atr": -0.0916,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "STLD",
@@ -1710,19 +1710,19 @@
     },
     {
       "ticker": "TTEK",
-      "symbol": "",
+      "symbol": "NASDAQ:TTEK",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.48,
       "zone_top": 32.29,
       "sl": 30.15,
       "tp": 36.96,
-      "rr": 2.405,
+      "rr": 2.41,
       "latest_close": 33.38,
       "last_bar": "2026-10-09",
       "weekly_atr": 1.938,
       "dist_above_top_atr": 0.5624,
-      "read_date": "2026-10-07"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "UMBF",
@@ -1790,19 +1790,19 @@
     },
     {
       "ticker": "URI",
-      "symbol": "",
+      "symbol": "NYSE:URI",
       "flag": "",
       "detail": "",
       "zone_bottom": 970.68,
       "zone_top": 994.68,
       "sl": 906.26,
       "tp": 1165.22,
-      "rr": 2.3971,
+      "rr": 2.4,
       "latest_close": 1051.03,
       "last_bar": "2026-10-09",
       "weekly_atr": 85.2796,
       "dist_above_top_atr": 0.6608,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "VLTO",
@@ -1918,19 +1918,19 @@
     },
     {
       "ticker": "WELL",
-      "symbol": "",
+      "symbol": "NYSE:WELL",
       "flag": "",
       "detail": "",
       "zone_bottom": 214.72,
       "zone_top": 220.4,
       "sl": 206.34,
       "tp": 249.6,
-      "rr": 2.6384,
+      "rr": 2.64,
       "latest_close": 225.245,
       "last_bar": "2026-10-09",
       "weekly_atr": 10.968,
       "dist_above_top_atr": 0.4417,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-09"
     },
     {
       "ticker": "WSM",
