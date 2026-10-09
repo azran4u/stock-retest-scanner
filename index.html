@@ -79,6 +79,7 @@
     <button type="button" class="btn" id="btnExportTV" title="Download the cards shown (filters + search, current sort) as a TradingView watchlist import file (.txt, comma-separated EXCHANGE:TICKER)" disabled>Export TV watchlist (0)</button>
     <span id="count"></span>
   </div>
+  <div id="settingsGroup"></div>
   <div class="filters" id="filterBox"></div>
   <div id="sizingBar"></div>
   <div id="gradeBar"></div>
@@ -270,8 +271,19 @@ function applySizingFlags() {
   for (const r of rows) { const f = SrsFilters.sizingFlags(r, sz); r.f_tradable = f.f_tradable; r.f_not_tradable = f.f_not_tradable; r._shares = f.z ? f.z.shares : null; }
 }
 
+/** Settings group (shared layout, filters.js): presets + Clear + E/V/N/X + position sizing. */
+function mountSettings() {
+  const presets = document.createElement("div");
+  presets.className = "presets";
+  presets.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;align-items:center";
+  ["btnMustPreset", "btnPassPreset", "btnClear"].forEach(id => presets.appendChild(document.getElementById(id)));
+  SrsFilters.mountSettingsGroup(document.getElementById("settingsGroup"),
+    [presets, document.getElementById("gradeBar"), document.getElementById("sizingBar")]);
+}
+
 function render(persist = true) {
   if (persist) saveState();
+  SrsFilters.updateSettingsGroup();
   const onlyPass = document.getElementById("fPass").checked;
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
   applySizingFlags();
@@ -314,6 +326,7 @@ async function init() {
   SrsFilters.injectCss();
   Sizing.mount(document.getElementById("sizingBar"), () => render(false));
   const gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => render(false));
+  mountSettings();
   loadState();
   let reports = [];
   try { reports = await (await fetch("reports.json?t=" + Date.now())).json(); } catch (_) {}

@@ -216,33 +216,70 @@ function availableFilters(headers) {
   return out;
 }
 
+// ---- grouped, collapsible filter panel (shared by both pages; open/closed state in localStorage) ----
+const GROUPS_KEY = "srs_filter_groups_v1";
+const GROUP_DEFS = [
+  { key: "must", name: "Must-haves", open: true,
+    cols: ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr", "f_must_haves"] },
+  { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col) },
+  { key: "tv", name: "TradingView drawings", open: false,
+    cols: ["tv_found", "needs_drawing", "f_bot_review", "f_tv_stale", "f_not_tradable"] },
+];
+function loadGroupState() { try { return JSON.parse(localStorage.getItem(GROUPS_KEY) || "{}") || {}; } catch (_) { return {}; } }
+function saveGroupOpen(key, open) { const st = loadGroupState(); st[key] = open; try { localStorage.setItem(GROUPS_KEY, JSON.stringify(st)); } catch (_) {} }
+function isGroupOpen(key, dflt) { const st = loadGroupState(); return key in st ? !!st[key] : dflt; }
+function groupHtml(key, name, active, body, dflt, extraCls) {
+  return `<details class="fgrp${extraCls ? " " + extraCls : ""}" data-gkey="${key}" ${isGroupOpen(key, dflt) ? "open" : ""}>` +
+    `<summary><span class="gname">${name}</span> <span class="gact${active ? " on" : ""}">${active ? active + " active" : "none active"}</span></summary>` +
+    `<div class="gbody">${body}</div></details>`;
+}
+function wireGroups(root) {
+  root.querySelectorAll("details.fgrp[data-gkey]").forEach(d => {
+    if (d._srsWired) return; d._srsWired = true;
+    d.addEventListener("toggle", () => saveGroupOpen(d.dataset.gkey, d.open));
+  });
+}
+
+/** Render the Must-haves / Grade & evidence / TradingView drawings / Other groups into `box`. */
 function renderFilterBox(box, allRows, available, checked, onChange) {
   const P = loadParams();
-  const groups = [
-    ["Must-haves", FILTERS.filter(f => f.must)],
-    ["Grade", FILTERS.filter(f => f.group === "Grade")],
-    ["Evidence", EVIDENCE],
-    ["TradingView", FILTERS.filter(f => f.group === "TradingView" && !f.must)],
-  ];
+  const byCol = Object.fromEntries(FILTERS.map(f => [f.col, f]));
   const chk = (col, label, tip, n, avail) => {
     const on = checked.has(col) && avail;
     return `<label class="fchk${on ? " on" : ""}${avail ? "" : " disabled"}" title="${escA(tip)}${avail ? "" : " — not in this report (older schema)"}">` +
       `<input type="checkbox" data-fcol="${col}" ${on ? "checked" : ""} ${avail ? "" : "disabled"}/>` +
       `${label} <span class="cnt">${n === null ? "n/a" : n}</span></label>`;
   };
-  const gradeChips = GRADES.concat(["-"]).map(g => {
-    const col = "grade:" + g, avail = available.has(col);
-    const n = avail ? allRows.filter(r => r.grade === g).length : null;
-    return chk(col, g === "-" ? "– (no grade)" : `<b class="grade g${g} sm">${g}</b>`,
-      g === "-" ? "Stocks failing at least one must-have (no grade)" : `Grade ${g} (checked grades are ORed, then ANDed with the other filters)`, n, avail);
-  }).join("");
-  box.innerHTML = groups.map(([name, fs]) =>
-    `<span class="grp">${name}</span>` + (name === "Grade" ? gradeChips : "") + fs.map(f => {
-      const avail = available.has(f.col);
-      const n = avail ? allRows.filter(r => isTrueFlag(r[f.col])).length : null;
-      return chk(f.col, labelOf(f, P), f.tip, n, avail);
-    }).join("")
-  ).join("");
+  const fchk = f => {
+    const avail = available.has(f.col);
+    return chk(f.col, labelOf(f, P), f.tip, avail ? allRows.filter(r => isTrueFlag(r[f.col])).length : null, avail);
+  };
+  const used = new Set();
+  const html = [];
+  for (const g of GROUP_DEFS) {
+    const fs = g.cols.map(c => byCol[c]).filter(Boolean);
+    fs.forEach(f => used.add(f.col));
+    let body = "", active = fs.filter(f => checked.has(f.col) && available.has(f.col)).length;
+    if (g.grades) {
+      const gs = GRADES.concat(["-"]);
+      active += gs.filter(x => checked.has("grade:" + x) && available.has("grade:" + x)).length;
+      body += `<div class="frow"><span class="sublab">Grade</span>` + gs.map(x => {
+        const col = "grade:" + x, avail = available.has(col);
+        return chk(col, x === "-" ? "– (no grade)" : `<b class="grade g${x} sm">${x}</b>`,
+          x === "-" ? "Stocks failing at least one must-have (no grade)" : `Grade ${x} (checked grades are ORed, then ANDed with the other filters)`,
+          avail ? allRows.filter(r => r.grade === x).length : null, avail);
+      }).join("") + `</div><div class="frow"><span class="sublab">Evidence</span>` + fs.map(fchk).join("") + `</div>`;
+    } else body = `<div class="frow">` + fs.map(fchk).join("") + `</div>`;
+    html.push(groupHtml(g.key, g.name, active, body, g.open));
+  }
+  const other = FILTERS.filter(f => !used.has(f.col));
+  if (other.length) {
+    const active = other.filter(f => checked.has(f.col) && available.has(f.col)).length;
+    html.push(groupHtml("other", "Other", active, `<div class="frow">` + other.map(fchk).join("") + `</div>`, false));
+  }
+  box.classList.add("fgroups");
+  box.innerHTML = html.join("");
+  wireGroups(box);
   box.querySelectorAll("input[data-fcol]").forEach(inp => {
     inp.addEventListener("change", () => {
       const c = inp.getAttribute("data-fcol");
@@ -250,6 +287,25 @@ function renderFilterBox(box, allRows, available, checked, onChange) {
       onChange();
     });
   });
+}
+
+/** Wrap the page's settings controls (presets, Clear filters, E/V/N/X, sizing) in a collapsible
+ *  "Settings" group placed in `el`; call updateSettingsGroup() after changes to refresh its count. */
+function mountSettingsGroup(el, nodes) {
+  el.classList.add("fgroups");
+  el.innerHTML = groupHtml("settings", "Settings &amp; presets", 0, `<div class="sbody"></div>`, true, "settings");
+  const body = el.querySelector(".sbody");
+  nodes.filter(Boolean).forEach(n => body.appendChild(n));
+  wireGroups(el);
+  updateSettingsGroup(el);
+}
+function updateSettingsGroup(el) {
+  el = el || document.querySelector('details.fgrp[data-gkey="settings"]');
+  if (!el) return;
+  const P = loadParams();
+  const n = PARAM_FIELDS.filter(f => P[f.k] !== PARAM_DEFAULTS[f.k]).length;
+  const a = el.querySelector(".gact");
+  if (a) { a.textContent = n ? `${n} changed from default` : "defaults"; a.classList.toggle("on", !!n); }
 }
 
 /** Client-side sizing flags (f_tradable / f_not_tradable): drawn rows only, else "". */
@@ -289,6 +345,19 @@ function downloadWatchlist(syms, prefix, dateLabel) {
 
 const CSS = `
   .filters { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; margin-top:12px; }
+  .fgroups { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-start; margin-top:10px; }
+  details.fgrp { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:4px 10px; max-width:100%; }
+  details.fgrp[open] { padding-bottom:8px; }
+  details.fgrp > summary { cursor:pointer; user-select:none; font-size:.82rem; font-weight:650; color:var(--text); padding:2px 0; list-style-position:inside; }
+  details.fgrp .gname { text-transform:uppercase; letter-spacing:.04em; font-size:.75rem; }
+  details.fgrp .gact { color:var(--muted); font-weight:400; font-size:.72rem; margin-left:6px; }
+  details.fgrp .gact.on { color:var(--accent); font-weight:650; }
+  details.fgrp .gbody { margin-top:6px; }
+  details.fgrp .frow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:4px; }
+  details.fgrp .sublab { color:var(--muted); font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; min-width:4.2em; }
+  details.fgrp.settings .sbody { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; }
+  details.fgrp.settings .sbody > .sizing-bar, details.fgrp.settings .sbody > .grade-bar { margin:0; }
+  details.fgrp label.fchk { padding:3px 9px; font-size:.78rem; }
   .filters .grp { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
   label.fchk { flex-direction: row; align-items: center; gap: 6px; cursor: pointer; user-select: none;
     background: var(--panel); border: 1px solid var(--border); border-radius: 999px; padding: 5px 10px; color: var(--text); font-size: 0.82rem; }
@@ -325,7 +394,7 @@ function injectCss() {
   document.head.appendChild(st);
 }
 
-global.SrsFilters = { FILTERS, CORE, MUST, EVIDENCE, GRADES, GRADE_RANK, PARAM_DEFAULTS, loadParams, saveParams, resetParams,
+global.SrsFilters = { mountSettingsGroup, updateSettingsGroup, FILTERS, CORE, MUST, EVIDENCE, GRADES, GRADE_RANK, PARAM_DEFAULTS, loadParams, saveParams, resetParams,
   mountParams, applyLive, labelOf, evidenceChips, evidenceTip, gradeBadge, EARNINGS_BLACKOUT_DAYS, isTrueFlag, todayJerusalemISO, liveDaysToEarnings,
   enrichEarningsLive, rowPasses, availableFilters, renderFilterBox, sizingFlags, tvSymbolsForRows,
   downloadWatchlist, injectCss };

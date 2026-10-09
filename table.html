@@ -184,8 +184,9 @@
   </div>
   <div id="sizingBar"></div>
   <div id="gradeBar"></div>
-  <div id="staleBanner" class="stale-banner"></div>
+  <div id="settingsGroup"></div>
   <div class="filters" id="filterBox"></div>
+  <div id="staleBanner" class="stale-banner"></div>
   <div class="schema-note" id="schemaNote" style="display:none"></div>
 </header>
 <main>
@@ -652,6 +653,7 @@ function updateExportButton(n) {
 
 function refresh(persist = true) {
   if (persist) saveState();
+  SrsFilters.updateSettingsGroup();
   if (headers.includes("tv_entry")) applySizing();
   SrsFilters.applyLive(allRows);  // E / V / N / X: earnings, $vol, smooth, R:R ≥ X, must-haves, grade
   const P = SrsFilters.loadParams();
@@ -740,6 +742,13 @@ async function init() {
   SrsFilters.injectCss();
   Sizing.mount(document.getElementById("sizingBar"), () => { applySizing(); refresh(false); });
   gradeBar = SrsFilters.mountParams(document.getElementById("gradeBar"), () => refresh(false));
+  {  // Settings group (shared layout, filters.js): presets + Clear + E/V/N/X + position sizing
+    const presets = document.createElement("div");
+    presets.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;align-items:center";
+    ["btnMustPreset", "btnPassPreset", "btnClear"].forEach(id => presets.appendChild(document.getElementById(id)));
+    SrsFilters.mountSettingsGroup(document.getElementById("settingsGroup"),
+      [presets, document.getElementById("gradeBar"), document.getElementById("sizingBar")]);
+  }
   let reports = [];
   try {
     const res = await fetch("reports.json?t=" + Date.now());
