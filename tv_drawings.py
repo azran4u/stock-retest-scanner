@@ -327,6 +327,9 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         df["f_rr_computed"] = df["f_rr"] if "f_rr" in df.columns else False
     for c in TV_COLS + rf.NEAR_ZONE_COLS + rf.INFO_FILTERS + rf.STALE_COLS + rf.SOURCE_COLS + rf.TECH_COLS + rf.EVIDENCE_COLS:
         df[c] = pd.Series([""] * len(df), index=df.index, dtype=object)
+    for c in rf.REVERSAL_COLS:
+        if c in df.columns:
+            df[c] = df[c].astype(object).where(df[c].notna(), "")
     for c in ("f_rr", "status", "failed_filters", "reason", "needs_drawing"):
         df[c] = df[c].astype(object) if c in df.columns else pd.Series([""] * len(df), index=df.index, dtype=object)
     for i, row in df.iterrows():
@@ -352,6 +355,10 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
             df.at[i, c] = _csv_val(v)
         for c, v in rf.compute_evidence(h, r).items():  # reversal evidence (grade inputs)
             df.at[i, c] = _csv_val(v)
+        if h is not None and len(h) >= 2 and "f_weekly_reversal" in df.columns:
+            # E1/E2 reversal candles count only at the TV zone -> refresh with the merged zone
+            for c, v in rf.compute_reversals(h, report_date, r).items():
+                df.at[i, c] = _csv_val(v) if isinstance(v, bool) else v
         notes = [n for n in str(row.get("filter_notes") or "").split("; ")
                  if n and "(f_rr False)" not in n]
         if not r["f_rr"]:

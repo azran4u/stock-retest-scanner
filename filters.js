@@ -14,8 +14,8 @@ const FILTERS = [
   { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, must: true, tip: "TradingView drawing that counts (user-owned or approved bot drawing) AND TradingView Long Position R:R ≥ 2. No drawing / not checked / bot drawing awaiting review → fails. Part of status=PASS (Grok sync)" },
   { col: "f_technical",       label: "technical (weekly uptrend)", core: false, must: true, tip: "Clear weekly uptrend: recent 26w high ≥ 1 weekly ATR above the prior 2.5y high, ≥ 50% higher highs / higher lows over 78w (strength-3 swings, current-pullback lows ignored), 30w EMA higher than 26w ago. Empty with < 130 weekly bars. Must-have for a grade; not part of status" },
   { col: "f_must_haves",      label: "all must-haves", core: false, group: "Grade", tip: "All 9 must-haves pass (FinViz list, short float < 5%, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2) = the stock gets a grade A/B/C/D" },
-  { col: "f_weekly_reversal", label: "E1 weekly reversal (5w)",  core: false, group: "Evidence", ev: 1, short: "W-rev", tip: "E1: reversal-shape weekly candle (hammer/engulfing/strong_close/rejection, shape only) in the last 5 completed weeks" },
-  { col: "f_daily_reversal",  label: "E2 daily reversal (10d)",  core: false, group: "Evidence", ev: 2, short: "D-rev", tip: "E2: reversal-shape daily candle (same shapes, shape only) in the last 10 completed sessions" },
+  { col: "f_weekly_reversal", label: "E1 weekly reversal at zone (5w)",  core: false, group: "Evidence", ev: 1, short: "W-rev", tip: "E1: reversal-shape weekly candle (hammer/engulfing/strong_close/rejection) in the last 5 completed weeks AT the TV zone: its low ≤ zone top + 0.5 weekly ATR(14) and (low ≥ zone bottom − 0.5 weekly ATR or close ≥ zone bottom). No TV zone → false" },
+  { col: "f_daily_reversal",  label: "E2 daily reversal at zone (10d)",  core: false, group: "Evidence", ev: 2, short: "D-rev", tip: "E2: reversal-shape daily candle (same shapes) in the last 10 completed sessions AT the TV zone: its low ≤ zone top + 0.5 daily ATR(14) and (low ≥ zone bottom − 0.5 daily ATR or close ≥ zone bottom). No TV zone → false" },
   { col: "ev_first_reaction", label: "E3 first reaction",        core: false, group: "Evidence", ev: 3, short: "1st reaction", tip: "E3: in the current pullback (after the highest weekly high of the last 52 weeks) a weekly low ≤ zone top, followed by a LATER weekly close ≥ zone top + 0.5 weekly ATR(14). TV zone needed" },
   { col: "ev_double_bottom",  label: "E4 daily double bottom",   core: false, group: "Evidence", ev: 4, short: "dbl bottom", tip: "E4: after the pullback high, a daily low ≤ zone top (1st touch), then a daily high ≥ zone top + 1 daily ATR(14) (push), then a 2nd touch: a daily low ≤ zone top in the last 10 sessions OR the latest close within 1 daily ATR of the zone; not broken (close ≥ zone bottom − 1 daily ATR). TV zone needed" },
   { col: "f_smooth_streak",   label: P => `E5 smooth pullback ≥${P.smoothN}w`, core: false, group: "Evidence", ev: 5, short: P => `smooth ≥${P.smoothN}w`, tip: "E5: ≥ N consecutive smooth weekly candles back from the last completed week (smooth_streak_weeks; N = the smooth-weeks input, default 5 — recomputed live)" },
@@ -123,8 +123,8 @@ function evidenceTip(r, f, P) {
   const yes = isTrueFlag(r[f.col]);
   const head = `E${f.ev} ${labelOf(f, P).replace(/^E\d+ /, "")}: ${yes ? "present" : "missing"}`;
   const d = {
-    1: r.weekly_reversal_kind ? `${r.weekly_reversal_kind} week of ${r.weekly_reversal_date}` : "no reversal-shape weekly candle in the last 5 weeks",
-    2: r.daily_reversal_kind ? `${r.daily_reversal_kind} on ${r.daily_reversal_date}` : "no reversal-shape daily candle in the last 10 sessions",
+    1: r.weekly_reversal_kind ? `${r.weekly_reversal_kind} week of ${r.weekly_reversal_date}` : "no reversal-shape weekly candle at the zone (≤ 0.5 weekly ATR) in the last 5 weeks",
+    2: r.daily_reversal_kind ? `${r.daily_reversal_kind} on ${r.daily_reversal_date}` : "no reversal-shape daily candle at the zone (≤ 0.5 daily ATR) in the last 10 sessions",
     3: r.ev_first_reaction_detail || "no TV zone",
     4: r.ev_double_bottom_detail || "no TV zone",
     5: `smooth streak ${r.smooth_streak_weeks || "n/a"} weeks (needs ≥ ${P.smoothN})`,

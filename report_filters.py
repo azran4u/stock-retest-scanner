@@ -76,6 +76,9 @@ CONFIG: Dict[str, Any] = {
     "daily_reversal_lookback_days": 10,                  # f_daily_reversal
     "weekly_reversal_lookback_weeks": 5,                 # f_weekly_reversal
     "reversal_kinds": ("hammer", "engulfing", "strong_close", "rejection"),
+    # reversal candles count only AT the TV zone: low <= top + 0.5 ATR and (low >= bottom - 0.5 ATR
+    # or close >= bottom); ATR(14) of the same timeframe (weekly / daily). No TV zone -> False
+    "reversal_zone_atr": 0.5,
     # price near the TradingView support zone (TV drawings only; NOT part of status)
     "near_zone_atr_mult": 1.0,                           # f_near_zone: distance <= 1 x weekly ATR
     "near_zone_atr_period": 14,                          # weekly ATR(14), same ATR as the retest scan
@@ -212,17 +215,30 @@ def _as_of_ts(report_date: date) -> Optional[pd.Timestamp]:
     return pd.Timestamp(f"{report_date.isoformat()} 23:59").tz_localize("America/New_York")
 
 
-def _scan_reversals(bars: Optional[pd.DataFrame], lookback: int) -> Tuple[bool, str, str]:
-    """Shape-only reversal on any of the last `lookback` completed bars.
+def _scan_reversals(bars: Optional[pd.DataFrame], lookback: int,
+                    zone: Optional[Tuple[float, float]] = None) -> Tuple[bool, str, str]:
+    """Reversal-shape candle on any of the last `lookback` completed bars that is AT the zone
+    (user rule 2026-10-09). zone = (bottom, top) of the TradingView rectangle; the bar's own ATR(14)
+    on the same timeframe (weekly ATR for weekly bars, daily ATR for daily bars):
+      Low <= top + reversal_zone_atr (0.5) x ATR   (inside the zone or at most 0.5 ATR above it)
+      AND (Low >= bottom - 0.5 x ATR  OR  Close >= bottom)  (a wick under the zone counts when it
+      closed back at/above the bottom, or stayed within 0.5 ATR below it).
+    zone None -> no candle qualifies (no TV zone, no reversal at the zone).
     Returns (hit, kind, date) of the MOST RECENT matching bar."""
-    if bars is None or len(bars) < 2:
+    if bars is None or len(bars) < 2 or zone is None:
         return False, "", ""
+    zb, zt = min(zone), max(zone)
+    m = float(CONFIG["reversal_zone_atr"])
     atr = ss.atr_series(bars, 14)
     kinds = [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]
     n = len(bars)
     for i in range(n - 1, max(0, n - int(lookback)) - 1, -1):
         if i < 1:
             break
+        a_i = float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan")
+        lo_i, cl_i = float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i])
+        if not np.isfinite(a_i) or not (lo_i <= zt + m * a_i and (lo_i >= zb - m * a_i or cl_i >= zb)):
+            continue
         sh = ssa.weekly_reversal_shapes(
             float(bars["Open"].iloc[i]), float(bars["High"].iloc[i]),
             float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i]),
@@ -361,13 +377,7 @@ def compute_row(
     except Exception as e:  # pragma: no cover
         notes.append(f"streak error: {e}")
     try:
-        dd = ssa.flatten_cols(daily)
-        dd = ssa.completed_daily_bars(dd, as_of=as_of)
-        wk = ssa.completed_weeks(ssa.to_weekly(dd), dd.index[-1])
-        hit, kind, dt = _scan_reversals(wk, C["weekly_reversal_lookback_weeks"])
-        r["f_weekly_reversal"], r["weekly_reversal_kind"], r["weekly_reversal_date"] = hit, kind, dt
-        hit, kind, dt = _scan_reversals(dd, C["daily_reversal_lookback_days"])
-        r["f_daily_reversal"], r["daily_reversal_kind"], r["daily_reversal_date"] = hit, kind, dt
+        r.update(compute_reversals(daily, report_date, r))
     except Exception as e:  # pragma: no cover
         notes.append(f"reversal error: {e}")
 
@@ -381,6 +391,34 @@ def compute_row(
 
     r["filter_notes"] = "; ".join(notes)
     return r
+
+
+REVERSAL_COLS = ["f_weekly_reversal", "weekly_reversal_kind", "weekly_reversal_date",
+                 "f_daily_reversal", "daily_reversal_kind", "daily_reversal_date"]
+
+
+def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[str, Any]) -> Dict[str, Any]:
+    """E1 / E2: reversal-shape candle AT the TV zone (see _scan_reversals) on the last
+    weekly_reversal_lookback_weeks (5) completed weekly bars / daily_reversal_lookback_days (10)
+    completed daily bars. Uses r's tv_zone_top / tv_zone_bottom (tv_found=yes); no zone -> False."""
+    C = CONFIG
+    out = {"f_weekly_reversal": False, "weekly_reversal_kind": "", "weekly_reversal_date": "",
+           "f_daily_reversal": False, "daily_reversal_kind": "", "daily_reversal_date": ""}
+    if daily is None or len(daily) < 2:
+        return out
+    zone = None
+    if str(r.get("tv_found")) == "yes":
+        top, bot = _num(r.get("tv_zone_top")), _num(r.get("tv_zone_bottom"))
+        if top is not None and bot is not None:
+            zone = (bot, top)
+    dd = ssa.flatten_cols(daily)
+    dd = ssa.completed_daily_bars(dd, as_of=_as_of_ts(report_date))
+    wk = ssa.completed_weeks(ssa.to_weekly(dd), dd.index[-1])
+    hit, kind, dt = _scan_reversals(wk, C["weekly_reversal_lookback_weeks"], zone)
+    out["f_weekly_reversal"], out["weekly_reversal_kind"], out["weekly_reversal_date"] = hit, kind, dt
+    hit, kind, dt = _scan_reversals(dd, C["daily_reversal_lookback_days"], zone)
+    out["f_daily_reversal"], out["daily_reversal_kind"], out["daily_reversal_date"] = hit, kind, dt
+    return out
 
 
 def apply_tv(r: Dict[str, Any], rec: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1042,11 +1080,12 @@ def apply_filters_to_report(
 
 def add_evidence_columns(df: pd.DataFrame, report_date: date,
                          hist_map: Optional[Dict[str, pd.DataFrame]] = None) -> pd.DataFrame:
-    """Add / refresh only EVIDENCE_COLS from the cached history (uses the row's tv_* zone)."""
+    """Add / refresh only EVIDENCE_COLS + the zone-gated reversal columns (E1/E2) from the cached
+    history (uses the row's tv_* zone)."""
     if hist_map is None:
         hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     df = df.copy()
-    vals: Dict[str, List[Any]] = {c: [] for c in EVIDENCE_COLS}
+    vals: Dict[str, List[Any]] = {c: [] for c in EVIDENCE_COLS + REVERSAL_COLS}
     for _, row in df.iterrows():
         t = str(row["ticker"]).strip()
         raw = hist_map.get(t)
@@ -1057,10 +1096,14 @@ def add_evidence_columns(df: pd.DataFrame, report_date: date,
             hist = d[["Open", "High", "Low", "Close", "Volume"]].dropna()
         r = {k: ("" if (isinstance(v, float) and np.isnan(v)) else v) for k, v in row.items()}
         e = compute_evidence(hist, r)
-        for c in EVIDENCE_COLS:
+        if hist is not None and len(hist) >= 2:
+            e.update(compute_reversals(hist, report_date, r))
+        else:
+            e.update({c: (False if c.startswith("f_") else "") for c in REVERSAL_COLS})
+        for c in EVIDENCE_COLS + REVERSAL_COLS:
             v = e.get(c)
             vals[c].append("" if v is None else ("True" if v is True else "False" if v is False else str(v)))
-    for c in EVIDENCE_COLS:
+    for c in EVIDENCE_COLS + REVERSAL_COLS:
         df[c] = pd.Series(vals[c], index=df.index, dtype=object)
     known = [c for c in REPORT_COLS if c in df.columns]
     return df[known + [c for c in df.columns if c not in REPORT_COLS]]
@@ -1068,7 +1111,8 @@ def add_evidence_columns(df: pd.DataFrame, report_date: date,
 
 def summarize_evidence(df: pd.DataFrame) -> Dict[str, int]:
     return {c: int(df[c].map(lambda v: v is True or str(v) == "True").sum())
-            for c in ("ev_first_reaction", "ev_double_bottom", "ev_ma_support", "ev_fib") if c in df.columns}
+            for c in ("f_weekly_reversal", "f_daily_reversal", "ev_first_reaction", "ev_double_bottom",
+                      "ev_ma_support", "ev_fib") if c in df.columns}
 
 
 def summarize(df: pd.DataFrame) -> Dict[str, Any]:
@@ -1113,7 +1157,8 @@ def main() -> None:
     ap.add_argument("--date", required=True, help="report date YYYY-MM-DD (as-of for history/earnings)")
     ap.add_argument("--out", type=Path, default=None, help="write here instead of in place (single --report)")
     ap.add_argument("--evidence-only", action="store_true",
-                    help="only add / refresh the reversal-evidence columns (ev_*); every other column, "
+                    help="only add / refresh the reversal-evidence columns (ev_* + the zone-gated weekly/daily "
+                         "reversal columns); every other column, "
                          "status and the Grok targets are left untouched")
     add_cli_overrides(ap)
     args = ap.parse_args()
