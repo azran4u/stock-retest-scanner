@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-12T23:58:53+03:00",
+  "generated_at": "2026-10-13T00:03:04+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 118,
+  "checked": 120,
   "flagged": 13,
   "flagged_tickers": [
     {
@@ -541,6 +541,22 @@
       "read_date": "2026-10-12"
     },
     {
+      "ticker": "CHE",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 470.34,
+      "zone_top": 478.36,
+      "sl": 441.18,
+      "tp": 549.06,
+      "rr": 2.4139,
+      "latest_close": 500.64,
+      "last_bar": "2026-10-12",
+      "weekly_atr": 26.5697,
+      "dist_above_top_atr": 0.8385,
+      "read_date": "2026-10-13"
+    },
+    {
       "ticker": "CLH",
       "symbol": "",
       "flag": "",
@@ -619,6 +635,22 @@
       "weekly_atr": 2.0368,
       "dist_above_top_atr": 2.2535,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "DAL",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 74.6,
+      "zone_top": 76.66,
+      "sl": 65.16,
+      "tp": 92.87,
+      "rr": 1.639,
+      "latest_close": 80.11,
+      "last_bar": "2026-10-12",
+      "weekly_atr": 4.9426,
+      "dist_above_top_atr": 0.698,
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "DAR",
