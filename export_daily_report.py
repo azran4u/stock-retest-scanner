@@ -437,6 +437,15 @@ def main() -> None:
     except Exception as e:  # never block the report
         print(f"  [stale] skipped: {e}")
 
+    try:  # open positions: refresh latest close / low / high / weekly ATR in positions.json
+        _sys.path.insert(0, "/workspace/publish-stock-retest-scanner")
+        import positions  # noqa: E402
+
+        positions.refresh(quiet=False)
+        print(f"  positions {positions.PATH}")
+    except Exception as e:  # never block the report
+        print(f"  [positions] skipped: {e}")
+
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
     n_bo = int(df["earnings_blackout"].astype(bool).sum())

@@ -408,3 +408,21 @@ Eyal wants, for every stock with a grade **A/B/C/D**, a short fundamental read: 
   2. `python fundamentals.py scaffold T …` → fill `analysis/drafts/T.json` from web research (WebSearch / WebFetch; cite every news item). Text may use `{fpe} {ps} {om} {pm} {rg} {roe} {de} {div} {cash} {debt} {fcf} {tgt} {rec} {lo} {hi} {src}` placeholders, filled from Yahoo key stats at merge.
   3. `python fundamentals.py merge analysis/drafts/T.json …` (validates: required fields, dated + linked news, 2–4 pros/cons, no unresolved placeholders) → commit + push.
 - Grade-independent: analyses stay in the file when a ticker loses its grade; the dashboard shows them wherever the ticker appears.
+
+## My positions (הפוזיציות שלי)
+
+Open trades live in `positions.json` (repo root) and are shown at the top of `index.html` and `table.html`
+(ticker → chart card, entry date, qty, entry, stop, target, latest close, P/L $ / %, R = (close − entry)/(entry − stop),
+distance to stop / target in % and weekly ATR(14), chips: *near stop* / *near target* = daily low/high within 0.5 weekly ATR,
+*stop hit* / *target hit*). Manage with `positions.py`:
+
+```
+/workspace/.venv/bin/python positions.py add TICKER --qty N --entry P --stop S [--target T] [--date YYYY-MM-DD] [--exchange NYSE]
+/workspace/.venv/bin/python positions.py set TICKER --stop S --target T
+/workspace/.venv/bin/python positions.py close TICKER --price P [--date ...]
+/workspace/.venv/bin/python positions.py list | refresh | check [--no-refresh] [--json]
+```
+
+The daily export (`export_daily_report.py`) calls `positions.refresh()` (yfinance daily bar + weekly ATR) for open positions.
+Alert routine: `/workspace/.venv/bin/python /workspace/stock-screener/positions_check.py` (exit 2 if any flag fires).
+Default target = TP of the user's TradingView drawing (tv_drawings.json) at entry time.

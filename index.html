@@ -7,6 +7,7 @@
 <script src="sizing.js"></script>
 <script src="filters.js"></script>
 <script src="fundamentals.js"></script>
+<script src="positions.js"></script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --text:#e6edf3; --muted:#8b949e;
           --accent:#58a6ff; --pass:#3fb950; --fail:#f85149; --warn:#d29922; --card:#1c2128; }
@@ -87,6 +88,7 @@
   <div id="staleBanner" class="stale-banner"></div>
 </header>
 <main>
+  <div id="positionsBox"></div>
   <div class="grid" id="grid"></div>
 </main>
 <div id="lb" title="Click or Esc to close"><span class="cap" id="lbCap"></span><img id="lbImg" alt=""/></div>
@@ -170,7 +172,7 @@ function card(r) {
   const tk = sym
     ? `<a class="tv-app" href="${tvAppHref(sym)}" data-tv-symbol="${esc(sym)}" title="Opens the TradingView app (symbol also copied)">${esc(r.ticker)}</a><a class="tv-web" href="${tvWebHref(sym)}" target="_blank" rel="noopener">web</a>`
     : esc(r.ticker);
-  return `<div class="card">${shot}<div class="body">
+  return `<div class="card" id="card-${esc(r.ticker)}">${shot}<div class="body">
     <div class="top"><div><div class="tk">${tk}</div><span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span>
       ${pass ? "" : `<span class="far" style="font-size:.75rem"> ${esc(r.failed_filters)}</span>`}
       ${infoBadges(r) ? `<div style="margin-top:4px">${infoBadges(r)}</div>` : ""}
@@ -222,7 +224,7 @@ function ndCard(r) {
     ? `<div class="shot" data-full="${esc(r.tv_screenshot)}?v=${ver}" data-cap="${esc(r.ticker)} · read ${esc(r.tv_read_date)} · ${isBot ? "bot drawing" : "no drawing found"}"><img loading="lazy" src="${esc(r.tv_screenshot)}?v=${ver}" alt="${esc(r.ticker)} TradingView chart"/></div>`
     : `<div class="shot ph">screenshot after next nightly read</div>`;
   const botRR = (String(r.tv_bot_note || "").match(/R:R ([0-9.]+)/) || [])[1];
-  return `<div class="card nd">${shot}
+  return `<div class="card nd" id="card-${esc(r.ticker)}">${shot}
     <div class="body"><div class="top"><div><div class="tk">${tkHtml(r)}</div>
       <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}${infoBadges(r)}</div>
       <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div></div>
@@ -376,5 +378,8 @@ async function init() {
 }
 init();
 </script>
+<script>Positions.render(document.getElementById("positionsBox"), t => "#card-" + t);
+// jump to #card-X after cards render
+setTimeout(()=>{const h=location.hash;if(h.startsWith("#card-")){const e=document.querySelector(h);if(e)e.scrollIntoView();}},2500);</script>
 </body>
 </html>

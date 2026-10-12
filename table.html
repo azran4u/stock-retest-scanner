@@ -8,6 +8,7 @@
 <script src="sizing.js"></script>
 <script src="filters.js"></script>
 <script src="fundamentals.js"></script>
+<script src="positions.js"></script>
 <style>
   :root {
     --bg: #0d1117;
@@ -191,6 +192,7 @@
   <div class="schema-note" id="schemaNote" style="display:none"></div>
 </header>
 <main>
+  <div id="positionsBox"></div>
   <div class="cards">
     <div class="card"><div class="label">FinViz list</div><div class="value" id="cScanned">—</div></div>
     <div class="card"><div class="label">Matching filters</div><div class="value" id="cMatch" style="color:var(--accent)">—</div></div>
@@ -809,5 +811,6 @@ init().catch(err => {
   document.getElementById("tableMeta").innerHTML = `<span class="err">${err.message}</span>`;
 });
 </script>
+<script>Positions.render(document.getElementById("positionsBox"), t => "index.html#card-" + t);</script>
 </body>
 </html>

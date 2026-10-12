@@ -76,3 +76,21 @@ Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus re
 ## Position sizing (client-side)
 
 The chart gallery (`index.html`) and the report table (`table.html`) share a settings bar (Account $, Max risk %, Max position %; defaults 5000 / 1 / 15; saved in localStorage). For tickers with a TradingView drawing: `shares = floor(min(account·risk%/(entry−SL), account·pos%/entry))` (0 if entry ≤ SL) → columns Shares, Cost, Risk $, Profit at TP $ (+ limiting cap); blank without a drawing; recalculated live (`sizing.js`). Filters "tradable with account" (shares ≥ 1) / "not tradable (account limits)" (drawn, shares = 0) on both pages.
+
+## My positions (הפוזיציות שלי)
+
+Open trades live in `positions.json` (repo root) and are shown at the top of `index.html` and `table.html`
+(ticker → chart card, entry date, qty, entry, stop, target, latest close, P/L $ / %, R = (close − entry)/(entry − stop),
+distance to stop / target in % and weekly ATR(14), chips: *near stop* / *near target* = daily low/high within 0.5 weekly ATR,
+*stop hit* / *target hit*). Manage with `positions.py`:
+
+```
+/workspace/.venv/bin/python positions.py add TICKER --qty N --entry P --stop S [--target T] [--date YYYY-MM-DD] [--exchange NYSE]
+/workspace/.venv/bin/python positions.py set TICKER --stop S --target T
+/workspace/.venv/bin/python positions.py close TICKER --price P [--date ...]
+/workspace/.venv/bin/python positions.py list | refresh | check [--no-refresh] [--json]
+```
+
+The daily export (`export_daily_report.py`) calls `positions.refresh()` (yfinance daily bar + weekly ATR) for open positions.
+Alert routine: `/workspace/.venv/bin/python /workspace/stock-screener/positions_check.py` (exit 2 if any flag fires).
+Default target = TP of the user's TradingView drawing (tv_drawings.json) at entry time.

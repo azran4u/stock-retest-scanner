@@ -1,0 +1,32 @@
+{
+  "positions": [
+    {
+      "ticker": "SWK",
+      "exchange": "NYSE",
+      "side": "long",
+      "entry_date": "2026-10-12",
+      "qty": 1,
+      "entry_price": 88.68,
+      "entry_order": "market, filled",
+      "stop": 82.27,
+      "stop_order": "sell stop-market 82.27, GTC (pending)",
+      "target": 102.48,
+      "zone": [
+        89.0,
+        90.29
+      ],
+      "target_source": "TradingView drawing read 2026-10-09 (user): zone 89.00-90.29, entry 89.86, SL 83.76, TP 102.48",
+      "status": "open",
+      "note": "First trade",
+      "market": {
+        "date": "2026-10-12",
+        "close": 88.59,
+        "low": 87.86,
+        "high": 89.415,
+        "weekly_atr": 5.6146,
+        "fetched_at": "2026-10-12T22:25:14+03:00"
+      }
+    }
+  ],
+  "updated_at": "2026-10-12T22:25:14+03:00"
+}
