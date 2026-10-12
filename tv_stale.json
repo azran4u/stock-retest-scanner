@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T00:03:04+03:00",
+  "generated_at": "2026-10-13T00:06:15+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 120,
+  "checked": 121,
   "flagged": 13,
   "flagged_tickers": [
     {
@@ -1053,6 +1053,22 @@
       "read_date": "2026-10-12"
     },
     {
+      "ticker": "INTC",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 86.95,
+      "tp": 144.21,
+      "rr": 3.6029,
+      "latest_close": 101.35,
+      "last_bar": "2026-10-12",
+      "weekly_atr": 13.9157,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-13"
+    },
+    {
       "ticker": "IRM",
       "symbol": "",
       "flag": "",
@@ -1358,7 +1374,7 @@
     },
     {
       "ticker": "NUE",
-      "symbol": "NYSE:NUE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 215.19,
@@ -1370,7 +1386,7 @@
       "last_bar": "2026-10-12",
       "weekly_atr": 17.5789,
       "dist_above_top_atr": 1.7635,
-      "read_date": "2026-10-10"
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "OKE",
