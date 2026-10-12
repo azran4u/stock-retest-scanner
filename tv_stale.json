@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-12T23:54:16+03:00",
+  "generated_at": "2026-10-12T23:58:53+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -526,19 +526,19 @@
     },
     {
       "ticker": "CGNX",
-      "symbol": "NASDAQ:CGNX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 58.32,
       "zone_top": 59.43,
       "sl": 52.89,
       "tp": 67.81,
-      "rr": 1.58,
+      "rr": 1.5769,
       "latest_close": 61.82,
       "last_bar": "2026-10-12",
       "weekly_atr": 5.936,
       "dist_above_top_atr": 0.4026,
-      "read_date": "2026-09-30"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "CLH",
@@ -686,19 +686,19 @@
     },
     {
       "ticker": "DLTR",
-      "symbol": "NASDAQ:DLTR",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 116.09,
       "zone_top": 118.1,
       "sl": 105.32,
       "tp": 130.89,
-      "rr": 1.15,
+      "rr": 1.1505,
       "latest_close": 117.61,
       "last_bar": "2026-10-12",
       "weekly_atr": 9.0357,
       "dist_above_top_atr": -0.0542,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "DOC",
@@ -798,19 +798,19 @@
     },
     {
       "ticker": "EQIX",
-      "symbol": "NASDAQ:EQIX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 943.63,
       "zone_top": 956.74,
       "sl": 887.82,
       "tp": 1034.3,
-      "rr": 1.65,
+      "rr": 1.6503,
       "latest_close": 1032.6,
       "last_bar": "2026-10-12",
       "weekly_atr": 57.8874,
       "dist_above_top_atr": 1.3105,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "ESS",
@@ -926,19 +926,19 @@
     },
     {
       "ticker": "FWONK",
-      "symbol": "NASDAQ:FWONK",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 93.9,
       "zone_top": 95.69,
       "sl": 87.59,
       "tp": 105.43,
-      "rr": 1.5,
+      "rr": 1.4951,
       "latest_close": 93.81,
       "last_bar": "2026-10-12",
       "weekly_atr": 5.7114,
       "dist_above_top_atr": -0.3292,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "GL",
@@ -1054,19 +1054,19 @@
     },
     {
       "ticker": "IVZ",
-      "symbol": "NYSE:IVZ",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 29.39,
       "zone_top": 29.59,
       "sl": 27.56,
       "tp": 33.03,
-      "rr": 1.79,
+      "rr": 1.7908,
       "latest_close": 29.265,
       "last_bar": "2026-10-12",
       "weekly_atr": 1.8845,
       "dist_above_top_atr": -0.1725,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "JBL",
@@ -1246,19 +1246,19 @@
     },
     {
       "ticker": "MSI",
-      "symbol": "NYSE:MSI",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 441.97,
       "zone_top": 447.5,
       "sl": 423.34,
       "tp": 482.73,
-      "rr": 1.8,
+      "rr": 1.7961,
       "latest_close": 446.33,
       "last_bar": "2026-10-12",
       "weekly_atr": 21.0491,
       "dist_above_top_atr": -0.0556,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "MTCH",
@@ -1598,19 +1598,19 @@
     },
     {
       "ticker": "SJM",
-      "symbol": "NYSE:SJM",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 113.27,
       "zone_top": 117.04,
       "sl": 106.0,
       "tp": 131.43,
-      "rr": 1.78,
+      "rr": 1.7792,
       "latest_close": 120.02,
       "last_bar": "2026-10-12",
       "weekly_atr": 6.9915,
       "dist_above_top_atr": 0.4262,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "SNEX",
@@ -1790,19 +1790,19 @@
     },
     {
       "ticker": "THG",
-      "symbol": "NYSE:THG",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 213.42,
       "tp": 230.72,
-      "rr": 0.81,
+      "rr": 0.8058,
       "latest_close": 221.65,
       "last_bar": "2026-10-12",
       "weekly_atr": 9.1287,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "TRV",
@@ -1998,35 +1998,35 @@
     },
     {
       "ticker": "VRTX",
-      "symbol": "NASDAQ:VRTX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 496.62,
       "zone_top": 507.84,
       "sl": 469.92,
       "tp": 546.93,
-      "rr": 1.35,
+      "rr": 1.3479,
       "latest_close": 507.0,
       "last_bar": "2026-10-12",
       "weekly_atr": 28.0236,
       "dist_above_top_atr": -0.03,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "WAB",
-      "symbol": "NYSE:WAB",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 273.48,
       "zone_top": 278.51,
       "sl": 259.64,
       "tp": 301.16,
-      "rr": 1.47,
+      "rr": 1.4744,
       "latest_close": 285.77,
       "last_bar": "2026-10-12",
       "weekly_atr": 15.3556,
       "dist_above_top_atr": 0.4728,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "WDC",
