@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-12T23:46:29+03:00",
+  "generated_at": "2026-10-12T23:50:32+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -286,19 +286,19 @@
     },
     {
       "ticker": "ALL",
-      "symbol": "NYSE:ALL",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 214.48,
-      "zone_top": 225.81,
-      "sl": 200.87,
+      "zone_top": 225.2,
+      "sl": 207.13,
       "tp": 264.36,
-      "rr": 2.86,
+      "rr": 3.0791,
       "latest_close": 232.6,
       "last_bar": "2026-10-12",
       "weekly_atr": 13.5187,
-      "dist_above_top_atr": 0.5023,
-      "read_date": "2026-10-09"
+      "dist_above_top_atr": 0.5474,
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "ALSN",
@@ -382,51 +382,51 @@
     },
     {
       "ticker": "ATI",
-      "symbol": "NYSE:ATI",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 174.75,
       "zone_top": 184.47,
-      "sl": 169.21,
+      "sl": 170.05,
       "tp": 229.84,
-      "rr": 2.59,
+      "rr": 4.3336,
       "latest_close": 187.98,
       "last_bar": "2026-10-12",
       "weekly_atr": 19.41,
       "dist_above_top_atr": 0.1808,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "AXTA",
-      "symbol": "NYSE:AXTA",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.5,
       "zone_top": 32.3,
       "sl": 30.14,
       "tp": 38.04,
-      "rr": 2.67,
+      "rr": 2.6744,
       "latest_close": 33.08,
       "last_bar": "2026-10-12",
       "weekly_atr": 1.97,
       "dist_above_top_atr": 0.3959,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "BAX",
-      "symbol": "NYSE:BAX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 21.76,
       "zone_top": 22.36,
       "sl": 19.87,
       "tp": 27.15,
-      "rr": 2.43,
+      "rr": 2.434,
       "latest_close": 24.78,
       "last_bar": "2026-10-12",
       "weekly_atr": 1.9145,
       "dist_above_top_atr": 1.2641,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "BDX",
@@ -654,19 +654,19 @@
     },
     {
       "ticker": "DE",
-      "symbol": "NYSE:DE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 523.02,
       "tp": 655.58,
-      "rr": 2.73,
+      "rr": 2.7309,
       "latest_close": 632.61,
       "last_bar": "2026-10-12",
       "weekly_atr": 43.7745,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-10"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "DGX",
@@ -1086,19 +1086,19 @@
     },
     {
       "ticker": "KEX",
-      "symbol": "NYSE:KEX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 129.49,
       "zone_top": 131.81,
       "sl": 123.37,
       "tp": 149.96,
-      "rr": 2.6,
+      "rr": 2.603,
       "latest_close": 135.88,
       "last_bar": "2026-10-12",
       "weekly_atr": 7.1907,
       "dist_above_top_atr": 0.566,
-      "read_date": "2026-10-10"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "LAMR",
@@ -1230,19 +1230,19 @@
     },
     {
       "ticker": "MOG-A",
-      "symbol": "NYSE:MOG.A",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 344.29,
       "zone_top": 353.61,
       "sl": 318.54,
       "tp": 435.65,
-      "rr": 2.61,
+      "rr": 2.6112,
       "latest_close": 371.76,
       "last_bar": "2026-10-12",
       "weekly_atr": 32.7524,
       "dist_above_top_atr": 0.5542,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "MSI",
@@ -1406,19 +1406,19 @@
     },
     {
       "ticker": "PH",
-      "symbol": "NYSE:PH",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 927.47,
       "zone_top": 951.29,
       "sl": 895.21,
       "tp": 1077.95,
-      "rr": 2.71,
+      "rr": 2.7097,
       "latest_close": 956.89,
       "last_bar": "2026-10-12",
       "weekly_atr": 52.4425,
       "dist_above_top_atr": 0.1068,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "PKG",
@@ -1534,19 +1534,19 @@
     },
     {
       "ticker": "ROK",
-      "symbol": "NYSE:ROK",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 411.42,
       "zone_top": 415.4,
       "sl": 388.07,
       "tp": 477.44,
-      "rr": 2.6,
+      "rr": 2.5978,
       "latest_close": 433.88,
       "last_bar": "2026-10-12",
       "weekly_atr": 24.144,
       "dist_above_top_atr": 0.7654,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "ROST",
@@ -1662,19 +1662,19 @@
     },
     {
       "ticker": "SSB",
-      "symbol": "NYSE:SSB",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 98.53,
       "zone_top": 99.77,
       "sl": 94.78,
       "tp": 111.42,
-      "rr": 2.59,
+      "rr": 2.5862,
       "latest_close": 100.77,
       "last_bar": "2026-10-12",
       "weekly_atr": 4.4147,
       "dist_above_top_atr": 0.2265,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "SSNC",
@@ -1726,19 +1726,19 @@
     },
     {
       "ticker": "STX",
-      "symbol": "NASDAQ:STX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 650.33,
       "tp": 1082.79,
-      "rr": 2.43,
+      "rr": 2.4284,
       "latest_close": 753.25,
       "last_bar": "2026-10-12",
       "weekly_atr": 135.7657,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "SWK",
@@ -1758,19 +1758,19 @@
     },
     {
       "ticker": "TGT",
-      "symbol": "NYSE:TGT",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 139.02,
       "zone_top": 143.51,
       "sl": 131.28,
       "tp": 164.92,
-      "rr": 2.51,
+      "rr": 2.5115,
       "latest_close": 153.57,
       "last_bar": "2026-10-12",
       "weekly_atr": 8.5646,
       "dist_above_top_atr": 1.1746,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "THC",
@@ -1822,19 +1822,19 @@
     },
     {
       "ticker": "TTEK",
-      "symbol": "NASDAQ:TTEK",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.48,
       "zone_top": 32.29,
       "sl": 30.15,
       "tp": 36.96,
-      "rr": 2.41,
+      "rr": 2.405,
       "latest_close": 33.49,
       "last_bar": "2026-10-12",
       "weekly_atr": 1.8305,
       "dist_above_top_atr": 0.6556,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "UBS",
@@ -2046,19 +2046,19 @@
     },
     {
       "ticker": "WELL",
-      "symbol": "NYSE:WELL",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 214.72,
       "zone_top": 220.4,
       "sl": 206.34,
       "tp": 249.6,
-      "rr": 2.64,
+      "rr": 2.6384,
       "latest_close": 230.29,
       "last_bar": "2026-10-12",
       "weekly_atr": 10.6052,
       "dist_above_top_atr": 0.9326,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-12"
     },
     {
       "ticker": "WSM",
