@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T23:42:56+03:00",
+  "generated_at": "2026-10-13T23:44:36+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -670,19 +670,19 @@
     },
     {
       "ticker": "DASH",
-      "symbol": "",
+      "symbol": "NASDAQ:DASH",
       "flag": "",
       "detail": "",
       "zone_bottom": 183.38,
       "zone_top": 192.74,
       "sl": 165.75,
       "tp": 235.58,
-      "rr": 2.0614,
+      "rr": 2.06,
       "latest_close": 193.09,
       "last_bar": "2026-10-13",
       "weekly_atr": 17.5676,
       "dist_above_top_atr": 0.0199,
-      "read_date": "2026-10-12"
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "DE",
