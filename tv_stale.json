@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T23:48:21+03:00",
+  "generated_at": "2026-10-13T23:51:42+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,8 +7,8 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 121,
-  "flagged": 13,
+  "checked": 124,
+  "flagged": 14,
   "flagged_tickers": [
     {
       "ticker": "BDX",
@@ -137,6 +137,22 @@
       "weekly_atr": 11.9336,
       "dist_above_top_atr": -0.7215,
       "read_date": "2026-09-29"
+    },
+    {
+      "ticker": "LLY",
+      "symbol": "",
+      "flag": "target hit",
+      "detail": "close 1166.99 >= TP 1104.63",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 836.02,
+      "tp": 1104.63,
+      "rr": 2.92,
+      "latest_close": 1166.99,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 74.7392,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "MA",
@@ -925,6 +941,22 @@
       "read_date": "2026-09-30"
     },
     {
+      "ticker": "FLEX",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 99.6,
+      "zone_top": 110.08,
+      "sl": 89.49,
+      "tp": 155.59,
+      "rr": 2.05,
+      "latest_close": 110.88,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 14.5129,
+      "dist_above_top_atr": 0.0551,
+      "read_date": "2026-10-13"
+    },
+    {
       "ticker": "FNV",
       "symbol": "",
       "flag": "",
@@ -1149,6 +1181,22 @@
       "read_date": "2026-10-12"
     },
     {
+      "ticker": "KLAC",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 164.76,
+      "zone_top": 171.37,
+      "sl": 150.12,
+      "tp": 263.92,
+      "rr": 5.41,
+      "latest_close": 184.0,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 21.6065,
+      "dist_above_top_atr": 0.5845,
+      "read_date": "2026-10-13"
+    },
+    {
       "ticker": "LAMR",
       "symbol": "",
       "flag": "",
@@ -1195,6 +1243,22 @@
       "weekly_atr": 16.9796,
       "dist_above_top_atr": 1.3899,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "LLY",
+      "symbol": "",
+      "flag": "target hit",
+      "detail": "close 1166.99 >= TP 1104.63",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 836.02,
+      "tp": 1104.63,
+      "rr": 2.92,
+      "latest_close": 1166.99,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 74.7392,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "LNG",
