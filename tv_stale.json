@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-13T23:51:42+03:00",
+  "generated_at": "2026-10-13T23:54:10+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 124,
+  "checked": 126,
   "flagged": 14,
   "flagged_tickers": [
     {
@@ -1357,6 +1357,22 @@
       "read_date": "2026-10-13"
     },
     {
+      "ticker": "MRK",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 127.92,
+      "zone_top": 134.45,
+      "sl": 121.94,
+      "tp": 150.7,
+      "rr": 2.35,
+      "latest_close": 141.99,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 8.4188,
+      "dist_above_top_atr": 0.8956,
+      "read_date": "2026-10-13"
+    },
+    {
       "ticker": "MSI",
       "symbol": "",
       "flag": "",
@@ -1387,6 +1403,22 @@
       "weekly_atr": 2.8677,
       "dist_above_top_atr": 0.9659,
       "read_date": "2026-10-05"
+    },
+    {
+      "ticker": "MU",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 660.28,
+      "tp": 1198.45,
+      "rr": 2.65,
+      "latest_close": 953.19,
+      "last_bar": "2026-10-13",
+      "weekly_atr": 121.0421,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-13"
     },
     {
       "ticker": "MUSA",
