@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-14T23:58:08+03:00",
+  "generated_at": "2026-10-15T00:07:44+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -426,7 +426,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 25.3208,
       "dist_above_top_atr": 1.056,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "ARMK",
@@ -442,7 +442,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 2.832,
       "dist_above_top_atr": -0.3708,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "ASB",
@@ -634,7 +634,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 27.324,
       "dist_above_top_atr": 1.2743,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "CLH",
@@ -746,11 +746,11 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 5.04,
       "dist_above_top_atr": 0.6171,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "DASH",
-      "symbol": "NASDAQ:DASH",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 183.38,
@@ -762,7 +762,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 17.5676,
       "dist_above_top_atr": 0.0199,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "DE",
@@ -938,7 +938,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 9.7991,
       "dist_above_top_atr": -0.1796,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "EW",
@@ -1077,12 +1077,12 @@
       "zone_top": 170.38,
       "sl": 162.18,
       "tp": 186.21,
-      "rr": 2.38,
+      "rr": 2.37,
       "latest_close": 167.41,
       "last_bar": "2026-10-14",
       "weekly_atr": 8.3752,
       "dist_above_top_atr": -0.3546,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "GTX",
@@ -1146,7 +1146,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 8.0357,
       "dist_above_top_atr": -0.0734,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "INTC",
@@ -1962,7 +1962,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 5.6325,
       "dist_above_top_atr": 0.0089,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "TGT",
@@ -2037,12 +2037,12 @@
       "zone_top": 32.29,
       "sl": 30.15,
       "tp": 36.96,
-      "rr": 2.4,
+      "rr": 2.41,
       "latest_close": 33.61,
       "last_bar": "2026-10-14",
       "weekly_atr": 1.8562,
       "dist_above_top_atr": 0.7111,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "UBS",
@@ -2186,7 +2186,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 5.0997,
       "dist_above_top_atr": 0.504,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "VRSN",
@@ -2298,7 +2298,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 1.719,
       "dist_above_top_atr": 1.4776,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "WTS",
