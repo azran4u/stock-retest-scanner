@@ -22,13 +22,15 @@ warnings.filterwarnings("ignore")
 
 SCREENER_URL = (
     "https://finviz.com/screener"
-    "?v=111&f=sh_instown_o60,sh_price_o10,sh_short_low,"
-    "ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker"
+    "?v=111&f=sh_price_o10,ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker"
 )
 DOLLAR_VOL_MIN = 50_000_000
 AVG_VOL_DAYS = 30            # dollar vol = 30d avg volume × last close
 MIN_WEEKLY_BARS = 150
-SHORT_FLOAT_MAX = 0.05
+SHORT_FLOAT_MAX = 0.05       # dashboard filter default only (no longer a must-have, Eyal 2026-10-14)
+INST_OWN_MIN = 0.60          # dashboard filter default only
+OWNERSHIP_JSON = Path("/workspace/cache/fv_ownership.json")  # bulk FinViz v=131 inst own / short float
+YF_OWN_TTL_DAYS = 7          # yfinance fallback cache (nulls cached too)
 RR_MIN = 2.0
 SL_ATR_MIN = 0.5             # SL distance from entry clamped to [0.5, 1.0] x weekly ATR
 SL_ATR_MAX = 1.0
@@ -36,7 +38,7 @@ EARNINGS_BLACKOUT_DAYS = 14
 NEAR_ZONE_ATR = 1.0          # soft-score only (not a hard filter)
 MAX_EXT_ABOVE_ATR = 1.0      # legacy soft-score constant; not a hard filter
 PULLBACK_TOUCH_ATR = 0.5     # post-breakout must tag zone (within 0.5 ATR)
-FV_TTL_DAYS = 3              # FinViz quote fundamentals cache TTL
+FV_TTL_DAYS = 30             # FinViz quote cache TTL (exchange only; ownership comes from the bulk v=131 screener)
 EARN_MISS_TTL_HOURS = 20     # earnings "no date found" is retried after this (dates: cached until past)
 CACHE_DIR = Path("/workspace/cache")
 OUT_CSV = Path("/workspace/stock_screen_results.csv")
@@ -60,33 +62,130 @@ session = requests.Session()
 session.headers.update({"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9"})
 
 
-def fetch_screener_tickers(max_pages: int = 30) -> List[str]:
-    """Always scrape FinViz live — never reuse screener_tickers.json as input."""
-    tickers: List[str] = []
-    seen = set()
-    for page in range(max_pages):
-        r = 1 + page * 20
-        url = SCREENER_URL + (f"&r={r}" if page > 0 else "")
+def _screener_url(view: int = 131) -> str:
+    """SCREENER_URL with the view swapped (filters untouched; the code never relies on
+    inst-own / short-float filters being in the URL)."""
+    return re.sub(r"([?&])v=\d+", lambda m: f"{m.group(1)}v={view}", SCREENER_URL) if "v=" in SCREENER_URL \
+        else SCREENER_URL + f"&v={view}"
+
+
+def _fv_pct(txt: str) -> Optional[float]:
+    txt = (txt or "").replace("%", "").replace(",", "").strip()
+    if not txt or txt == "-":
+        return None
+    try:
+        return float(txt) / 100.0
+    except ValueError:
+        return None
+
+
+_OWNERSHIP: Dict[str, Dict[str, Any]] = {}
+
+
+def load_ownership() -> Dict[str, Dict[str, Any]]:
+    global _OWNERSHIP
+    if not _OWNERSHIP and OWNERSHIP_JSON.exists():
+        try:
+            _OWNERSHIP = json.loads(OWNERSHIP_JSON.read_text()).get("tickers", {})
+        except Exception:
+            _OWNERSHIP = {}
+    return _OWNERSHIP
+
+
+FV_PAGE_CAP = 1000  # FinViz returns 403 for r > 1000 (no login): page each query ascending + descending
+
+
+def _fv_page(url: str) -> Tuple[Optional[List[Tuple[str, Dict[str, Any]]]], Optional[int]]:
+    """One v=131 screener page -> ([(ticker, {inst_own, short_float})], total) or (None, None)."""
+    resp = None
+    for attempt in range(4):
         try:
             resp = session.get(url, timeout=30)
+            if resp.status_code in (429, 503):
+                time.sleep(5 * (attempt + 1)); resp = None; continue
             resp.raise_for_status()
+            break
         except Exception as e:
-            print(f"[screener] page {page+1} error: {e}")
+            print(f"[screener] {url}: {e}")
+            resp = None
+            if "403" in str(e):
+                break
+            time.sleep(3)
+    if resp is None:
+        return None, None
+    m = re.search(r"#1 / (\d+)", resp.text)
+    total = int(m.group(1)) if m else None
+    soup = BeautifulSoup(resp.text, "lxml")
+    table = soup.select_one("table.screener_table")
+    out: List[Tuple[str, Dict[str, Any]]] = []
+    if table is None:
+        return out, total
+    trs = table.find_all("tr")
+    hdr = {c.get_text(strip=True): i for i, c in enumerate(trs[0].find_all(["th", "td"]))} if trs else {}
+    for tr in trs[1:]:
+        a = tr.find(attrs={"data-boxover-ticker": True})
+        if a is None:
+            continue
+        cells = [c.get_text(strip=True) for c in tr.find_all("td")]
+        rec = {"inst_own": None, "short_float": None}
+        for col, key in (("Inst Own", "inst_own"), ("Short Float", "short_float")):
+            if col in hdr and hdr[col] < len(cells):
+                rec[key] = _fv_pct(cells[hdr[col]])
+        out.append((a["data-boxover-ticker"], rec))
+    return out, total
+
+
+def _fv_query(base: str, own: Dict[str, Dict[str, Any]]) -> Optional[int]:
+    """Collect every row of one screener query into `own` (ascending up to the 1000-row cap,
+    then descending until it meets rows already seen). Returns the query's total."""
+    total = None
+    seen_q: set = set()
+    for order in ("ticker", "-ticker"):
+        url0 = re.sub(r"([?&])o=[^&]*", lambda m: f"{m.group(1)}o={order}", base) if "o=" in base else base + f"&o={order}"
+        for page in range(FV_PAGE_CAP // 20):
+            r = 1 + page * 20
+            rows, tot = _fv_page(url0 + (f"&r={r}" if page else ""))
+            if rows is None:
+                break
+            total = total or tot
+            new = [(t, rec) for t, rec in rows if t not in seen_q]
+            for t, rec in rows:
+                seen_q.add(t)
+                own[t] = rec
+            if not new or len(rows) < 20:  # end of list, or descending met the ascending rows
+                break
+            time.sleep(0.45)
+        if total is None or total <= FV_PAGE_CAP or len(seen_q) >= total:
             break
-        found = re.findall(r'data-boxover-ticker="([A-Z][A-Z0-9.\-]*)"', resp.text)
-        new = []
-        for t in found:
-            if t not in seen:
-                seen.add(t)
-                new.append(t)
-        print(f"[screener] page {page+1} (r={r}): {len(new)} new")
-        if not new:
-            break
-        tickers.extend(new)
-        time.sleep(0.45)
+    return total
+
+
+def fetch_screener_tickers(max_pages: int = 200) -> List[str]:
+    """Always scrape FinViz live — never reuse screener_tickers.json as input.
+
+    Uses the ownership view (v=131) of SCREENER_URL's filters, so one pass also yields
+    Inst Own / Short Float for every ticker (OWNERSHIP_JSON, source "finviz_screener";
+    "-" -> null). FinViz caps paging at 1000 rows, so a large universe is read as
+    stocks-only + ETFs (each ascending + descending) and then the full query
+    ascending + descending fills anything else (e.g. closed-end funds)."""
+    global _OWNERSHIP
+    own: Dict[str, Dict[str, Any]] = {}
+    base = _screener_url(131)
+    total = _fv_query(base, own)
+    if total and len(own) < total:
+        for part in ("ind_stocksonly", "ind_exchangetradedfund"):
+            _fv_query(re.sub(r"([?&]f=)", lambda m: m.group(1) + part + ",", base), own)
+            if len(own) >= total:
+                break
+    tickers = sorted(own)
+    print(f"[screener] live fetch: {len(tickers)} tickers (FinViz total {total})"
+          + ("" if not total or len(tickers) >= total else f" WARNING: {total - len(tickers)} not reached"))
     # Snapshot only (audit / debugging) — never read back as cache
     TICKERS_JSON.write_text(json.dumps(tickers, indent=2))
-    print(f"[screener] live fetch: {len(tickers)} tickers")
+    if own:
+        now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        OWNERSHIP_JSON.write_text(json.dumps({"fetched_at": now_iso, "url": base, "total": total, "tickers": own}))
+        _OWNERSHIP = own
     return tickers
 
 
@@ -218,7 +317,7 @@ def scrape_finviz_fundamentals(ticker: str) -> Dict[str, Any]:
         exchange = None
     fetched_at = cached.get("fetched_at")
     fresh = False
-    if fetched_at and short is not None and inst is not None and exchange:
+    if fetched_at and exchange:  # exchange is what matters; missing short/inst no longer forces refetch
         try:
             ts = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
             age_days = (
@@ -534,17 +633,67 @@ def get_short_float(ticker: str) -> Tuple[Optional[float], str]:
     return None, "N/A"
 
 
-def get_fundamentals(ticker: str) -> Dict[str, Any]:
-    data = scrape_finviz_fundamentals(ticker)
-    short = data.get("short_float")
-    inst = data.get("inst_own")
-    return {
-        "short_float": short,
-        "short_src": "finviz" if short is not None else "N/A",
-        "inst_own": inst,
-        "inst_src": "finviz" if inst is not None else "N/A",
-        "exchange": data.get("exchange"),
-    }
+def _yf_ownership(ticker: str) -> Dict[str, Any]:
+    """yfinance fallback (heldPercentInstitutions / shortPercentOfFloat), cached YF_OWN_TTL_DAYS
+    including nulls."""
+    cf = CACHE_DIR / f"yfown_{ticker}.json"
+    if cf.exists():
+        try:
+            c = json.loads(cf.read_text())
+            ts = datetime.fromisoformat(c["fetched_at"].replace("Z", ""))
+            if (datetime.utcnow() - ts).total_seconds() / 86400.0 < YF_OWN_TTL_DAYS:
+                return c
+        except Exception:
+            pass
+    out: Dict[str, Any] = {"inst_own": None, "short_float": None, "quote_type": None}
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker.replace(".", "-")).info or {}
+        v = info.get("heldPercentInstitutions")
+        out["inst_own"] = float(v) if isinstance(v, (int, float)) else None
+        v = info.get("shortPercentOfFloat")
+        out["short_float"] = float(v) if isinstance(v, (int, float)) else None
+        out["quote_type"] = info.get("quoteType")
+    except Exception as e:
+        out["error"] = str(e)[:200]
+    out["fetched_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    try:
+        cf.write_text(json.dumps(out))
+    except Exception:
+        pass
+    return out
+
+
+def _fv_quote_cached(ticker: str) -> Dict[str, Any]:
+    cf = CACHE_DIR / f"fv_{ticker}.json"
+    try:
+        return json.loads(cf.read_text()) if cf.exists() else {}
+    except Exception:
+        return {}
+
+
+def get_fundamentals(ticker: str, allow_yf: bool = True) -> Dict[str, Any]:
+    """Inst own / short float with source: FinViz screener (bulk v=131, this run) >
+    FinViz quote-page cache (no network) > yfinance (cached; only when allow_yf).
+    Missing stays None (source "missing")."""
+    own = load_ownership().get(ticker) or {}
+    q = _fv_quote_cached(ticker)
+    res: Dict[str, Any] = {"exchange": q.get("exchange")}
+    yfd: Optional[Dict[str, Any]] = None
+    for key, src_key in (("short_float", "short_src"), ("inst_own", "inst_src")):
+        v, src = own.get(key), "finviz_screener"
+        if v is None:
+            v, src = q.get(key), "finviz_quote"
+        if v is None and allow_yf:
+            yfd = yfd if yfd is not None else _yf_ownership(ticker)
+            v, src = yfd.get(key), "yfinance"
+        if v is None:
+            src = "missing"
+        res[key] = v
+        res[src_key] = src
+    if yfd is not None:
+        res["quote_type"] = yfd.get("quote_type")
+    return res
 
 
 def load_exchange_map() -> Dict[str, str]:
@@ -629,11 +778,8 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
     out["detail"]["short_src"] = short_src
     out["detail"]["inst_own"] = fund.get("inst_own")
     out["detail"]["inst_src"] = fund.get("inst_src")
-    if short_flag:
+    if short_flag:  # informational only (short float is no longer a must-have, 2026-10-14)
         out["detail"]["short_note"] = "short float N/A"
-    elif short is not None and short >= SHORT_FLOAT_MAX:
-        out["reason"] = f"short float {short*100:.2f}% >= 5%"
-        return out
 
     setup = weekly_retest_setup(weekly)
     if setup is None:  # computed geometry is internal only; status still gated by the TV drawing
@@ -668,10 +814,11 @@ def _apply_tv_rr_gate(ticker: str, out: Dict[str, Any], short: Optional[float],
         return out
     sf_str = f"{short*100:.2f}%" if short is not None else "N/A (flagged)"
     out["status"] = "PASS"
+    _f = lambda v: "n/a" if v is None else f"{float(v):.2f}"  # noqa: E731 (partial drawings: no zone)
     out["reason"] = (
-        f"PASS (TV) entry={float(rec['entry']):.2f} SL={float(rec['sl']):.2f} "
-        f"TP={float(rec['tp']):.2f} R:R={float(rec['rr']):.2f} "
-        f"zone=[{float(rec['zone_bottom']):.2f}-{float(rec['zone_top']):.2f}] "
+        f"PASS (TV) entry={_f(rec.get('entry'))} SL={_f(rec.get('sl'))} "
+        f"TP={_f(rec.get('tp'))} R:R={_f(rec.get('rr'))} "
+        f"zone=[{_f(rec.get('zone_bottom'))}-{_f(rec.get('zone_top'))}] "
         f"short={sf_str} $vol=${dollar_vol/1e6:.1f}M"
     )
     if short_flag:
@@ -1407,7 +1554,7 @@ def refresh_hist_map(hist_map: Dict[str, pd.DataFrame], tickers: List[str]) -> D
     return hist_map
 
 
-def write_universe_data(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
+def write_universe_data(tickers: List[str], eligible: Optional[set] = None) -> Dict[str, Dict[str, Any]]:
     """Short float / inst own / next earnings for EVERY screener ticker.
 
     The standalone report filters (report_filters.py) need these for all rows,
@@ -1420,11 +1567,18 @@ def write_universe_data(tickers: List[str]) -> Dict[str, Dict[str, Any]]:
     for i, t in enumerate(tickers, start=1):
         rec: Dict[str, Any] = {}
         try:
-            f = get_fundamentals(t)
+            f = get_fundamentals(t, allow_yf=(eligible is None or t in eligible))
             rec["short_float"] = f.get("short_float")
             rec["inst_own"] = f.get("inst_own")
+            rec["short_src"] = f.get("short_src")
+            rec["inst_src"] = f.get("inst_src")
+            if f.get("quote_type"):
+                rec["quote_type"] = f.get("quote_type")
         except Exception as exc:
             rec["fund_error"] = str(exc)
+        if eligible is not None and t not in eligible:
+            out[t] = rec  # fails $vol / history anyway: skip the (slow) earnings lookup
+            continue
         try:
             e = get_next_earnings(t, today=today)
             rec["earnings_date"] = e.get("earnings_date")
@@ -1479,7 +1633,7 @@ def main():
             "price": d.get("price"), "dollar_vol": d.get("dollar_vol"),
             "dollar_vol_30d": d.get("dollar_vol_30d"), "avg_vol_30d": d.get("avg_vol_30d"),
             "weekly_bars": d.get("weekly_bars"), "short_float": d.get("short_float"),
-            "inst_own": d.get("inst_own"),
+            "inst_own": d.get("inst_own"), "short_src": d.get("short_src"), "inst_src": d.get("inst_src"),
             "entry": d.get("entry"), "sl": d.get("sl"), "tp": d.get("tp"), "rr": d.get("rr"),
             "atrs_from_entry": d.get("atrs_from_entry"),
             "zone_lo": d.get("zone_lo"), "zone_hi": d.get("zone_hi"), "atr": d.get("atr"),
@@ -1487,7 +1641,10 @@ def main():
     pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
 
     write_verify_outputs(results)
-    write_universe_data(tickers)
+    eligible = {r["ticker"] for r in results
+                if (r.get("detail") or {}).get("weekly_bars", 0) and (r.get("detail") or {}).get("weekly_bars", 0) >= MIN_WEEKLY_BARS
+                and ((r.get("detail") or {}).get("dollar_vol_30d") or 0) >= DOLLAR_VOL_MIN}
+    write_universe_data(tickers, eligible)
 
     first_pass = passes[0] if passes else None
     header = [

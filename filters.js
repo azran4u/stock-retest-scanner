@@ -8,12 +8,11 @@
 // Labels may be functions of the live grade parameters P = {earnDays, minDollarVolM, smoothN, rrX}
 const FILTERS = [
   { col: "f_dollar_vol",      label: P => `$vol ≥ $${P.minDollarVolM}M (30d)`, core: true, must: true, tip: "30-day average dollar volume ≥ V (dollar_vol_30d; V = the $vol input, default $50M — recomputed live)" },
-  { col: "f_short_float",     label: "short float < 5%",      core: true, must: true, tip: "FinViz short float < 5% (short_float_pct). Missing → false" },
   { col: "f_no_earnings_14d", label: P => `no earnings ≤${P.earnDays}d`, core: true, must: true, tip: "Next earnings NOT within E days (E = the earnings-days input, default 14) — computed live from the stored earnings_date (today, Asia/Jerusalem). Unknown / already-passed date → false" },
   { col: "f_history",         label: "history ≥ 3y",          core: true, must: true, tip: "≥ 150 weekly bars (weekly_bars)" },
   { col: "f_rr",              label: "TV R:R ≥ 2",            core: true, must: true, tip: "TradingView drawing that counts (user-owned or approved bot drawing) AND TradingView Long Position R:R ≥ 2. No drawing / not checked / bot drawing awaiting review → fails. Part of status=PASS (Grok sync)" },
   { col: "f_technical",       label: "technical (clear uptrend)", core: false, must: true, tip: "Clear weekly uptrend (v2, tuned on Eyal's calls 2026-10-09): recent 26w high within 1 weekly ATR of (or above) the prior 2.5y high AND the 30-week EMA up ≥ 8% vs 26 weeks ago (rejects sideways charts). The current pullback is not judged. Empty with < 130 weekly bars. A user override (user_overrides.json, shown as 'not technical (Eyal)') wins over the computed flag. Must-have for a grade; not part of status" },
-  { col: "f_must_haves",      label: "all must-haves", core: false, group: "Grade", tip: "All 9 must-haves pass (FinViz list, short float < 5%, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2) = the stock gets a grade A/B/C/D" },
+  { col: "f_must_haves",      label: "all must-haves", core: false, group: "Grade", tip: "All 8 must-haves pass (FinViz list, no earnings ≤ E days, $vol ≥ V, history ≥ 3y, tradable with account, technical, price near zone, TV R:R ≥ 2) = the stock gets a grade A/B/C/D" },
   { col: "f_weekly_reversal", label: "E1 weekly reversal at zone (5w)",  core: false, group: "Evidence", ev: 1, short: "W-rev", tip: "E1: reversal-shape weekly candle (hammer/engulfing/strong_close/rejection) in the last 5 completed weeks AT the TV zone: its low ≤ zone top + 0.5 weekly ATR(14) and (low ≥ zone bottom − 0.5 weekly ATR or close ≥ zone bottom). No TV zone → false" },
   { col: "f_daily_reversal",  label: "E2 daily reversal at zone (10d)",  core: false, group: "Evidence", ev: 2, short: "D-rev", tip: "E2: reversal-shape daily candle (same shapes) in the last 10 completed sessions AT the TV zone: its low ≤ zone top + 0.5 daily ATR(14) and (low ≥ zone bottom − 0.5 daily ATR or close ≥ zone bottom). No TV zone → false" },
   { col: "ev_first_reaction", label: "E3 first reaction",        core: false, group: "Evidence", ev: 3, short: "1st reaction", tip: "E3: in the current pullback (after the highest weekly high of the last 52 weeks) a weekly low ≤ zone top, followed by a LATER weekly close ≥ zone top + 0.5 weekly ATR(14). TV zone needed" },
@@ -23,17 +22,20 @@ const FILTERS = [
   { col: "ev_ma_support",     label: "E7 MA support",            core: false, group: "Evidence", ev: 7, short: "MA", tip: "E7: SMA 50/100/150/200 (daily): latest daily low ≤ SMA + 1 daily ATR and latest close ≥ SMA, AND the same SMA held as support before (≥ 1 earlier touch in the ~2 years before the last 20 sessions: came from above, low ≤ SMA + 1 ATR, close ≥ SMA, local low, then a close ≥ SMA + 2 ATR within 20 sessions)" },
   { col: "ev_fib",            label: "E8 fib confluence",        core: false, group: "Evidence", ev: 8, short: "fib", tip: "E8: the TV zone (± 0.25 weekly ATR) contains the 0.382 / 0.5 / 0.618 retracement of the latest weekly swing: swing high = highest weekly high of the last 52 weeks, swing low = lowest weekly low in the 52 weeks up to it. TV zone needed" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
-  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + short float + no earnings ≤14d + history all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
+  { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + no earnings ≤14d + history + technical all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
   { col: "f_bot_review",      label: "bot drawing — review needed", core: false, group: "TradingView", tip: "The bot drew the Rectangle + Long Position for this ticker (bot_drawings.json); it does NOT count toward f_rr / PASS / Grok until you approve it (approved_bot_drawings.json). Editing its levels on TradingView makes it yours" },
   { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", must: true, tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Must-have for a grade; not part of status" },
   { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
   { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
+  { col: "f_inst_own_x",      label: P => `inst own ≥ ${P.instMin}%`, core: false, group: "Ownership", tip: "FinViz Inst Own ≥ X% (inst_own_pct; source FinViz screener v=131, then FinViz quote, then yfinance). Missing data handled by the 'missing' choice next to it (default: include). Not part of status" },
+  { col: "f_short_float_y",   label: P => `short float < ${P.shortMax}%`, core: false, group: "Ownership", tip: "FinViz Short Float < Y% (short_float_pct; same sources). No longer a must-have (Eyal 2026-10-14). Missing data handled by the 'missing' choice next to it (default: include). Not part of status" },
+  { col: "ownership_missing_f", label: "ownership data missing", core: false, group: "Ownership", tip: "Inst own and/or short float unknown (ETFs, funds, some ADRs / new listings). Shown with a 'data missing' chip" },
   { col: "f_near_zone",       label: "price near zone (≤1 ATR)", core: false, group: "TradingView", must: true, tip: "TV drawings only: latest daily close inside the TV zone or within 1 × weekly ATR(14) of its nearest edge. Empty (fails) when there is no drawing. Must-have for a grade; not part of status" },
 ];
 const CORE = FILTERS.filter(f => f.core).map(f => f.col);
-// The 9 must-haves (1 = in the FinViz list is true for every report row): a grade needs all of them
-const MUST = ["f_short_float", "f_no_earnings_14d", "f_dollar_vol", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr"];
-const MUST_LABEL = { f_short_float: "short float ≥ 5%", f_no_earnings_14d: P => `earnings ≤${P.earnDays}d / unknown`,
+// The 8 must-haves (short float removed 2026-10-14; inst own ≥ X% joins when the "inst own must-have" setting is on) (1 = in the FinViz list is true for every report row): a grade needs all of them
+const MUST = ["f_no_earnings_14d", "f_dollar_vol", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr"];
+const MUST_LABEL = { f_inst_own_x: P => `inst own < ${P.instMin}% / missing`, f_no_earnings_14d: P => `earnings ≤${P.earnDays}d / unknown`,
   f_dollar_vol: P => `$vol < $${P.minDollarVolM}M`, f_history: "history < 3y", f_tradable: "not tradable with account",
   f_technical: "not technical", f_near_zone: "not near zone", f_rr: "no counted TV R:R ≥ 2" };
 const EVIDENCE = FILTERS.filter(f => f.ev).sort((a, b) => a.ev - b.ev);
@@ -42,19 +44,27 @@ const EARNINGS_BLACKOUT_DAYS = 14;  // default E
 
 // ---- live grade parameters (E, V, N, X), shared by both pages (localStorage srs_grade_params_v1) ----
 const PARAMS_KEY = "srs_grade_params_v1";
-const PARAM_DEFAULTS = { earnDays: 14, minDollarVolM: 50, smoothN: 5, rrX: 3 };
+const PARAM_DEFAULTS = { earnDays: 14, minDollarVolM: 50, smoothN: 5, rrX: 3,
+  instMin: 60, shortMax: 5, instMissing: "include", shortMissing: "include", instMust: 0 };
+const MISSING_MODES = ["include", "exclude", "only"];
 const PARAM_FIELDS = [
   { k: "earnDays", label: "E: no earnings (days)", step: "1", min: "0", tip: "Must-have: no earnings within E days (default 14). Drives the earnings filter" },
   { k: "minDollarVolM", label: "V: min $vol ($M)", step: "5", min: "0", tip: "Must-have: 30-day average dollar volume ≥ V million (default 50). Drives the $vol filter" },
   { k: "smoothN", label: "N: smooth weeks", step: "1", min: "0", tip: "E5: smooth pullback ≥ N weeks (default 5). Drives the smooth-pullback filter" },
   { k: "rrX", label: "X: TV R:R for E6", step: "0.1", min: "0", tip: "E6: TV R:R ≥ X (default 3; the must-have is ≥ 2)" },
 ];
+const OWN_FIELDS = [
+  { k: "instMin", label: "X %", step: "1", min: "0", tip: "inst own ≥ X% (default 60)" },
+  { k: "shortMax", label: "Y %", step: "0.5", min: "0", tip: "short float < Y% (default 5)" },
+];
 const _pnum = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
 function loadParams() {
   try {
     const s = JSON.parse(localStorage.getItem(PARAMS_KEY) || "{}") || {};
     const out = Object.assign({}, PARAM_DEFAULTS);
-    for (const f of PARAM_FIELDS) { const n = _pnum(s[f.k]); if (n !== null && n >= 0) out[f.k] = n; }
+    for (const f of PARAM_FIELDS.concat(OWN_FIELDS)) { const n = _pnum(s[f.k]); if (n !== null && n >= 0) out[f.k] = n; }
+    for (const k of ["instMissing", "shortMissing"]) if (MISSING_MODES.includes(s[k])) out[k] = s[k];
+    out.instMust = s.instMust ? 1 : 0;
     return out;
   } catch (_) { return Object.assign({}, PARAM_DEFAULTS); }
 }
@@ -105,8 +115,17 @@ function applyLive(rows, P) {
       const x = _pnum(r.tv_rr);
       r.f_rr_x = isTrueFlag(r.f_rr) && x !== null && x >= P.rrX ? "True" : "False";
     }
+    if ("inst_own_pct" in r) {
+      const own = (v, ok, mode) => v === null ? (mode === "exclude" ? "False" : "True") : (mode === "only" ? "False" : (ok ? "True" : "False"));
+      const io = _pnum(r.inst_own_pct), sf = _pnum(r.short_float_pct);
+      r.inst_own_missing = io === null; r.short_float_missing = sf === null;
+      r.f_inst_own_x = own(io, io !== null && io >= P.instMin, P.instMissing);
+      r.f_short_float_y = own(sf, sf !== null && sf < P.shortMax, P.shortMissing);
+      r.ownership_missing_f = (io === null || sf === null) ? "True" : "False";
+    }
     if (!("ev_fib" in r)) { r.grade = ""; r.f_must_haves = ""; continue; }  // older schema: no grade
-    const failed = MUST.filter(c => !isTrueFlag(r[c]));
+    const must = P.instMust ? MUST.concat(["f_inst_own_x"]) : MUST;
+    const failed = must.filter(c => !isTrueFlag(r[c]));
     r.mh_failed = failed.map(c => c === "f_technical" && /^not technical/.test(r.tech_override || "") ? "not technical (Eyal)" : textOf(MUST_LABEL[c], P)).join(", ");
     r.f_must_haves = failed.length ? "False" : "True";
     const missing = EVIDENCE.filter(f => !isTrueFlag(r[f.col]));
@@ -210,6 +229,7 @@ function availableFilters(headers) {
   const hdr = new Set(headers);
   // live-computed columns exist when their inputs are in the CSV
   if (hdr.has("tv_rr") && hdr.has("f_rr")) hdr.add("f_rr_x");
+  if (hdr.has("inst_own_pct")) { hdr.add("f_inst_own_x"); hdr.add("f_short_float_y"); hdr.add("ownership_missing_f"); }
   if (hdr.has("tv_entry")) { hdr.add("f_tradable"); hdr.add("f_not_tradable"); }
   const out = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c) && (c !== "f_rr" || hdr.has("tv_found"))));
   if (hdr.has("ev_fib")) { out.add("f_must_haves"); GRADES.concat(["-"]).forEach(g => out.add("grade:" + g)); }
@@ -220,8 +240,10 @@ function availableFilters(headers) {
 const GROUPS_KEY = "srs_filter_groups_v1";
 const GROUP_DEFS = [
   { key: "must", name: "Must-haves", open: true,
-    cols: ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr", "f_must_haves"] },
+    cols: ["f_dollar_vol", "f_no_earnings_14d", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr", "f_must_haves"] },
   { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col) },
+  { key: "own", name: "Ownership (inst own / short float)", open: false, own: true,
+    cols: ["f_inst_own_x", "f_short_float_y", "ownership_missing_f"] },
   { key: "tv", name: "TradingView drawings", open: false,
     cols: ["tv_found", "needs_drawing", "f_bot_review", "f_tv_stale", "f_not_tradable"] },
 ];
@@ -269,6 +291,13 @@ function renderFilterBox(box, allRows, available, checked, onChange) {
           x === "-" ? "Stocks failing at least one must-have (no grade)" : `Grade ${x} (checked grades are ORed, then ANDed with the other filters)`,
           avail ? allRows.filter(r => r.grade === x).length : null, avail);
       }).join("") + `</div><div class="frow"><span class="sublab">Evidence</span>` + fs.map(fchk).join("") + `</div>`;
+    } else if (g.own) {
+      const sel = (k, v) => `<select data-op="${k}" title="rows with no data: include (pass, default) / exclude (fail) / only (show only missing)">` +
+        MISSING_MODES.map(m => `<option value="${m}"${m === v ? " selected" : ""}>missing: ${m}</option>`).join("") + `</select>`;
+      const num = f => `<label class="gb" title="${f.tip}">${f.label}<input type="number" data-op="${f.k}" step="${f.step}" min="${f.min}" value="${P[f.k]}" style="width:4.5em"/></label>`;
+      body = `<div class="frow">${fchk(byCol.f_inst_own_x)} ${num(OWN_FIELDS[0])} ${sel("instMissing", P.instMissing)}</div>` +
+        `<div class="frow">${fchk(byCol.f_short_float_y)} ${num(OWN_FIELDS[1])} ${sel("shortMissing", P.shortMissing)}</div>` +
+        `<div class="frow">${fchk(byCol.ownership_missing_f)} <label class="gb" title="Count inst own ≥ X% (with the missing choice) as a 9th must-have for the grade"><input type="checkbox" data-op="instMust" ${P.instMust ? "checked" : ""}/> inst own as must-have</label></div>`;
     } else body = `<div class="frow">` + fs.map(fchk).join("") + `</div>`;
     html.push(groupHtml(g.key, g.name, active, body, g.open));
   }
@@ -280,6 +309,18 @@ function renderFilterBox(box, allRows, available, checked, onChange) {
   box.classList.add("fgroups");
   box.innerHTML = html.join("");
   wireGroups(box);
+  box.querySelectorAll("[data-op]").forEach(inp => {
+    inp.addEventListener("change", () => {
+      const cur = loadParams(), k = inp.dataset.op;
+      if (inp.type === "checkbox") cur[k] = inp.checked ? 1 : 0;
+      else if (inp.tagName === "SELECT") cur[k] = inp.value;
+      else { const n = _pnum(inp.value); if (n === null || n < 0) return; cur[k] = n; }
+      saveParams(cur);
+      applyLive(allRows, cur);
+      renderFilterBox(box, allRows, available, checked, onChange);
+      onChange();
+    });
+  });
   box.querySelectorAll("input[data-fcol]").forEach(inp => {
     inp.addEventListener("change", () => {
       const c = inp.getAttribute("data-fcol");
@@ -394,8 +435,19 @@ function injectCss() {
   document.head.appendChild(st);
 }
 
+/** "data missing" chip for rows without inst own and/or short float (never silently filtered). */
+function ownershipChip(r) {
+  const miss = [];
+  if (_pnum(r.inst_own_pct) === null) miss.push("inst own");
+  if (_pnum(r.short_float_pct) === null) miss.push("short float");
+  return miss.length ? `<span class="chip own-miss" title="${miss.join(" + ")} unknown (FinViz + yfinance)" style="background:#fff3cd;color:#7a5b00;border:1px solid #e0c060;border-radius:8px;padding:0 5px;font-size:11px;margin-left:4px">data missing</span>` : "";
+}
+function ownershipText(r) {
+  const f = (v, s) => { const n = _pnum(v); return n === null ? "n/a" : n.toFixed(1) + "%" + (s && s !== "finviz_screener" ? ` (${s})` : ""); };
+  return `inst ${f(r.inst_own_pct, r.inst_own_src)} · short ${f(r.short_float_pct, r.short_float_src)}`;
+}
 global.SrsFilters = { mountSettingsGroup, updateSettingsGroup, FILTERS, CORE, MUST, EVIDENCE, GRADES, GRADE_RANK, PARAM_DEFAULTS, loadParams, saveParams, resetParams,
   mountParams, applyLive, labelOf, evidenceChips, evidenceTip, gradeBadge, EARNINGS_BLACKOUT_DAYS, isTrueFlag, todayJerusalemISO, liveDaysToEarnings,
   enrichEarningsLive, rowPasses, availableFilters, renderFilterBox, sizingFlags, tvSymbolsForRows,
-  downloadWatchlist, injectCss };
+  downloadWatchlist, injectCss, ownershipChip, ownershipText, MISSING_MODES };
 })(window);

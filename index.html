@@ -187,6 +187,7 @@ function card(r) {
       <dt>SL</dt><dd>${f2(r.tv_sl)}</dd>
       <dt>TP</dt><dd>${f2(r.tv_tp)}</dd>
       <dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd>
+      <dt>Own</dt><dd>${esc(SrsFilters.ownershipText(r))}${SrsFilters.ownershipChip(r)}</dd>
     </dl>${posHtml(r)}${Fundamentals.details(r)}</div></div>`;
 }
 
@@ -229,7 +230,7 @@ function ndCard(r) {
       <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}${infoBadges(r)}</div>
       <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div></div>
     ${gradeLine(r)}
-    <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd></dl>
+    <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd><dt>Own</dt><dd>${esc(SrsFilters.ownershipText(r))}${SrsFilters.ownershipChip(r)}</dd></dl>
     ${r.tv_bot_note ? `<div class="muted" style="font-size:.75rem;margin-top:4px">${esc(r.tv_bot_status)}: ${esc(r.tv_bot_note)}</div>` : ""}</div></div>`;
 }
 

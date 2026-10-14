@@ -11,7 +11,7 @@ Store: /workspace/stock-screener/tv_drawings.json, keyed by ticker:
           "sl": 38.46, "tp": 51.55, "rr": 2.59, "read_at": "...", "read_date": "YYYY-MM-DD",
           "symbol": "NYSE:ST"}}
 
-Daily target set = report rows passing f_dollar_vol AND f_short_float AND
+Daily target set = report rows passing f_dollar_vol AND
 f_no_earnings_14d (evaluated LIVE vs today from the cached earnings date, same as
 the dashboard) AND f_history (no smooth-streak requirement: covers every stock that
 could PASS or needs a drawing).
@@ -82,7 +82,7 @@ SHOT_MAX_WIDTH = 1280
 SHOT_MAX_BYTES = 300_000
 TZ = ZoneInfo("Asia/Jerusalem")
 
-TARGET_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]
+TARGET_FILTERS = ["f_dollar_vol", "f_no_earnings_14d", "f_history"]
 TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date",
            "tv_screenshot"]
 EARNINGS_BLACKOUT_DAYS = 14  # same as stock_screen.EARNINGS_BLACKOUT_DAYS / dashboard

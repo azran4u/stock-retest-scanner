@@ -298,21 +298,21 @@ def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path
     out_dir.mkdir(parents=True, exist_ok=True)
     jp = out_dir / "grok_needs_drawing_target.json"
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
-                              "rule": "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
+                              "rule": "f_dollar_vol AND f_no_earnings_14d AND f_history "
                                       "AND no TradingView drawing (never read counts) AND not marked not-technical by the user "
                                       "(user_overrides.json)"}, indent=2) + "\n")
     (out_dir / "grok_needs_drawing_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp
 
 
-REVIEW_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]  # = read targets / needs_drawing
+REVIEW_FILTERS = ["f_dollar_vol", "f_no_earnings_14d", "f_history"]  # = read targets / needs_drawing
 
 
 def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path:
     """grok_review_target.{json,txt} (TradingView watchlist `grok_review`): EXCHANGE:TICKER (TV
     spelling) for every row whose drawing is a bot drawing still "review needed" (f_bot_review:
     tv_source == bot — not approved, levels not edited by the user) AND that is in the read-target
-    universe (f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history, the same universe
+    universe (f_dollar_vol AND f_no_earnings_14d AND f_history, the same universe
     as grok_needs_drawing)."""
     t = lambda v: v is True or str(v) == "True"  # noqa: E731
     mask = pd.Series(True, index=df.index)
@@ -328,7 +328,7 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     jp = out_dir / "grok_review_target.json"
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_bot_review (bot drawing, review needed: not approved / not edited) AND "
-                                      "f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history "
+                                      "f_dollar_vol AND f_no_earnings_14d AND f_history "
                                       "AND not marked not-technical by the user (user_overrides.json)"},
                              indent=2) + "\n")
     (out_dir / "grok_review_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))

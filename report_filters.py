@@ -7,7 +7,8 @@ earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
-sync): f_dollar_vol, f_short_float, f_no_earnings_14d, f_history, f_rr.
+sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr. (f_short_float / f_inst_own are
+informational dashboard filters since 2026-10-14; None = data missing.)
 The smooth/reversal filters never change PASS.
 
 f_rr = the user's TradingView drawing (latest stored reading in
@@ -60,7 +61,8 @@ CONFIG: Dict[str, Any] = {
     # core screen rules (values defined once in stock_screen.py)
     "dollar_vol_min": float(ss.DOLLAR_VOL_MIN),          # f_dollar_vol: 30d avg $vol >= $50M
     "avg_vol_days": int(ss.AVG_VOL_DAYS),                # 30d avg volume x last close
-    "short_float_max_pct": float(ss.SHORT_FLOAT_MAX) * 100.0,  # f_short_float: < 5%
+    "short_float_max_pct": float(ss.SHORT_FLOAT_MAX) * 100.0,  # f_short_float (info): < 5%
+    "inst_own_min_pct": float(ss.INST_OWN_MIN) * 100.0,         # f_inst_own (info): >= 60%
     "earnings_blackout_days": int(ss.EARNINGS_BLACKOUT_DAYS),  # f_no_earnings_14d
     "min_weekly_bars": int(ss.MIN_WEEKLY_BARS),          # f_history: >= 150 weekly bars (~3y)
     "rr_min": float(ss.RR_MIN),                          # f_rr: retest setup AND R:R >= 2
@@ -107,9 +109,11 @@ CONFIG: Dict[str, Any] = {
     "bot_match_abs": 0.011,
 }
 
-CORE_FILTERS = [  # status=PASS iff all true
-    "f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history", "f_rr",
+CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
+    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr",
 ]
+# ownership data (informational filters; None = data missing, never silently False)
+OWNERSHIP_COLS = ["f_short_float", "f_inst_own", "short_float_src", "inst_own_src", "ownership_missing"]
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
 ALL_FILTERS = CORE_FILTERS + EXTRA_FILTERS
 
@@ -140,6 +144,7 @@ REPORT_COLS = [
     "ticker", "status", "failed_filters",
     *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS, "needs_drawing",
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
+    *OWNERSHIP_COLS,
     "earnings_date", "days_to_earnings", "weekly_bars",
     "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
     *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS, *EVIDENCE_COLS,
@@ -284,6 +289,7 @@ def compute_row(
 
     # --- short float ------------------------------------------------------
     r["short_float_pct"] = short_float_pct
+    r["f_short_float"] = None
     if short_float_pct is None:
         notes.append("short float N/A")
     else:
@@ -960,7 +966,7 @@ def tv_note(r: Dict[str, Any]) -> str:
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
 
-NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_short_float", "f_no_earnings_14d", "f_history"]
+NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_no_earnings_14d", "f_history"]
 
 
 # ---------------------------------------------------------------------------
@@ -996,7 +1002,7 @@ def apply_user_overrides(r: Dict[str, Any], ticker: str) -> Dict[str, Any]:
 
 
 def compute_needs_drawing(r: Dict[str, Any]) -> bool:
-    """needs_drawing = f_dollar_vol AND f_short_float AND f_no_earnings_14d AND f_history
+    """needs_drawing = f_dollar_vol AND f_no_earnings_14d AND f_history
     AND f_technical (after user overrides; since 2026-10-09)
     AND no TradingView drawing (a bot drawing the user rejected counts as no drawing) (tv_found != yes; never-read tickers count until read). Informational (Grok "needs drawing" list); NOT part of status.
     Tickers with a bot drawing (tv_source bot / bot-approved, even before the nightly read
@@ -1087,11 +1093,11 @@ def apply_filters_to_report(
         t = str(src["ticker"]).strip()
         uni = universe.get(t, {})
         fv = fv_cached(t)
-        sf = _num(src.get("short_float_pct"))
+        sf, sf_src = _num(src.get("short_float_pct")), str(uni.get("short_src") or "screen")
         if sf is None:
-            sf = _pct(uni.get("short_float"))
+            sf, sf_src = _pct(uni.get("short_float")), str(uni.get("short_src") or "universe")
         if sf is None:
-            sf = _pct(fv.get("short_float"))
+            sf, sf_src = _pct(fv.get("short_float")), "finviz_quote"
         # Earnings: the earnings cache (absolute next date, kept until it passes)
         # is the source of truth; then universe json; then the screen row.
         ed, stale = None, None
@@ -1109,12 +1115,16 @@ def apply_filters_to_report(
         tv = src.get("tradingview_url")
         r = compute_row(t, hist_map.get(t), report_date, sf, ed, _exchange_from_tv(tv),
                         tv_rec=tv_store.get(t.upper()))
-        inst = _num(src.get("inst_own_pct"))
+        inst, inst_src = _num(src.get("inst_own_pct")), str(uni.get("inst_src") or "screen")
         if inst is None:
-            inst = _pct(uni.get("inst_own"))
+            inst, inst_src = _pct(uni.get("inst_own")), str(uni.get("inst_src") or "universe")
         if inst is None:
-            inst = _pct(fv.get("inst_own"))
+            inst, inst_src = _pct(fv.get("inst_own")), "finviz_quote"
         r["inst_own_pct"] = inst
+        r["f_inst_own"] = None if inst is None else bool(inst >= CONFIG["inst_own_min_pct"])
+        r["short_float_src"] = sf_src if sf is not None else "missing"
+        r["inst_own_src"] = inst_src if inst is not None else "missing"
+        r["ownership_missing"] = ",".join(k for k, v in (("short_float", sf), ("inst_own", inst)) if v is None)
         r["tradingview_url"] = tv if isinstance(tv, str) else ""
         fz = src.get("finviz_url")
         r["finviz_url"] = fz if isinstance(fz, str) and fz else f"https://finviz.com/quote.ashx?t={t}"

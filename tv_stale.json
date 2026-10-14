@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-15T00:07:44+03:00",
+  "generated_at": "2026-10-15T00:12:01+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -2010,7 +2010,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 9.1723,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "TRV",
