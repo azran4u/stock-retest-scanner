@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-14T23:46:26+03:00",
+  "generated_at": "2026-10-14T23:58:08+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -490,7 +490,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 2.0118,
       "dist_above_top_atr": 0.4374,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "BAX",
@@ -506,7 +506,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 1.943,
       "dist_above_top_atr": 1.2558,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "BDX",
@@ -778,7 +778,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 43.7745,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "DGX",
@@ -1034,7 +1034,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 18.2586,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "FTI",
@@ -1178,7 +1178,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 7.8422,
       "dist_above_top_atr": 0.6809,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "ITW",
@@ -1274,7 +1274,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 5.9125,
       "dist_above_top_atr": 0.5581,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "LFUS",
@@ -1402,7 +1402,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 2.3393,
       "dist_above_top_atr": 0.2522,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "MOG-A",
@@ -1418,7 +1418,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 33.1135,
       "dist_above_top_atr": 0.5028,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "MRK",
@@ -1626,7 +1626,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 52.7986,
       "dist_above_top_atr": 0.0953,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "PKG",
@@ -1754,7 +1754,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 24.5157,
       "dist_above_top_atr": 0.6865,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "ROST",
@@ -1882,7 +1882,7 @@
       "last_bar": "2026-10-13",
       "weekly_atr": 4.474,
       "dist_above_top_atr": 0.0335,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "SSNC",
@@ -1946,7 +1946,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 139.8191,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "SWK",
@@ -1978,7 +1978,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 8.6974,
       "dist_above_top_atr": 1.3567,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     },
     {
       "ticker": "THC",
@@ -2314,7 +2314,7 @@
       "last_bar": "2026-10-14",
       "weekly_atr": 18.961,
       "dist_above_top_atr": 0.4636,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-14"
     }
   ]
 }
