@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T00:09:43+03:00",
+  "generated_at": "2026-10-16T00:18:47+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -570,7 +570,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 2.9198,
       "dist_above_top_atr": -0.7295,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "ASB",
@@ -762,7 +762,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 27.6076,
       "dist_above_top_atr": 1.3532,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "CLH",
@@ -2084,13 +2084,13 @@
       "zone_bottom": 88.71,
       "zone_top": 90.24,
       "sl": 82.27,
-      "tp": 102.48,
-      "rr": 2.21,
+      "tp": 101.51,
+      "rr": 2.0,
       "latest_close": 92.57,
       "last_bar": "2026-10-15",
       "weekly_atr": 5.7557,
       "dist_above_top_atr": 0.4048,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "TGT",
@@ -2106,7 +2106,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 8.8803,
       "dist_above_top_atr": 1.6463,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "THC",
@@ -2170,7 +2170,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 1.9119,
       "dist_above_top_atr": 1.2815,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "UBS",
@@ -2314,7 +2314,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 5.194,
       "dist_above_top_atr": 0.1155,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "VRSN",
@@ -2426,7 +2426,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 1.779,
       "dist_above_top_atr": 1.8719,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "WTS",
