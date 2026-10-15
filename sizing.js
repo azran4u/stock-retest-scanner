@@ -25,8 +25,11 @@
   /** {shares, cost, risk, profit, cap} or null when the row has no TV drawing. */
   function compute(row, s) {
     s = s || load();
-    if (!row || row.tv_found !== "yes") return null;
-    const entry = num(row.tv_entry), sl = num(row.tv_sl), tp = num(row.tv_tp);
+    if (!row) return null;
+    // TV drawing levels; otherwise the last-week hammer levels (display only)
+    const tv = row.tv_found === "yes";
+    if (!tv && !(row.f_last_week_reversal === "True" && num(row.hammer_entry) !== null)) return null;
+    const entry = num(tv ? row.tv_entry : row.hammer_entry), sl = num(tv ? row.tv_sl : row.hammer_sl), tp = num(tv ? row.tv_tp : row.hammer_tp);
     if (entry === null || sl === null || tp === null || entry <= 0) return null;
     const perShare = entry - sl;
     if (perShare <= 0) return { shares: 0, cost: 0, risk: 0, profit: 0, cap: "entry ≤ SL" };

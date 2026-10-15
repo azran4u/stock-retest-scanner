@@ -140,6 +140,9 @@ EVIDENCE_COLS = [
 # the user's approval (does NOT count toward f_rr / PASS / grok); tv_bot_status / tv_bot_note = detail
 SOURCE_COLS = ["tv_source", "f_bot_review", "tv_bot_status", "tv_bot_note"]
 
+HAMMER_COLS = ["hammer_entry", "hammer_sl", "hammer_tp", "hammer_tp_date", "hammer_rr", "hammer_no_room",
+               "hammer_calm_weeks", "hammer_calm_note", "hammer_score"]
+
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
     *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS, "needs_drawing",
@@ -151,6 +154,7 @@ REPORT_COLS = [
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
     "f_last_week_reversal", "last_week_reversal_kind", "last_week_date",
+    *HAMMER_COLS,
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
@@ -250,6 +254,102 @@ def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
     if strict:
         return True, "hammer (green)" if sh["green"] else "hammer (red)", dt
     return False, "", dt
+
+
+HAMMER_SL_ATR_BUFFER = 0.05   # hammer SL = hammer week low - 0.05 x weekly ATR(14) (Eyal 2026-10-15)
+HAMMER_TP_LOOKBACK_WEEKS = 52  # TP = highest weekly body (open/close) in the 52 weeks before the hammer
+HAMMER_CALM_CAP = 104
+EARN_HIST_TTL_DAYS = 30
+
+
+def earnings_history(ticker: str) -> Tuple[Optional[List[str]], str]:
+    """Past (and next) earnings dates (YYYY-MM-DD) from yfinance get_earnings_dates, cached
+    cache/earnhist_{T}.json for EARN_HIST_TTL_DAYS (failures too). Returns (dates or None, note)."""
+    cf = ss.CACHE_DIR / f"earnhist_{ticker}.json"
+    try:
+        c = json.loads(cf.read_text()) if cf.exists() else None
+        ttl = EARN_HIST_TTL_DAYS if c and c.get("dates") else 1  # failures retried after a day
+        if c and (pd.Timestamp.utcnow().tz_localize(None) - pd.Timestamp(c["fetched_at"])).days < ttl:
+            return c.get("dates"), c.get("note", "")
+    except Exception:
+        pass
+    dates, note = None, ""
+    import time as _time
+    for attempt in range(2):
+        try:
+            import yfinance as yf
+            df = yf.Ticker(ticker.replace(".", "-")).get_earnings_dates(limit=16)
+            if df is not None and len(df):
+                dates = sorted({str(pd.Timestamp(x).date()) for x in df.index})
+                note = ""
+                break
+            note = "no earnings dates from yfinance"
+        except Exception as e:
+            note = f"earnings history error: {str(e)[:80]}"
+        _time.sleep(2)
+    try:
+        cf.write_text(json.dumps({"fetched_at": str(pd.Timestamp.utcnow().tz_localize(None)), "dates": dates, "note": note}))
+    except Exception:
+        pass
+    return dates, note
+
+
+def compute_hammer_trade(ticker: str, wk: Optional[pd.DataFrame]) -> Dict[str, Any]:
+    """Trade levels for a last-week strict hammer (wk = completed weekly bars; last = hammer week).
+    entry = hammer close; SL = hammer low - HAMMER_SL_ATR_BUFFER x weekly ATR(14);
+    TP = max weekly Open/Close in the 52 weeks before the hammer week (bodies, not wicks);
+    rr = (TP - entry) / (entry - SL), None + hammer_no_room when TP <= entry.
+    Calm streak back from the week before the hammer: green (close > open), or red with volume <
+    30-week SMA of weekly volume (rolling, incl. that week; same as the smooth streak), or red loud
+    week containing an earnings date (yfinance history; unknown -> not calm, noted), or a doji
+    (body <= 10% of range, any colour / volume; no close-position condition). Cap 104.
+    score = rr x ln(1 + calm_weeks) (0 calm weeks -> 0; no rr -> empty)."""
+    out: Dict[str, Any] = {c: None for c in HAMMER_COLS}
+    if wk is None or len(wk) < 3:
+        return out
+    i = len(wk) - 1
+    atr = ss.atr_series(wk, 14)
+    a = float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else 0.0
+    entry = float(wk["Close"].iloc[i])
+    sl = float(wk["Low"].iloc[i]) - HAMMER_SL_ATR_BUFFER * a
+    prev = wk.iloc[max(0, i - HAMMER_TP_LOOKBACK_WEEKS):i]
+    body_hi = prev[["Open", "Close"]].max(axis=1)
+    tp = float(body_hi.max())
+    out.update(hammer_entry=round(entry, 4), hammer_sl=round(sl, 4), hammer_tp=round(tp, 4),
+               hammer_tp_date=str(pd.Timestamp(body_hi.idxmax()).date()))
+    if tp <= entry or entry <= sl:
+        out["hammer_no_room"] = True
+    else:
+        out["hammer_no_room"] = False
+        out["hammer_rr"] = round((tp - entry) / (entry - sl), 3)
+    vs = wk["Volume"].rolling(30).mean()
+    calm, note, earn = 0, "", None
+    for j in range(i - 1, max(-1, i - 1 - HAMMER_CALM_CAP), -1):
+        o, c, v, sm = (float(wk["Open"].iloc[j]), float(wk["Close"].iloc[j]),
+                       float(wk["Volume"].iloc[j]), vs.iloc[j])
+        h_, l_ = float(wk["High"].iloc[j]), float(wk["Low"].iloc[j])
+        if c > o:
+            calm += 1; continue
+        if h_ > l_ and abs(c - o) <= 0.10 * (h_ - l_):  # doji (body <= 10% of range), any colour/volume
+            calm += 1; continue
+        if pd.notna(sm) and v < float(sm):
+            calm += 1; continue
+        if earn is None:
+            earn, en = earnings_history(ticker)
+            earn = earn or []
+            if not earn:
+                note = f"loud red week {pd.Timestamp(wk.index[j]).date()}: earnings unknown ({en or 'none'}) -> not calm"
+                break
+        we = pd.Timestamp(wk.index[j]).normalize()
+        if any(we - pd.Timedelta(days=6) <= pd.Timestamp(d) <= we for d in earn):
+            calm += 1; continue
+        note = note or f"stopped at loud red week {we.date()}"
+        break
+    out["hammer_calm_weeks"] = calm
+    out["hammer_calm_note"] = note
+    if out["hammer_rr"] is not None:
+        out["hammer_score"] = round(out["hammer_rr"] * float(np.log1p(calm)), 3)
+    return out
 
 
 def _scan_reversals(bars: Optional[pd.DataFrame], lookback: int,
@@ -443,7 +543,7 @@ def compute_row(
 
 REVERSAL_COLS = ["f_weekly_reversal", "weekly_reversal_kind", "weekly_reversal_date",
                  "f_daily_reversal", "daily_reversal_kind", "daily_reversal_date",
-                 "f_last_week_reversal", "last_week_reversal_kind", "last_week_date"]
+                 "f_last_week_reversal", "last_week_reversal_kind", "last_week_date"] + HAMMER_COLS
 
 
 def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[str, Any]) -> Dict[str, Any]:
@@ -453,7 +553,8 @@ def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[
     C = CONFIG
     out = {"f_weekly_reversal": False, "weekly_reversal_kind": "", "weekly_reversal_date": "",
            "f_daily_reversal": False, "daily_reversal_kind": "", "daily_reversal_date": "",
-           "f_last_week_reversal": False, "last_week_reversal_kind": "", "last_week_date": ""}
+           "f_last_week_reversal": False, "last_week_reversal_kind": "", "last_week_date": "",
+           **{c: None for c in HAMMER_COLS}}
     if daily is None or len(daily) < 2:
         return out
     zone = None
@@ -468,6 +569,8 @@ def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[
     out["f_weekly_reversal"], out["weekly_reversal_kind"], out["weekly_reversal_date"] = hit, kind, dt
     # last COMPLETED week only, shape only (no zone) — Eyal 2026-10-15; informational
     out["f_last_week_reversal"], out["last_week_reversal_kind"], out["last_week_date"] = _last_bar_reversal(wk)
+    if out["f_last_week_reversal"]:
+        out.update(compute_hammer_trade(str(r.get("ticker") or ""), wk))
     hit, kind, dt = _scan_reversals(dd, C["daily_reversal_lookback_days"], zone)
     out["f_daily_reversal"], out["daily_reversal_kind"], out["daily_reversal_date"] = hit, kind, dt
     return out

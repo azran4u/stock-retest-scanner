@@ -22,6 +22,8 @@ const FILTERS = [
   { col: "ev_ma_support",     label: "E7 MA support",            core: false, group: "Evidence", ev: 7, short: "MA", tip: "E7: SMA 50/100/150/200 (daily): latest daily low ≤ SMA + 1 daily ATR and latest close ≥ SMA, AND the same SMA held as support before (≥ 1 earlier touch in the ~2 years before the last 20 sessions: came from above, low ≤ SMA + 1 ATR, close ≥ SMA, local low, then a close ≥ SMA + 2 ATR within 20 sessions)" },
   { col: "ev_fib",            label: "E8 fib confluence",        core: false, group: "Evidence", ev: 8, short: "fib", tip: "E8: the TV zone (± 0.25 weekly ATR) contains the 0.382 / 0.5 / 0.618 retracement of the latest weekly swing: swing high = highest weekly high of the last 52 weeks, swing low = lowest weekly low in the 52 weeks up to it. TV zone needed" },
   { col: "f_last_week_reversal", label: "last week hammer (no zone)", core: false, group: "Evidence", short: "LW-rev", tip: "The LAST COMPLETED weekly candle (most recent finished W-FRI week, not the current partial week) is a STRICT HAMMER, green or red: lower wick ≥ 2 × body, close ≥ 60% of the range from the low, lower wick ≥ 2 × upper wick, not a tiny doji (range < 0.2 weekly ATR and body < 0.05 ATR). No zone requirement. Informational: not a must-have, not a grade item" },
+  { col: "f_hammer_rr_x", label: P => `hammer R:R ≥ ${P.hamRrX}`, core: false, group: "Evidence", tip: "Last-week strict hammer trade: hammer_rr = (TP − entry) ÷ (entry − SL) ≥ H (H input, default 2). entry = hammer week close; SL = hammer low − 0.05 × weekly ATR(14); TP = highest weekly body (open/close) in the 52 weeks before the hammer. TP ≤ entry → no room (fails). Informational" },
+  { col: "f_calm_n", label: P => `calm weeks ≥ ${P.calmN}`, core: false, group: "Evidence", tip: "Last-week strict hammer: consecutive calm weeks before the hammer week (green; or red with volume < 30-week average; or red loud week containing an earnings date) ≥ C (C input, default 5). Informational" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + no earnings ≤14d + history + technical all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
   { col: "f_bot_review",      label: "bot drawing — review needed", core: false, group: "TradingView", tip: "The bot drew the Rectangle + Long Position for this ticker (bot_drawings.json); it does NOT count toward f_rr / PASS / Grok until you approve it (approved_bot_drawings.json). Editing its levels on TradingView makes it yours" },
@@ -45,13 +47,15 @@ const EARNINGS_BLACKOUT_DAYS = 14;  // default E
 
 // ---- live grade parameters (E, V, N, X), shared by both pages (localStorage srs_grade_params_v1) ----
 const PARAMS_KEY = "srs_grade_params_v1";
-const PARAM_DEFAULTS = { earnDays: 14, minDollarVolM: 50, smoothN: 5, rrX: 3,
+const PARAM_DEFAULTS = { earnDays: 14, minDollarVolM: 50, smoothN: 5, rrX: 3, hamRrX: 2, calmN: 5,
   instMin: 60, shortMax: 5, instMissing: "include", shortMissing: "include", instMust: 0 };
 const MISSING_MODES = ["include", "exclude", "only"];
 const PARAM_FIELDS = [
   { k: "earnDays", label: "E: no earnings (days)", step: "1", min: "0", tip: "Must-have: no earnings within E days (default 14). Drives the earnings filter" },
   { k: "minDollarVolM", label: "V: min $vol ($M)", step: "5", min: "0", tip: "Must-have: 30-day average dollar volume ≥ V million (default 50). Drives the $vol filter" },
   { k: "smoothN", label: "N: smooth weeks", step: "1", min: "0", tip: "E5: smooth pullback ≥ N weeks (default 5). Drives the smooth-pullback filter" },
+  { k: "hamRrX", label: "H: hammer R:R", step: "0.1", min: "0", tip: "Last-week hammer: hammer R:R ≥ H (default 2). Drives the hammer R:R filter" },
+  { k: "calmN", label: "C: calm weeks", step: "1", min: "0", tip: "Last-week hammer: calm weeks before the hammer ≥ C (default 5). Drives the calm-weeks filter" },
   { k: "rrX", label: "X: TV R:R for E6", step: "0.1", min: "0", tip: "E6: TV R:R ≥ X (default 3; the must-have is ≥ 2)" },
 ];
 const OWN_FIELDS = [
@@ -123,6 +127,11 @@ function applyLive(rows, P) {
       r.f_inst_own_x = own(io, io !== null && io >= P.instMin, P.instMissing);
       r.f_short_float_y = own(sf, sf !== null && sf < P.shortMax, P.shortMissing);
       r.ownership_missing_f = (io === null || sf === null) ? "True" : "False";
+    }
+    if ("hammer_rr" in r) {
+      const hr = _pnum(r.hammer_rr), cw = _pnum(r.hammer_calm_weeks);
+      r.f_hammer_rr_x = isTrueFlag(r.f_last_week_reversal) && hr !== null && hr >= P.hamRrX ? "True" : "False";
+      r.f_calm_n = isTrueFlag(r.f_last_week_reversal) && cw !== null && cw >= P.calmN ? "True" : "False";
     }
     if (!("ev_fib" in r)) { r.grade = ""; r.f_must_haves = ""; continue; }  // older schema: no grade
     const must = P.instMust ? MUST.concat(["f_inst_own_x"]) : MUST;
@@ -230,6 +239,7 @@ function availableFilters(headers) {
   const hdr = new Set(headers);
   // live-computed columns exist when their inputs are in the CSV
   if (hdr.has("tv_rr") && hdr.has("f_rr")) hdr.add("f_rr_x");
+  if (hdr.has("hammer_rr")) { hdr.add("f_hammer_rr_x"); hdr.add("f_calm_n"); }
   if (hdr.has("inst_own_pct")) { hdr.add("f_inst_own_x"); hdr.add("f_short_float_y"); hdr.add("ownership_missing_f"); }
   if (hdr.has("weekly_atr") || hdr.has("tv_entry")) { hdr.add("f_tradable"); hdr.add("f_not_tradable"); }
   const out = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c) && (c !== "f_rr" || hdr.has("tv_found"))));
@@ -242,7 +252,7 @@ const GROUPS_KEY = "srs_filter_groups_v1";
 const GROUP_DEFS = [
   { key: "must", name: "Must-haves", open: true,
     cols: ["f_dollar_vol", "f_no_earnings_14d", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr", "f_must_haves"] },
-  { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col).concat(["f_last_week_reversal"]) },
+  { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col).concat(["f_last_week_reversal", "f_hammer_rr_x", "f_calm_n"]) },
   { key: "own", name: "Ownership (inst own / short float)", open: false, own: true,
     cols: ["f_inst_own_x", "f_short_float_y", "ownership_missing_f"] },
   { key: "tv", name: "TradingView drawings", open: false,
@@ -456,6 +466,14 @@ function lastWeekChip(r) {
   if (!isTrueFlag(r.f_last_week_reversal)) return "";
   return `<span class="chip lw-rev" title="Last completed week (${String(r.last_week_date || "")}) closed with a ${String(r.last_week_reversal_kind || "hammer")}: lower wick ≥ 2× body and ≥ 2× upper wick, close ≥ 60% of range (no zone requirement; not a grade item)" style="background:#e3f6e8;color:#11632b;border:1px solid #7cc28f;border-radius:8px;padding:0 5px;font-size:11px;margin-left:4px">last wk: ${String(r.last_week_reversal_kind || "hammer")}</span>`;
 }
+/** Hammer trade line (entry / SL / TP / R:R / calm weeks / score) for last-week hammer rows. */
+function hammerLine(r) {
+  if (!isTrueFlag(r.f_last_week_reversal) || _pnum(r.hammer_entry) === null) return "";
+  const f = v => { const n = _pnum(v); return n === null ? "—" : n.toFixed(2); };
+  const rr = _pnum(r.hammer_rr);
+  return `<div class="hamline" style="font-size:.75rem;margin-top:3px" title="Hammer trade (not a TV drawing): entry = hammer close, SL = hammer low − 0.05 weekly ATR, TP = highest weekly body in the 52 weeks before (${String(r.hammer_tp_date || "")}). Calm weeks: ${String(r.hammer_calm_note || "")}. Score = R:R × ln(1 + calm weeks)">` +
+    `<b>Hammer:</b> E ${f(r.hammer_entry)} · SL ${f(r.hammer_sl)} · TP ${f(r.hammer_tp)} · R:R ${rr === null ? "n/a (no room)" : rr.toFixed(2)} · calm ${String(r.hammer_calm_weeks ?? "")}w · score ${f(r.hammer_score)}</div>`;
+}
 function ownershipText(r) {
   const f = (v, s) => { const n = _pnum(v); return n === null ? "n/a" : n.toFixed(1) + "%" + (s && s !== "finviz_screener" ? ` (${s})` : ""); };
   return `inst ${f(r.inst_own_pct, r.inst_own_src)} · short ${f(r.short_float_pct, r.short_float_src)}`;
@@ -463,5 +481,5 @@ function ownershipText(r) {
 global.SrsFilters = { mountSettingsGroup, updateSettingsGroup, FILTERS, CORE, MUST, EVIDENCE, GRADES, GRADE_RANK, PARAM_DEFAULTS, loadParams, saveParams, resetParams,
   mountParams, applyLive, labelOf, evidenceChips, evidenceTip, gradeBadge, EARNINGS_BLACKOUT_DAYS, isTrueFlag, todayJerusalemISO, liveDaysToEarnings,
   enrichEarningsLive, rowPasses, availableFilters, renderFilterBox, sizingFlags, tvSymbolsForRows,
-  downloadWatchlist, injectCss, ownershipChip, ownershipText, lastWeekChip, MISSING_MODES };
+  downloadWatchlist, injectCss, ownershipChip, ownershipText, lastWeekChip, hammerLine, MISSING_MODES };
 })(window);
