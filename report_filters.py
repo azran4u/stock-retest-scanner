@@ -150,6 +150,7 @@ REPORT_COLS = [
     *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS, *EVIDENCE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
+    "f_last_week_reversal", "last_week_reversal_kind", "last_week_date",
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
@@ -222,6 +223,27 @@ def _as_of_ts(report_date: date) -> Optional[pd.Timestamp]:
     if report_date >= ss._local_today():
         return None
     return pd.Timestamp(f"{report_date.isoformat()} 23:59").tz_localize("America/New_York")
+
+
+def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
+    """Shape-only reversal (same shapes / kinds as E1, NO zone gate) on the LAST bar of
+    `bars` (callers pass completed weekly bars -> the last completed W-FRI week).
+    Returns (hit, kind, week-end date); date is set even when no shape matched."""
+    if bars is None or len(bars) < 2:
+        return False, "", ""
+    atr = ss.atr_series(bars, 14)
+    i = len(bars) - 1
+    dt = str(pd.Timestamp(bars.index[i]).date())
+    sh = ssa.weekly_reversal_shapes(
+        float(bars["Open"].iloc[i]), float(bars["High"].iloc[i]),
+        float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i]),
+        float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]),
+        float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan"),
+    )
+    for k in [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]:
+        if sh[_KIND_KEY[k]]:
+            return True, k, dt
+    return False, "", dt
 
 
 def _scan_reversals(bars: Optional[pd.DataFrame], lookback: int,
@@ -414,7 +436,8 @@ def compute_row(
 
 
 REVERSAL_COLS = ["f_weekly_reversal", "weekly_reversal_kind", "weekly_reversal_date",
-                 "f_daily_reversal", "daily_reversal_kind", "daily_reversal_date"]
+                 "f_daily_reversal", "daily_reversal_kind", "daily_reversal_date",
+                 "f_last_week_reversal", "last_week_reversal_kind", "last_week_date"]
 
 
 def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[str, Any]) -> Dict[str, Any]:
@@ -423,7 +446,8 @@ def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[
     completed daily bars. Uses r's tv_zone_top / tv_zone_bottom (tv_found=yes); no zone -> False."""
     C = CONFIG
     out = {"f_weekly_reversal": False, "weekly_reversal_kind": "", "weekly_reversal_date": "",
-           "f_daily_reversal": False, "daily_reversal_kind": "", "daily_reversal_date": ""}
+           "f_daily_reversal": False, "daily_reversal_kind": "", "daily_reversal_date": "",
+           "f_last_week_reversal": False, "last_week_reversal_kind": "", "last_week_date": ""}
     if daily is None or len(daily) < 2:
         return out
     zone = None
@@ -436,6 +460,8 @@ def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[
     wk = ssa.completed_weeks(ssa.to_weekly(dd), dd.index[-1])
     hit, kind, dt = _scan_reversals(wk, C["weekly_reversal_lookback_weeks"], zone)
     out["f_weekly_reversal"], out["weekly_reversal_kind"], out["weekly_reversal_date"] = hit, kind, dt
+    # last COMPLETED week only, shape only (no zone) — Eyal 2026-10-15; informational
+    out["f_last_week_reversal"], out["last_week_reversal_kind"], out["last_week_date"] = _last_bar_reversal(wk)
     hit, kind, dt = _scan_reversals(dd, C["daily_reversal_lookback_days"], zone)
     out["f_daily_reversal"], out["daily_reversal_kind"], out["daily_reversal_date"] = hit, kind, dt
     return out

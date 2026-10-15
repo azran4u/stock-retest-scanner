@@ -21,6 +21,7 @@ const FILTERS = [
   { col: "f_rr_x",            label: P => `E6 TV R:R ≥ ${P.rrX}`, core: false, group: "Evidence", ev: 6, short: P => `R:R ≥${P.rrX}`, tip: "E6: TV R:R ≥ X from a drawing that counts (X = the R:R input, default 3; the must-have is ≥ 2)" },
   { col: "ev_ma_support",     label: "E7 MA support",            core: false, group: "Evidence", ev: 7, short: "MA", tip: "E7: SMA 50/100/150/200 (daily): latest daily low ≤ SMA + 1 daily ATR and latest close ≥ SMA, AND the same SMA held as support before (≥ 1 earlier touch in the ~2 years before the last 20 sessions: came from above, low ≤ SMA + 1 ATR, close ≥ SMA, local low, then a close ≥ SMA + 2 ATR within 20 sessions)" },
   { col: "ev_fib",            label: "E8 fib confluence",        core: false, group: "Evidence", ev: 8, short: "fib", tip: "E8: the TV zone (± 0.25 weekly ATR) contains the 0.382 / 0.5 / 0.618 retracement of the latest weekly swing: swing high = highest weekly high of the last 52 weeks, swing low = lowest weekly low in the 52 weeks up to it. TV zone needed" },
+  { col: "f_last_week_reversal", label: "last week reversal (no zone)", core: false, group: "Evidence", short: "LW-rev", tip: "The LAST COMPLETED weekly candle (most recent finished W-FRI week, not the current partial week) is a bullish reversal shape — same shapes as E1 (hammer / engulfing / strong_close / rejection) but WITHOUT the zone requirement (last_week_reversal_kind, last_week_date). Informational: not a must-have, not a grade item" },
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + no earnings ≤14d + history + technical all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
   { col: "f_bot_review",      label: "bot drawing — review needed", core: false, group: "TradingView", tip: "The bot drew the Rectangle + Long Position for this ticker (bot_drawings.json); it does NOT count toward f_rr / PASS / Grok until you approve it (approved_bot_drawings.json). Editing its levels on TradingView makes it yours" },
@@ -241,7 +242,7 @@ const GROUPS_KEY = "srs_filter_groups_v1";
 const GROUP_DEFS = [
   { key: "must", name: "Must-haves", open: true,
     cols: ["f_dollar_vol", "f_no_earnings_14d", "f_history", "f_tradable", "f_technical", "f_near_zone", "f_rr", "f_must_haves"] },
-  { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col) },
+  { key: "grade", name: "Grade & evidence", open: true, grades: true, cols: EVIDENCE.map(f => f.col).concat(["f_last_week_reversal"]) },
   { key: "own", name: "Ownership (inst own / short float)", open: false, own: true,
     cols: ["f_inst_own_x", "f_short_float_y", "ownership_missing_f"] },
   { key: "tv", name: "TradingView drawings", open: false,
@@ -450,6 +451,11 @@ function ownershipChip(r) {
   if (_pnum(r.short_float_pct) === null) miss.push("short float");
   return miss.length ? `<span class="chip own-miss" title="${miss.join(" + ")} unknown (FinViz + yfinance)" style="background:#fff3cd;color:#7a5b00;border:1px solid #e0c060;border-radius:8px;padding:0 5px;font-size:11px;margin-left:4px">data missing</span>` : "";
 }
+/** Chip when the last completed week closed with a bullish reversal candle (no zone gate). */
+function lastWeekChip(r) {
+  if (!isTrueFlag(r.f_last_week_reversal)) return "";
+  return `<span class="chip lw-rev" title="Last completed week (${String(r.last_week_date || "")}) closed with a bullish reversal candle: ${String(r.last_week_reversal_kind || "")} (no zone requirement; not a grade item)" style="background:#e3f6e8;color:#11632b;border:1px solid #7cc28f;border-radius:8px;padding:0 5px;font-size:11px;margin-left:4px">last wk: ${String(r.last_week_reversal_kind || "reversal").replace("_", " ")}</span>`;
+}
 function ownershipText(r) {
   const f = (v, s) => { const n = _pnum(v); return n === null ? "n/a" : n.toFixed(1) + "%" + (s && s !== "finviz_screener" ? ` (${s})` : ""); };
   return `inst ${f(r.inst_own_pct, r.inst_own_src)} · short ${f(r.short_float_pct, r.short_float_src)}`;
@@ -457,5 +463,5 @@ function ownershipText(r) {
 global.SrsFilters = { mountSettingsGroup, updateSettingsGroup, FILTERS, CORE, MUST, EVIDENCE, GRADES, GRADE_RANK, PARAM_DEFAULTS, loadParams, saveParams, resetParams,
   mountParams, applyLive, labelOf, evidenceChips, evidenceTip, gradeBadge, EARNINGS_BLACKOUT_DAYS, isTrueFlag, todayJerusalemISO, liveDaysToEarnings,
   enrichEarningsLive, rowPasses, availableFilters, renderFilterBox, sizingFlags, tvSymbolsForRows,
-  downloadWatchlist, injectCss, ownershipChip, ownershipText, MISSING_MODES };
+  downloadWatchlist, injectCss, ownershipChip, ownershipText, lastWeekChip, MISSING_MODES };
 })(window);

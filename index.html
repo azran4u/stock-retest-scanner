@@ -178,7 +178,7 @@ function card(r) {
       ${infoBadges(r) ? `<div style="margin-top:4px">${infoBadges(r)}</div>` : ""}
       ${r.tv_stale ? `<div style="margin-top:4px"><span class="pill stale" title="${esc(r.tv_stale_detail)}">drawing may be obsolete: ${esc(r.tv_stale)}</span></div>` : ""}</div>
       <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr ${rr !== null && rr >= 2 ? "good" : "bad"}">${rr === null ? "—" : rr.toFixed(2)}<small>TV R:R</small></div></div></div>
-    ${gradeLine(r)}
+    ${gradeLine(r)}${SrsFilters.lastWeekChip(r) ? `<div style="margin-top:3px">${SrsFilters.lastWeekChip(r)}</div>` : ""}
     <dl>
       <dt>Zone</dt><dd>${f2(r.tv_zone_bottom)}–${f2(r.tv_zone_top)}</dd>
       <dt>To zone</dt><dd class="${near ? "near" : "far"}">${distLabel(r)}</dd>
@@ -229,7 +229,7 @@ function ndCard(r) {
     <div class="body"><div class="top"><div><div class="tk">${tkHtml(r)}</div>
       <span class="pill ${pass ? "pass" : "fail"}">${esc(r.status)}</span> ${nd}${infoBadges(r)}</div>
       <div class="gradebox">${SrsFilters.gradeBadge(r, true)}<div class="rr bad">${isBot && botRR ? esc(botRR) + "<small>bot R:R (not counted)</small>" : "—<small>no drawing</small>"}</div></div></div>
-    ${gradeLine(r)}
+    ${gradeLine(r)}${SrsFilters.lastWeekChip(r) ? `<div style="margin-top:3px">${SrsFilters.lastWeekChip(r)}</div>` : ""}
     <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Read</dt><dd>${esc(r.tv_read_date || "—")}</dd><dt>Own</dt><dd>${esc(SrsFilters.ownershipText(r))}${SrsFilters.ownershipChip(r)}</dd></dl>
     ${r.tv_bot_note ? `<div class="muted" style="font-size:.75rem;margin-top:4px">${esc(r.tv_bot_status)}: ${esc(r.tv_bot_note)}</div>` : ""}</div></div>`;
 }
