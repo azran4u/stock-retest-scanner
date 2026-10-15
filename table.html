@@ -238,7 +238,7 @@ const PREFERRED_COLS = [
   "current_price","dollar_vol_30d","short_float_pct","inst_own_pct","short_float_src","inst_own_src","earnings_date","days_to_earnings",
   "weekly_bars","tech_new_high_atr","tech_hh","tech_hl","tech_structure","tech_ema30_slope_pct","tech_ema_rising",
   "tv_found","tv_source","tv_bot_status","tv_stale","tv_rr","tv_zone_dist_atr","pos_shares","pos_cost","pos_risk","pos_profit","pos_cap","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
-  "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr",
+  "tv_price","tv_weekly_atr","tv_zone_dist","tv_read_date","atr","weekly_atr",
   "smooth_streak_weeks","weekly_reversal_kind","weekly_reversal_date","daily_reversal_kind","daily_reversal_date",
   "ev_missing","ev_ma_support_mas","ev_fib_levels","ev_pullback_high","ev_pullback_high_date",
   "smooth_pullback","avg_vol_30d","earnings_known","earnings_blackout",
@@ -257,7 +257,7 @@ const TV_LEVEL_COLS = new Set(["tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top",
 const NUM_COLS = new Set([
   "current_price","entry","sl","tp","rr","atrs_from_entry","zone_lo","zone_hi","atr","sl_atr_mult",
   "tv_rr","tv_entry","tv_sl","tv_tp","tv_zone_top","tv_zone_bottom",
-  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist",
+  "tv_zone_dist_atr","tv_price","tv_weekly_atr","tv_zone_dist","weekly_atr",
   "pos_shares","pos_cost","pos_risk","pos_profit",
   "short_float_pct","inst_own_pct","dollar_vol_30d","avg_vol_30d",
   "weekly_bars","days_to_earnings","smooth_streak_weeks",
@@ -745,8 +745,8 @@ function applySizing() {
     const z = Sizing.compute(r, st);
     r.pos_shares = z ? z.shares : ""; r.pos_cost = z ? z.cost : ""; r.pos_risk = z ? z.risk : "";
     r.pos_profit = z ? z.profit : ""; r.pos_cap = z ? z.cap : "";
-    r.f_tradable = z ? (z.shares >= 1 ? "True" : "False") : "";      // drawn only
-    r.f_not_tradable = z ? (z.shares === 0 ? "True" : "False") : "";
+    const tf = SrsFilters.sizingFlags(r, st);  // weekly ATR < account × risk% (every row)
+    r.f_tradable = tf.f_tradable; r.f_not_tradable = tf.f_not_tradable;
   }
 }
 

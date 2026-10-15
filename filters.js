@@ -24,8 +24,8 @@ const FILTERS = [
   { col: "tv_found",          label: "TV drawing found",      core: false, group: "TradingView", tip: "Zone rectangle + Long Position drawing found on the user's TradingView chart (read-only daily read; tv_found = yes)" },
   { col: "needs_drawing",     label: "needs drawing",         core: false, group: "TradingView", tip: "$vol + no earnings ≤14d + history + technical all pass, but no TradingView drawing at all (not found, or not read yet; tickers with a bot drawing are excluded and show as review needed) — grok_needs_drawing_target. Not part of status" },
   { col: "f_bot_review",      label: "bot drawing — review needed", core: false, group: "TradingView", tip: "The bot drew the Rectangle + Long Position for this ticker (bot_drawings.json); it does NOT count toward f_rr / PASS / Grok until you approve it (approved_bot_drawings.json). Editing its levels on TradingView makes it yours" },
-  { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", must: true, tip: "Drawn tickers with shares ≥ 1 under the current position-sizing settings (client-side, live). Must-have for a grade; not part of status" },
-  { col: "f_not_tradable",    label: "not tradable (account limits)", core: false, group: "TradingView", tip: "Drawn tickers where the sizing gives 0 shares (1 share risks more than max risk %, or costs more than max position %). Not part of status" },
+  { col: "f_tradable",        label: "tradable with account", core: false, group: "TradingView", must: true, tip: "Weekly ATR(14) per share (weekly_atr, the ATR used for SL / near zone) < risk per trade = account × max risk % from the sizing bar (default $5000 × 1% = $50). Every row, drawn or not (Eyal 2026-10-15). Live; must-have for a grade; not part of status" },
+  { col: "f_not_tradable",    label: "not tradable (ATR ≥ risk/trade)", core: false, group: "TradingView", tip: "Weekly ATR(14) per share ≥ account × max risk % (one weekly ATR move would exceed the risk per trade). Every row with price history. Not part of status" },
   { col: "f_tv_stale",        label: "drawing may be obsolete", core: false, group: "TradingView", tip: "Drawn tickers whose drawing may be obsolete: broken (any price — daily low — below the drawn SL since the read date), target hit (close ≥ TP) or far (close > zone top + 3 weekly ATR). Informational, not part of status" },
   { col: "f_inst_own_x",      label: P => `inst own ≥ ${P.instMin}%`, core: false, group: "Ownership", tip: "FinViz Inst Own ≥ X% (inst_own_pct; source FinViz screener v=131, then FinViz quote, then yfinance). Missing data handled by the 'missing' choice next to it (default: include). Not part of status" },
   { col: "f_short_float_y",   label: P => `short float < ${P.shortMax}%`, core: false, group: "Ownership", tip: "FinViz Short Float < Y% (short_float_pct; same sources). No longer a must-have (Eyal 2026-10-14). Missing data handled by the 'missing' choice next to it (default: include). Not part of status" },
@@ -230,7 +230,7 @@ function availableFilters(headers) {
   // live-computed columns exist when their inputs are in the CSV
   if (hdr.has("tv_rr") && hdr.has("f_rr")) hdr.add("f_rr_x");
   if (hdr.has("inst_own_pct")) { hdr.add("f_inst_own_x"); hdr.add("f_short_float_y"); hdr.add("ownership_missing_f"); }
-  if (hdr.has("tv_entry")) { hdr.add("f_tradable"); hdr.add("f_not_tradable"); }
+  if (hdr.has("weekly_atr") || hdr.has("tv_entry")) { hdr.add("f_tradable"); hdr.add("f_not_tradable"); }
   const out = new Set(FILTERS.map(f => f.col).filter(c => hdr.has(c) && (c !== "f_rr" || hdr.has("tv_found"))));
   if (hdr.has("ev_fib")) { out.add("f_must_haves"); GRADES.concat(["-"]).forEach(g => out.add("grade:" + g)); }
   return out;
@@ -349,10 +349,18 @@ function updateSettingsGroup(el) {
   if (a) { a.textContent = n ? `${n} changed from default` : "defaults"; a.classList.toggle("on", !!n); }
 }
 
-/** Client-side sizing flags (f_tradable / f_not_tradable): drawn rows only, else "". */
+/** Client-side "tradable with account" (Eyal 2026-10-15): EVERY row, drawn or not —
+ *  tradable iff weekly ATR(14) per share (weekly_atr; fallback tv_weekly_atr) < account × max risk %
+ *  (sizing bar, default $5000 × 1% = $50). Unknown ATR → "" (fails the must-have).
+ *  z = the share-count sizing for drawn rows (display only). */
 function sizingFlags(r, st) {
-  const z = global.Sizing ? global.Sizing.compute(r, st) : null;
-  return { z, f_tradable: z ? (z.shares >= 1 ? "True" : "False") : "", f_not_tradable: z ? (z.shares === 0 ? "True" : "False") : "" };
+  const S = global.Sizing;
+  const z = S ? S.compute(r, st) : null;
+  const s = st || (S && S.load ? S.load() : { account: 5000, riskPct: 1 });
+  const risk = (+s.account || 0) * (+s.riskPct || 0) / 100;
+  let atr = _pnum(r.weekly_atr); if (atr === null) atr = _pnum(r.tv_weekly_atr);
+  const ok = atr === null ? null : atr < risk;
+  return { z, riskAmt: risk, atr, f_tradable: ok === null ? "" : (ok ? "True" : "False"), f_not_tradable: ok === null ? "" : (ok ? "False" : "True") };
 }
 
 function tvSymbolOf(r) {

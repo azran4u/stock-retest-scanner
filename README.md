@@ -76,6 +76,8 @@ Cards for every ticker with a read TradingView drawing (`tv_found=yes`), plus re
 
 ## Position sizing (client-side)
 
+**Tradable with account (Eyal 2026-10-15):** `f_tradable` = weekly ATR(14) per share (`weekly_atr`, CSV column for EVERY row — the same weekly ATR used for SL / near zone) **<** risk per trade = account × max risk % from the sizing bar (default $5000 × 1% = $50), computed live in the browser (`filters.js` `sizingFlags`) for all FinViz rows, drawn or not. No weekly ATR (missing history) → unknown = not tradable. "not tradable" = ATR ≥ risk per trade. Shares / cost / risk / profit for drawn rows stay as info only. Must-have for the grade; not part of `status` / needs-drawing.
+
 The chart gallery (`index.html`) and the report table (`table.html`) share a settings bar (Account $, Max risk %, Max position %; defaults 5000 / 1 / 15; saved in localStorage). For tickers with a TradingView drawing: `shares = floor(min(account·risk%/(entry−SL), account·pos%/entry))` (0 if entry ≤ SL) → columns Shares, Cost, Risk $, Profit at TP $ (+ limiting cap); blank without a drawing; recalculated live (`sizing.js`). Filters "tradable with account" (shares ≥ 1) / "not tradable (account limits)" (drawn, shares = 0) on both pages.
 
 ## My positions (הפוזיציות שלי)

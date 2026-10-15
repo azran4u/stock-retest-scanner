@@ -146,7 +146,7 @@ REPORT_COLS = [
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     *OWNERSHIP_COLS,
     "earnings_date", "days_to_earnings", "weekly_bars",
-    "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "atrs_from_entry",
+    "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "weekly_atr", "atrs_from_entry",
     *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS, *EVIDENCE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
@@ -373,6 +373,15 @@ def compute_row(
     if not r["f_rr"]:
         notes.append(tv_note(r))
     r.update(compute_near_zone(hist, r))
+    # weekly ATR(14) for EVERY row (same ATR as near-zone / SL): drives the live
+    # "tradable with account" rule in the browser (weekly ATR < account x max risk %), 2026-10-15
+    r["weekly_atr"] = None
+    try:
+        if hist is not None and len(hist):
+            a = ss.atr_series(ss.to_weekly(hist), int(CONFIG["near_zone_atr_period"])).dropna()
+            r["weekly_atr"] = round(float(a.iloc[-1]), 4) if len(a) else None
+    except Exception:
+        pass
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
     r.update(compute_technical(hist))
     apply_user_overrides(r, ticker)
