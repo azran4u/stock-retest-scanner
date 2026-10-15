@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-15T23:23:56+03:00",
+  "generated_at": "2026-10-15T23:49:00+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -515,14 +515,14 @@
       "detail": "",
       "zone_bottom": 214.48,
       "zone_top": 225.2,
-      "sl": 207.13,
-      "tp": 264.36,
-      "rr": 3.08,
+      "sl": null,
+      "tp": null,
+      "rr": null,
       "latest_close": 243.8899,
       "last_bar": "2026-10-15",
       "weekly_atr": 14.448,
       "dist_above_top_atr": 1.2936,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "ALSN",
@@ -611,14 +611,14 @@
       "detail": "",
       "zone_bottom": 174.75,
       "zone_top": 184.47,
-      "sl": 170.05,
+      "sl": 170.5,
       "tp": 229.84,
-      "rr": 4.33,
+      "rr": 4.27,
       "latest_close": 180.22,
       "last_bar": "2026-10-15",
       "weekly_atr": 20.1779,
       "dist_above_top_atr": -0.2106,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "AXTA",
@@ -634,7 +634,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 2.0214,
       "dist_above_top_atr": 0.6827,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "BAX",
@@ -922,7 +922,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 43.9652,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "DGX",
@@ -1123,14 +1123,14 @@
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
-      "sl": 166.0,
-      "tp": 249.32,
-      "rr": 3.91,
+      "sl": null,
+      "tp": null,
+      "rr": null,
       "latest_close": 219.64,
       "last_bar": "2026-10-15",
       "weekly_atr": 19.155,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-05"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "FIX",
@@ -1178,7 +1178,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 18.8486,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "FTI",
@@ -1194,7 +1194,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 5.3838,
       "dist_above_top_atr": 0.5164,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "FWONK",
@@ -1299,14 +1299,14 @@
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
-      "sl": 86.95,
-      "tp": 144.21,
-      "rr": 3.6,
+      "sl": null,
+      "tp": null,
+      "rr": null,
       "latest_close": 91.65,
       "last_bar": "2026-10-15",
       "weekly_atr": 14.6793,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "IRM",
@@ -1411,14 +1411,14 @@
       "detail": "",
       "zone_bottom": 140.95,
       "zone_top": 142.28,
-      "sl": 136.41,
-      "tp": 159.92,
-      "rr": 2.67,
+      "sl": null,
+      "tp": null,
+      "rr": null,
       "latest_close": 148.27,
       "last_bar": "2026-10-15",
       "weekly_atr": 5.9304,
       "dist_above_top_atr": 1.0101,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "LFUS",
@@ -1514,7 +1514,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 57.8782,
       "dist_above_top_atr": 0.9349,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "MLI",
@@ -1556,13 +1556,13 @@
       "zone_bottom": 344.29,
       "zone_top": 353.61,
       "sl": 318.54,
-      "tp": 435.65,
+      "tp": 435.66,
       "rr": 2.61,
       "latest_close": 363.7,
       "last_bar": "2026-10-15",
       "weekly_atr": 33.4021,
       "dist_above_top_atr": 0.3021,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "MRK",
@@ -1621,12 +1621,12 @@
       "zone_top": null,
       "sl": 660.28,
       "tp": 1198.45,
-      "rr": 2.65,
+      "rr": null,
       "latest_close": 880.92,
       "last_bar": "2026-10-15",
       "weekly_atr": 126.1157,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "MUSA",
@@ -1770,7 +1770,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 52.9883,
       "dist_above_top_atr": 0.0419,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     },
     {
       "ticker": "PKG",
@@ -2458,7 +2458,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 18.961,
       "dist_above_top_atr": 0.327,
-      "read_date": "2026-10-14"
+      "read_date": "2026-10-15"
     }
   ]
 }
