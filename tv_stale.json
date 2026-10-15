@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-15T23:49:00+03:00",
+  "generated_at": "2026-10-16T00:09:43+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -8,7 +8,7 @@
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
   "checked": 126,
-  "flagged": 27,
+  "flagged": 26,
   "flagged_tickers": [
     {
       "ticker": "ADP",
@@ -41,22 +41,6 @@
       "weekly_atr": 9.7075,
       "dist_above_top_atr": null,
       "read_date": "2026-10-07"
-    },
-    {
-      "ticker": "BMY",
-      "symbol": "",
-      "flag": "broken",
-      "detail": "low 56.72 < SL 58.11 on 2026-10-12 (3 lows below, lowest 56.15 on 2026-10-13)",
-      "zone_bottom": 61.0,
-      "zone_top": 61.55,
-      "sl": 58.11,
-      "tp": 67.27,
-      "rr": 1.9359,
-      "latest_close": 62.02,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 3.6407,
-      "dist_above_top_atr": 0.1291,
-      "read_date": "2026-10-08"
     },
     {
       "ticker": "BNY",
@@ -671,18 +655,18 @@
     {
       "ticker": "BMY",
       "symbol": "",
-      "flag": "broken",
-      "detail": "low 56.72 < SL 58.11 on 2026-10-12 (3 lows below, lowest 56.15 on 2026-10-13)",
+      "flag": "",
+      "detail": "",
       "zone_bottom": 61.0,
       "zone_top": 61.55,
       "sl": 58.11,
       "tp": 67.27,
-      "rr": 1.9359,
+      "rr": 1.94,
       "latest_close": 62.02,
       "last_bar": "2026-10-15",
       "weekly_atr": 3.6407,
       "dist_above_top_atr": 0.1291,
-      "read_date": "2026-10-08"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "BNY",
@@ -881,32 +865,32 @@
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 57.92,
-      "zone_top": 59.27,
+      "zone_bottom": null,
+      "zone_top": null,
       "sl": 54.68,
       "tp": 66.44,
       "rr": 2.01,
       "latest_close": 62.03,
       "last_bar": "2026-10-15",
       "weekly_atr": 5.04,
-      "dist_above_top_atr": 0.5476,
-      "read_date": "2026-10-15"
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "DASH",
       "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 183.38,
-      "zone_top": 192.74,
-      "sl": 165.75,
-      "tp": 235.58,
-      "rr": 2.06,
+      "zone_bottom": 166.58,
+      "zone_top": 172.91,
+      "sl": 152.85,
+      "tp": 235.05,
+      "rr": 2.73,
       "latest_close": 189.99,
       "last_bar": "2026-10-15",
       "weekly_atr": 18.2476,
-      "dist_above_top_atr": -0.1507,
-      "read_date": "2026-10-15"
+      "dist_above_top_atr": 0.936,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "DE",
@@ -1290,7 +1274,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 8.2121,
       "dist_above_top_atr": 0.4165,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "INTC",
@@ -1594,7 +1578,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 21.9605,
       "dist_above_top_atr": 0.5565,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "MTCH",
@@ -1701,12 +1685,12 @@
       "zone_top": 86.42,
       "sl": 79.99,
       "tp": 97.11,
-      "rr": 1.993,
+      "rr": 1.99,
       "latest_close": 91.165,
       "last_bar": "2026-10-15",
       "weekly_atr": 5.3861,
       "dist_above_top_atr": 0.881,
-      "read_date": "2026-10-12"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "OVV",
@@ -1982,7 +1966,7 @@
     },
     {
       "ticker": "SNX",
-      "symbol": "NYSE:SNX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 238.73,
@@ -1994,7 +1978,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 21.4569,
       "dist_above_top_atr": 0.3356,
-      "read_date": "2026-09-30"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "SPG",

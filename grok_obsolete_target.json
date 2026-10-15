@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-15T23:49:01+03:00",
-  "count": 27,
+  "generated_at": "2026-10-16T00:09:44+03:00",
+  "count": 26,
   "symbols": [
     "NASDAQ:ADP",
     "NASDAQ:EBAY",
@@ -9,7 +9,6 @@
     "NASDAQ:VRSN",
     "NASDAQ:WDC",
     "NYSE:BDX",
-    "NYSE:BMY",
     "NYSE:BNY",
     "NYSE:CAH",
     "NYSE:CNO",
@@ -33,7 +32,6 @@
   "flags": {
     "NASDAQ:ADP": "target hit",
     "NYSE:BDX": "target hit",
-    "NYSE:BMY": "broken",
     "NYSE:BNY": "broken",
     "NYSE:CAH": "target hit",
     "NYSE:CNO": "far",
