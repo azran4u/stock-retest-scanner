@@ -230,7 +230,7 @@ def _as_of_ts(report_date: date) -> Optional[pd.Timestamp]:
 
 
 def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
-    """Shape-only STRICT HAMMER (lower wick >= 2x body and >= 2x upper wick, close >= 60% of range; colour ignored, NO zone gate) on the LAST bar of
+    """Shape-only CLASSIC HAMMER (lower shadow >= 2x body, body in upper third, upper shadow <= 10% of range; colour ignored, NO zone gate) on the LAST bar of
     `bars` (callers pass completed weekly bars -> the last completed W-FRI week).
     Returns (hit, kind, week-end date); date is set even when no shape matched."""
     if bars is None or len(bars) < 2:
@@ -244,13 +244,18 @@ def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
         float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]),
         float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan"),
     )
-    # STRICT HAMMER ONLY (Eyal 2026-10-15; E1 keeps the looser hammer), any colour:
-    # lower wick >= 2 x body, close >= 60% of the range from the low, lower wick >= 2 x upper wick,
-    # range > 0, not doji junk (range < 0.2 weekly ATR and body < 0.05 ATR)
+    # CLASSIC HAMMER (Investopedia / TA-Lib CDLHAMMER-style; Eyal 2026-10-15), any colour; E1 unchanged:
+    #   range > 0; lower shadow >= 2 x real body; real body in the upper third of the range
+    #   (min(open, close) >= low + 2/3 x range); little or no upper shadow (<= 10% of range).
+    #   Only extra: tiny-doji exclusion (range < 0.2 weekly ATR and body < 0.05 ATR = no real candle).
+    o_i, h_i = float(bars["Open"].iloc[i]), float(bars["High"].iloc[i])
     lo_i, cl_i = float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i])
-    rng, body, lw, uw = sh["range"], sh["body"], sh["lower_wick"], sh["upper_wick"]
-    strict = bool(rng > 0 and not sh["doji_junk"] and lw >= 2.0 * body and lw >= 2.0 * uw
-                  and cl_i >= lo_i + 0.60 * rng)
+    rng = h_i - lo_i
+    body = abs(cl_i - o_i)
+    lw = min(o_i, cl_i) - lo_i
+    uw = h_i - max(o_i, cl_i)
+    strict = bool(rng > 0 and not sh["doji_junk"] and lw >= 2.0 * body
+                  and min(o_i, cl_i) >= lo_i + (2.0 / 3.0) * rng and uw <= 0.10 * rng)
     if strict:
         return True, "hammer (green)" if sh["green"] else "hammer (red)", dt
     return False, "", dt
