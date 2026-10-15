@@ -226,7 +226,7 @@ def _as_of_ts(report_date: date) -> Optional[pd.Timestamp]:
 
 
 def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
-    """Shape-only reversal (same shapes / kinds as E1, NO zone gate) on the LAST bar of
+    """Shape-only HAMMER (E1's hammer definition, colour ignored, NO zone gate) on the LAST bar of
     `bars` (callers pass completed weekly bars -> the last completed W-FRI week).
     Returns (hit, kind, week-end date); date is set even when no shape matched."""
     if bars is None or len(bars) < 2:
@@ -240,9 +240,10 @@ def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
         float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]),
         float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan"),
     )
-    for k in [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]:
-        if sh[_KIND_KEY[k]]:
-            return True, k, dt
+    # HAMMER ONLY (Eyal 2026-10-15), any colour: lower wick >= 0.9 x body, close >= 50% of the
+    # range (upper half), lower wick >= upper wick, not doji junk (range < 0.2 ATR and body < 0.05 ATR)
+    if sh["hammer"]:
+        return True, "hammer (green)" if sh["green"] else "hammer (red)", dt
     return False, "", dt
 
 
