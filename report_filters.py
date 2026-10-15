@@ -226,7 +226,7 @@ def _as_of_ts(report_date: date) -> Optional[pd.Timestamp]:
 
 
 def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
-    """Shape-only HAMMER (E1's hammer definition, colour ignored, NO zone gate) on the LAST bar of
+    """Shape-only STRICT HAMMER (lower wick >= 2x body and >= 2x upper wick, close >= 60% of range; colour ignored, NO zone gate) on the LAST bar of
     `bars` (callers pass completed weekly bars -> the last completed W-FRI week).
     Returns (hit, kind, week-end date); date is set even when no shape matched."""
     if bars is None or len(bars) < 2:
@@ -240,9 +240,14 @@ def _last_bar_reversal(bars: Optional[pd.DataFrame]) -> Tuple[bool, str, str]:
         float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]),
         float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan"),
     )
-    # HAMMER ONLY (Eyal 2026-10-15), any colour: lower wick >= 0.9 x body, close >= 50% of the
-    # range (upper half), lower wick >= upper wick, not doji junk (range < 0.2 ATR and body < 0.05 ATR)
-    if sh["hammer"]:
+    # STRICT HAMMER ONLY (Eyal 2026-10-15; E1 keeps the looser hammer), any colour:
+    # lower wick >= 2 x body, close >= 60% of the range from the low, lower wick >= 2 x upper wick,
+    # range > 0, not doji junk (range < 0.2 weekly ATR and body < 0.05 ATR)
+    lo_i, cl_i = float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i])
+    rng, body, lw, uw = sh["range"], sh["body"], sh["lower_wick"], sh["upper_wick"]
+    strict = bool(rng > 0 and not sh["doji_junk"] and lw >= 2.0 * body and lw >= 2.0 * uw
+                  and cl_i >= lo_i + 0.60 * rng)
+    if strict:
         return True, "hammer (green)" if sh["green"] else "hammer (red)", dt
     return False, "", dt
 
