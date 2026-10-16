@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T00:11:03+03:00",
+  "generated_at": "2026-10-17T00:14:32+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -558,7 +558,7 @@
     },
     {
       "ticker": "ARM",
-      "symbol": "",
+      "symbol": "NASDAQ:ARM",
       "flag": "",
       "detail": "",
       "zone_bottom": 232.35,
@@ -570,7 +570,7 @@
       "last_bar": "2026-10-16",
       "weekly_atr": 44.5504,
       "dist_above_top_atr": -0.2175,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "ARMK",
@@ -670,7 +670,7 @@
     },
     {
       "ticker": "BHP",
-      "symbol": "",
+      "symbol": "NYSE:BHP",
       "flag": "",
       "detail": "",
       "zone_bottom": 75.09,
@@ -682,7 +682,7 @@
       "last_bar": "2026-10-16",
       "weekly_atr": 5.6411,
       "dist_above_top_atr": 0.7552,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "BMY",
