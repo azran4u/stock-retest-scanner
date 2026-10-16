@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T00:20:08+03:00",
+  "generated_at": "2026-10-17T00:24:13+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 130,
+  "checked": 133,
   "flagged": 25,
   "flagged_tickers": [
     {
@@ -1005,6 +1005,22 @@
       "read_date": "2026-10-07"
     },
     {
+      "ticker": "DOCN",
+      "symbol": "NYSE:DOCN",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 91.97,
+      "tp": 156.25,
+      "rr": 3.43,
+      "latest_close": 109.71,
+      "last_bar": "2026-10-15",
+      "weekly_atr": 22.4959,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-17"
+    },
+    {
       "ticker": "DXCM",
       "symbol": "",
       "flag": "",
@@ -1211,6 +1227,38 @@
       "weekly_atr": 18.8486,
       "dist_above_top_atr": null,
       "read_date": "2026-10-16"
+    },
+    {
+      "ticker": "FOXA",
+      "symbol": "NASDAQ:FOXA",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 52.04,
+      "tp": 71.51,
+      "rr": 3.24,
+      "latest_close": 64.15,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 4.2946,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-17"
+    },
+    {
+      "ticker": "FSM",
+      "symbol": "NYSE:FSM",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 10.79,
+      "zone_top": 11.15,
+      "sl": 9.82,
+      "tp": 13.29,
+      "rr": 2.4,
+      "latest_close": 10.72,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 1.0757,
+      "dist_above_top_atr": -0.3997,
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "FTI",
