@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T00:24:13+03:00",
+  "generated_at": "2026-10-17T00:27:43+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 133,
+  "checked": 137,
   "flagged": 25,
   "flagged_tickers": [
     {
@@ -1453,6 +1453,22 @@
       "read_date": "2026-10-12"
     },
     {
+      "ticker": "JNJ",
+      "symbol": "NYSE:JNJ",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 210.29,
+      "zone_top": 213.95,
+      "sl": null,
+      "tp": null,
+      "rr": null,
+      "latest_close": 255.6,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 14.0512,
+      "dist_above_top_atr": 2.9642,
+      "read_date": "2026-10-17"
+    },
+    {
       "ticker": "KEX",
       "symbol": "",
       "flag": "",
@@ -1467,6 +1483,22 @@
       "weekly_atr": 7.4286,
       "dist_above_top_atr": 0.6071,
       "read_date": "2026-10-12"
+    },
+    {
+      "ticker": "KEYS",
+      "symbol": "NYSE:KEYS",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 305.84,
+      "zone_top": 311.44,
+      "sl": 287.45,
+      "tp": 358.72,
+      "rr": 2.31,
+      "latest_close": 331.18,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 30.4404,
+      "dist_above_top_atr": 0.6485,
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "KLAC",
@@ -1531,6 +1563,22 @@
       "weekly_atr": 17.5646,
       "dist_above_top_atr": 1.593,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "LITE",
+      "symbol": "NASDAQ:LITE",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 634.26,
+      "tp": 985.48,
+      "rr": 2.11,
+      "latest_close": 824.13,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 173.0892,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "LLY",
@@ -1643,6 +1691,22 @@
       "weekly_atr": 33.9292,
       "dist_above_top_atr": 0.4439,
       "read_date": "2026-10-16"
+    },
+    {
+      "ticker": "MPLX",
+      "symbol": "NYSE:MPLX",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 49.9,
+      "tp": 59.24,
+      "rr": 3.51,
+      "latest_close": 58.15,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 2.0847,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "MRK",
