@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T00:14:32+03:00",
+  "generated_at": "2026-10-17T00:20:08+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 129,
+  "checked": 130,
   "flagged": 25,
   "flagged_tickers": [
     {
@@ -859,6 +859,22 @@
       "weekly_atr": 20.1564,
       "dist_above_top_atr": 0.6881,
       "read_date": "2026-10-09"
+    },
+    {
+      "ticker": "CSCO",
+      "symbol": "NASDAQ:CSCO",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 83.84,
+      "zone_top": 87.29,
+      "sl": 79.59,
+      "tp": 121.18,
+      "rr": 6.62,
+      "latest_close": 107.39,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 7.2454,
+      "dist_above_top_atr": 2.7742,
+      "read_date": "2026-10-17"
     },
     {
       "ticker": "CSX",
