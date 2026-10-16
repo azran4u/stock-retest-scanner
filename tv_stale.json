@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T00:18:47+03:00",
+  "generated_at": "2026-10-16T23:54:29+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 126,
+  "checked": 129,
   "flagged": 26,
   "flagged_tickers": [
     {
@@ -52,10 +52,10 @@
       "sl": 138.81,
       "tp": 164.41,
       "rr": 2.37,
-      "latest_close": 135.815,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 7.4603,
-      "dist_above_top_atr": -1.5328,
+      "latest_close": 143.25,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 7.5696,
+      "dist_above_top_atr": -0.5284,
       "read_date": "2026-10-02"
     },
     {
@@ -110,15 +110,15 @@
       "ticker": "DGX",
       "symbol": "",
       "flag": "target hit",
-      "detail": "close 237.62 >= TP 226.84",
+      "detail": "close 234.93 >= TP 226.84",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
       "rr": 3.74,
-      "latest_close": 237.62,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.3498,
+      "latest_close": 234.935,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.5052,
       "dist_above_top_atr": null,
       "read_date": "2026-10-13"
     },
@@ -212,10 +212,10 @@
       "sl": 261.14,
       "tp": 295.97,
       "rr": 2.51,
-      "latest_close": 272.5225,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.4943,
-      "dist_above_top_atr": -0.0958,
+      "latest_close": 272.28,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.5457,
+      "dist_above_top_atr": -0.1148,
       "read_date": "2026-09-29"
     },
     {
@@ -228,10 +228,10 @@
       "sl": 27.56,
       "tp": 33.03,
       "rr": 1.79,
-      "latest_close": 27.215,
-      "last_bar": "2026-10-15",
+      "latest_close": 28.21,
+      "last_bar": "2026-10-16",
       "weekly_atr": 2.0177,
-      "dist_above_top_atr": -1.1771,
+      "dist_above_top_atr": -0.684,
       "read_date": "2026-10-13"
     },
     {
@@ -308,9 +308,9 @@
       "sl": 110.62,
       "tp": 132.29,
       "rr": 1.2479,
-      "latest_close": 112.215,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 9.4205,
+      "latest_close": 118.58,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 9.4984,
       "dist_above_top_atr": null,
       "read_date": "2026-10-07"
     },
@@ -470,10 +470,10 @@
       "sl": 294.03,
       "tp": 360.73,
       "rr": 2.5272,
-      "latest_close": 328.72,
-      "last_bar": "2026-10-15",
+      "latest_close": 330.73,
+      "last_bar": "2026-10-16",
       "weekly_atr": 17.9733,
-      "dist_above_top_atr": 0.7172,
+      "dist_above_top_atr": 0.829,
       "read_date": "2026-10-08"
     },
     {
@@ -494,19 +494,19 @@
     },
     {
       "ticker": "ALL",
-      "symbol": "",
+      "symbol": "NYSE:ALL",
       "flag": "",
       "detail": "",
       "zone_bottom": 214.48,
       "zone_top": 225.2,
-      "sl": null,
-      "tp": null,
-      "rr": null,
+      "sl": 207.13,
+      "tp": 264.36,
+      "rr": 3.08,
       "latest_close": 243.8899,
       "last_bar": "2026-10-15",
       "weekly_atr": 14.448,
       "dist_above_top_atr": 1.2936,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "ALSN",
@@ -557,6 +557,38 @@
       "read_date": "2026-10-15"
     },
     {
+      "ticker": "ANET",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 160.83,
+      "zone_top": 164.99,
+      "sl": null,
+      "tp": null,
+      "rr": null,
+      "latest_close": 176.99,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 21.2846,
+      "dist_above_top_atr": 0.5638,
+      "read_date": "2026-10-16"
+    },
+    {
+      "ticker": "ARM",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 232.35,
+      "zone_top": 237.49,
+      "sl": 191.24,
+      "tp": 434.26,
+      "rr": 4.47,
+      "latest_close": 227.8,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 44.5504,
+      "dist_above_top_atr": -0.2175,
+      "read_date": "2026-10-16"
+    },
+    {
       "ticker": "ARMK",
       "symbol": "",
       "flag": "",
@@ -566,10 +598,10 @@
       "sl": 52.77,
       "tp": 61.88,
       "rr": 2.37,
-      "latest_close": 53.67,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 2.9198,
-      "dist_above_top_atr": -0.7295,
+      "latest_close": 55.29,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 2.9848,
+      "dist_above_top_atr": -0.1709,
       "read_date": "2026-10-16"
     },
     {
@@ -582,31 +614,31 @@
       "sl": 27.42,
       "tp": 32.11,
       "rr": 2.5802,
-      "latest_close": 28.79,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 1.2589,
-      "dist_above_top_atr": 0.0079,
+      "latest_close": 28.96,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 1.2893,
+      "dist_above_top_atr": 0.1396,
       "read_date": "2026-10-08"
     },
     {
       "ticker": "ATI",
-      "symbol": "",
+      "symbol": "NYSE:ATI",
       "flag": "",
       "detail": "",
       "zone_bottom": 174.75,
       "zone_top": 184.47,
-      "sl": 170.5,
+      "sl": 171.3,
       "tp": 229.84,
-      "rr": 4.27,
-      "latest_close": 180.22,
-      "last_bar": "2026-10-15",
+      "rr": 3.36,
+      "latest_close": 185.64,
+      "last_bar": "2026-10-16",
       "weekly_atr": 20.1779,
-      "dist_above_top_atr": -0.2106,
-      "read_date": "2026-10-15"
+      "dist_above_top_atr": 0.058,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "AXTA",
-      "symbol": "",
+      "symbol": "NYSE:AXTA",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.5,
@@ -614,11 +646,11 @@
       "sl": 30.14,
       "tp": 38.04,
       "rr": 2.67,
-      "latest_close": 33.68,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 2.0214,
-      "dist_above_top_atr": 0.6827,
-      "read_date": "2026-10-15"
+      "latest_close": 33.44,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 2.0471,
+      "dist_above_top_atr": 0.5569,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "BAX",
@@ -653,6 +685,22 @@
       "read_date": "2026-10-07"
     },
     {
+      "ticker": "BHP",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 75.09,
+      "zone_top": 79.0,
+      "sl": 74.73,
+      "tp": 94.97,
+      "rr": 3.29,
+      "latest_close": 83.26,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.6411,
+      "dist_above_top_atr": 0.7552,
+      "read_date": "2026-10-16"
+    },
+    {
       "ticker": "BMY",
       "symbol": "",
       "flag": "",
@@ -662,10 +710,10 @@
       "sl": 58.11,
       "tp": 67.27,
       "rr": 1.94,
-      "latest_close": 62.02,
-      "last_bar": "2026-10-15",
+      "latest_close": 59.835,
+      "last_bar": "2026-10-16",
       "weekly_atr": 3.6407,
-      "dist_above_top_atr": 0.1291,
+      "dist_above_top_atr": -0.4711,
       "read_date": "2026-10-16"
     },
     {
@@ -678,10 +726,10 @@
       "sl": 138.81,
       "tp": 164.41,
       "rr": 2.37,
-      "latest_close": 135.815,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 7.4603,
-      "dist_above_top_atr": -1.5328,
+      "latest_close": 143.25,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 7.5696,
+      "dist_above_top_atr": -0.5284,
       "read_date": "2026-10-02"
     },
     {
@@ -694,10 +742,10 @@
       "sl": 136.59,
       "tp": 176.59,
       "rr": 3.51,
-      "latest_close": 156.415,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 6.7737,
-      "dist_above_top_atr": 1.4357,
+      "latest_close": 158.89,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 6.9573,
+      "dist_above_top_atr": 1.7535,
       "read_date": "2026-10-14"
     },
     {
@@ -750,7 +798,7 @@
     },
     {
       "ticker": "CHE",
-      "symbol": "",
+      "symbol": "NYSE:CHE",
       "flag": "",
       "detail": "",
       "zone_bottom": 470.34,
@@ -758,10 +806,10 @@
       "sl": 441.18,
       "tp": 549.06,
       "rr": 2.41,
-      "latest_close": 515.72,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 27.6076,
-      "dist_above_top_atr": 1.3532,
+      "latest_close": 511.72,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 27.7422,
+      "dist_above_top_atr": 1.2025,
       "read_date": "2026-10-16"
     },
     {
@@ -822,10 +870,10 @@
       "sl": 360.37,
       "tp": 415.74,
       "rr": 1.65,
-      "latest_close": 404.2,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 19.7068,
-      "dist_above_top_atr": 0.9251,
+      "latest_close": 399.84,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 20.1564,
+      "dist_above_top_atr": 0.6881,
       "read_date": "2026-10-09"
     },
     {
@@ -838,10 +886,10 @@
       "sl": 40.51,
       "tp": 52.97,
       "rr": 4.3707,
-      "latest_close": 48.56,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 2.1104,
-      "dist_above_top_atr": 2.5588,
+      "latest_close": 48.68,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 2.1418,
+      "dist_above_top_atr": 2.5773,
       "read_date": "2026-10-08"
     },
     {
@@ -858,7 +906,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 5.2398,
       "dist_above_top_atr": -0.0849,
-      "read_date": "2026-10-13"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "DAR",
@@ -870,9 +918,9 @@
       "sl": 54.68,
       "tp": 66.44,
       "rr": 2.01,
-      "latest_close": 62.03,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 5.04,
+      "latest_close": 61.36,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.0996,
       "dist_above_top_atr": null,
       "read_date": "2026-10-16"
     },
@@ -886,15 +934,15 @@
       "sl": 152.85,
       "tp": 235.05,
       "rr": 2.73,
-      "latest_close": 189.99,
-      "last_bar": "2026-10-15",
+      "latest_close": 189.15,
+      "last_bar": "2026-10-16",
       "weekly_atr": 18.2476,
-      "dist_above_top_atr": 0.936,
+      "dist_above_top_atr": 0.89,
       "read_date": "2026-10-16"
     },
     {
       "ticker": "DE",
-      "symbol": "",
+      "symbol": "NYSE:DE",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
@@ -902,25 +950,25 @@
       "sl": 523.02,
       "tp": 655.58,
       "rr": 2.73,
-      "latest_close": 655.57,
-      "last_bar": "2026-10-15",
+      "latest_close": 641.85,
+      "last_bar": "2026-10-16",
       "weekly_atr": 43.9652,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "DGX",
       "symbol": "",
       "flag": "target hit",
-      "detail": "close 237.62 >= TP 226.84",
+      "detail": "close 234.93 >= TP 226.84",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 179.08,
       "tp": 226.84,
       "rr": 3.74,
-      "latest_close": 237.62,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.3498,
+      "latest_close": 234.935,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.5052,
       "dist_above_top_atr": null,
       "read_date": "2026-10-13"
     },
@@ -966,10 +1014,10 @@
       "sl": 76.66,
       "tp": 91.8,
       "rr": 1.7084,
-      "latest_close": 87.41,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 5.9407,
-      "dist_above_top_atr": 0.7373,
+      "latest_close": 86.04,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 6.0114,
+      "dist_above_top_atr": 0.5007,
       "read_date": "2026-10-08"
     },
     {
@@ -1062,10 +1110,10 @@
       "sl": 259.25,
       "tp": 299.07,
       "rr": 2.78,
-      "latest_close": 272.0,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 9.8544,
-      "dist_above_top_atr": 0.0883,
+      "latest_close": 269.47,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 9.8592,
+      "dist_above_top_atr": -0.1684,
       "read_date": "2026-10-15"
     },
     {
@@ -1078,10 +1126,10 @@
       "sl": 79.47,
       "tp": 93.91,
       "rr": 1.93,
-      "latest_close": 85.98,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 4.9496,
-      "dist_above_top_atr": 0.1859,
+      "latest_close": 86.61,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.0311,
+      "dist_above_top_atr": 0.3081,
       "read_date": "2026-10-13"
     },
     {
@@ -1094,27 +1142,27 @@
       "sl": null,
       "tp": null,
       "rr": null,
-      "latest_close": 125.675,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 5.2816,
-      "dist_above_top_atr": 1.5289,
+      "latest_close": 126.88,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.4276,
+      "dist_above_top_atr": 1.7098,
       "read_date": "2026-10-06"
     },
     {
       "ticker": "FIVE",
-      "symbol": "",
+      "symbol": "NASDAQ:FIVE",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
-      "sl": null,
-      "tp": null,
-      "rr": null,
-      "latest_close": 219.64,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 19.155,
+      "sl": 166.0,
+      "tp": 249.32,
+      "rr": 3.91,
+      "latest_close": 222.72,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 19.4836,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "FIX",
@@ -1150,7 +1198,7 @@
     },
     {
       "ticker": "FNV",
-      "symbol": "",
+      "symbol": "NYSE:FNV",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
@@ -1158,11 +1206,11 @@
       "sl": 201.79,
       "tp": 277.77,
       "rr": 2.92,
-      "latest_close": 235.91,
-      "last_bar": "2026-10-15",
+      "latest_close": 243.625,
+      "last_bar": "2026-10-16",
       "weekly_atr": 18.8486,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "FTI",
@@ -1174,10 +1222,10 @@
       "sl": 59.83,
       "tp": 79.75,
       "rr": 3.7,
-      "latest_close": 67.33,
-      "last_bar": "2026-10-15",
+      "latest_close": 69.69,
+      "last_bar": "2026-10-16",
       "weekly_atr": 5.3838,
-      "dist_above_top_atr": 0.5164,
+      "dist_above_top_atr": 0.9547,
       "read_date": "2026-10-15"
     },
     {
@@ -1206,10 +1254,10 @@
       "sl": 162.18,
       "tp": 186.21,
       "rr": 2.37,
-      "latest_close": 168.39,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 8.4784,
-      "dist_above_top_atr": -0.2347,
+      "latest_close": 168.74,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 8.5134,
+      "dist_above_top_atr": -0.1926,
       "read_date": "2026-10-15"
     },
     {
@@ -1270,10 +1318,10 @@
       "sl": 102.07,
       "tp": 127.46,
       "rr": 2.05,
-      "latest_close": 115.58,
-      "last_bar": "2026-10-15",
+      "latest_close": 113.07,
+      "last_bar": "2026-10-16",
       "weekly_atr": 8.2121,
-      "dist_above_top_atr": 0.4165,
+      "dist_above_top_atr": 0.1108,
       "read_date": "2026-10-16"
     },
     {
@@ -1286,9 +1334,9 @@
       "sl": null,
       "tp": null,
       "rr": null,
-      "latest_close": 91.65,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 14.6793,
+      "latest_close": 89.85,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 14.7386,
       "dist_above_top_atr": null,
       "read_date": "2026-10-15"
     },
@@ -1318,10 +1366,10 @@
       "sl": 261.14,
       "tp": 295.97,
       "rr": 2.51,
-      "latest_close": 272.5225,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.4943,
-      "dist_above_top_atr": -0.0958,
+      "latest_close": 272.28,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.5457,
+      "dist_above_top_atr": -0.1148,
       "read_date": "2026-09-29"
     },
     {
@@ -1334,10 +1382,10 @@
       "sl": 27.56,
       "tp": 33.03,
       "rr": 1.79,
-      "latest_close": 27.215,
-      "last_bar": "2026-10-15",
+      "latest_close": 28.21,
+      "last_bar": "2026-10-16",
       "weekly_atr": 2.0177,
-      "dist_above_top_atr": -1.1771,
+      "dist_above_top_atr": -0.684,
       "read_date": "2026-10-13"
     },
     {
@@ -1366,10 +1414,10 @@
       "sl": 123.37,
       "tp": 149.96,
       "rr": 2.603,
-      "latest_close": 135.58,
-      "last_bar": "2026-10-15",
+      "latest_close": 136.32,
+      "last_bar": "2026-10-16",
       "weekly_atr": 7.4286,
-      "dist_above_top_atr": 0.5075,
+      "dist_above_top_atr": 0.6071,
       "read_date": "2026-10-12"
     },
     {
@@ -1430,10 +1478,10 @@
       "sl": 272.04,
       "tp": 333.31,
       "rr": 2.6623,
-      "latest_close": 321.735,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 17.2885,
-      "dist_above_top_atr": 1.8373,
+      "latest_close": 317.95,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 17.5646,
+      "dist_above_top_atr": 1.593,
       "read_date": "2026-10-08"
     },
     {
@@ -1486,7 +1534,7 @@
     },
     {
       "ticker": "MDB",
-      "symbol": "",
+      "symbol": "NASDAQ:MDB",
       "flag": "",
       "detail": "",
       "zone_bottom": 288.09,
@@ -1498,7 +1546,7 @@
       "last_bar": "2026-10-15",
       "weekly_atr": 57.8782,
       "dist_above_top_atr": 0.9349,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "MLI",
@@ -1534,19 +1582,19 @@
     },
     {
       "ticker": "MOG-A",
-      "symbol": "",
+      "symbol": "NYSE:MOG.A",
       "flag": "",
       "detail": "",
       "zone_bottom": 344.29,
       "zone_top": 353.61,
       "sl": 318.54,
-      "tp": 435.66,
+      "tp": 435.65,
       "rr": 2.61,
-      "latest_close": 363.7,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 33.4021,
-      "dist_above_top_atr": 0.3021,
-      "read_date": "2026-10-15"
+      "latest_close": 368.67,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 33.9292,
+      "dist_above_top_atr": 0.4439,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "MRK",
@@ -1574,10 +1622,10 @@
       "sl": 423.34,
       "tp": 482.73,
       "rr": 1.8,
-      "latest_close": 459.72,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 21.9605,
-      "dist_above_top_atr": 0.5565,
+      "latest_close": 463.1,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 22.4819,
+      "dist_above_top_atr": 0.6939,
       "read_date": "2026-10-16"
     },
     {
@@ -1598,19 +1646,19 @@
     },
     {
       "ticker": "MU",
-      "symbol": "",
+      "symbol": "NASDAQ:MU",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
       "zone_top": null,
       "sl": 660.28,
       "tp": 1198.45,
-      "rr": null,
-      "latest_close": 880.92,
-      "last_bar": "2026-10-15",
+      "rr": 2.65,
+      "latest_close": 878.84,
+      "last_bar": "2026-10-16",
       "weekly_atr": 126.1157,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-15"
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "MUSA",
@@ -1638,9 +1686,9 @@
       "sl": 110.62,
       "tp": 132.29,
       "rr": 1.2479,
-      "latest_close": 112.215,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 9.4205,
+      "latest_close": 118.58,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 9.4984,
       "dist_above_top_atr": null,
       "read_date": "2026-10-07"
     },
@@ -1654,10 +1702,10 @@
       "sl": 141.15,
       "tp": 189.78,
       "rr": 3.6447,
-      "latest_close": 161.34,
-      "last_bar": "2026-10-15",
+      "latest_close": 165.54,
+      "last_bar": "2026-10-16",
       "weekly_atr": 9.0378,
-      "dist_above_top_atr": 0.7137,
+      "dist_above_top_atr": 1.1784,
       "read_date": "2026-10-07"
     },
     {
@@ -1734,10 +1782,10 @@
       "sl": 85.81,
       "tp": 117.62,
       "rr": 2.4689,
-      "latest_close": 107.04,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 5.5462,
-      "dist_above_top_atr": 2.0897,
+      "latest_close": 108.81,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.6234,
+      "dist_above_top_atr": 2.3758,
       "read_date": "2026-10-08"
     },
     {
@@ -1750,10 +1798,10 @@
       "sl": 895.21,
       "tp": 1077.95,
       "rr": 2.71,
-      "latest_close": 953.51,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 52.9883,
-      "dist_above_top_atr": 0.0419,
+      "latest_close": 963.965,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 53.5137,
+      "dist_above_top_atr": 0.2369,
       "read_date": "2026-10-15"
     },
     {
@@ -1766,10 +1814,10 @@
       "sl": 214.16,
       "tp": 253.22,
       "rr": 2.1475,
-      "latest_close": 233.08,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.5068,
-      "dist_above_top_atr": 0.3846,
+      "latest_close": 236.09,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.6832,
+      "dist_above_top_atr": 0.6166,
       "read_date": "2026-10-08"
     },
     {
@@ -1814,10 +1862,10 @@
       "sl": 265.3,
       "tp": 318.12,
       "rr": 1.7115,
-      "latest_close": 281.165,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 13.2174,
-      "dist_above_top_atr": -0.4044,
+      "latest_close": 282.38,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 13.4217,
+      "dist_above_top_atr": -0.3077,
       "read_date": "2026-10-07"
     },
     {
@@ -1846,10 +1894,10 @@
       "sl": 213.47,
       "tp": 276.32,
       "rr": 3.6078,
-      "latest_close": 237.5325,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 12.0319,
-      "dist_above_top_atr": 0.7175,
+      "latest_close": 238.45,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 12.1162,
+      "dist_above_top_atr": 0.7882,
       "read_date": "2026-10-06"
     },
     {
@@ -1878,10 +1926,10 @@
       "sl": 388.07,
       "tp": 477.44,
       "rr": 2.6,
-      "latest_close": 416.03,
-      "last_bar": "2026-10-15",
+      "latest_close": 426.19,
+      "last_bar": "2026-10-16",
       "weekly_atr": 25.4815,
-      "dist_above_top_atr": 0.0247,
+      "dist_above_top_atr": 0.4234,
       "read_date": "2026-10-14"
     },
     {
@@ -1974,10 +2022,10 @@
       "sl": 226.53,
       "tp": 282.57,
       "rr": 2.02,
-      "latest_close": 251.4,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 21.4569,
-      "dist_above_top_atr": 0.3356,
+      "latest_close": 246.76,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 21.7683,
+      "dist_above_top_atr": 0.1176,
       "read_date": "2026-10-16"
     },
     {
@@ -1990,10 +2038,10 @@
       "sl": 196.07,
       "tp": 227.16,
       "rr": 3.54,
-      "latest_close": 201.035,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 7.3196,
-      "dist_above_top_atr": -0.39,
+      "latest_close": 205.53,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 7.556,
+      "dist_above_top_atr": 0.217,
       "read_date": "2026-09-29"
     },
     {
@@ -2006,10 +2054,10 @@
       "sl": 94.78,
       "tp": 111.42,
       "rr": 2.59,
-      "latest_close": 100.86,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 4.5747,
-      "dist_above_top_atr": 0.2383,
+      "latest_close": 102.13,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 4.6826,
+      "dist_above_top_atr": 0.504,
       "read_date": "2026-10-14"
     },
     {
@@ -2086,15 +2134,15 @@
       "sl": 82.27,
       "tp": 101.51,
       "rr": 2.0,
-      "latest_close": 92.57,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 5.7557,
-      "dist_above_top_atr": 0.4048,
+      "latest_close": 92.45,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 5.9089,
+      "dist_above_top_atr": 0.374,
       "read_date": "2026-10-16"
     },
     {
       "ticker": "TGT",
-      "symbol": "",
+      "symbol": "NYSE:TGT",
       "flag": "",
       "detail": "",
       "zone_bottom": 139.02,
@@ -2102,10 +2150,10 @@
       "sl": 131.28,
       "tp": 164.92,
       "rr": 2.51,
-      "latest_close": 158.13,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 8.8803,
-      "dist_above_top_atr": 1.6463,
+      "latest_close": 154.25,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 8.9803,
+      "dist_above_top_atr": 1.196,
       "read_date": "2026-10-16"
     },
     {
@@ -2158,7 +2206,7 @@
     },
     {
       "ticker": "TTEK",
-      "symbol": "",
+      "symbol": "NASDAQ:TTEK",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.48,
@@ -2166,10 +2214,10 @@
       "sl": 30.15,
       "tp": 36.96,
       "rr": 2.41,
-      "latest_close": 34.74,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 1.9119,
-      "dist_above_top_atr": 1.2815,
+      "latest_close": 34.72,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 1.9376,
+      "dist_above_top_atr": 1.2541,
       "read_date": "2026-10-16"
     },
     {
@@ -2182,10 +2230,10 @@
       "sl": 44.93,
       "tp": 54.86,
       "rr": 2.96,
-      "latest_close": 47.075,
-      "last_bar": "2026-10-15",
+      "latest_close": 47.675,
+      "last_bar": "2026-10-16",
       "weekly_atr": 2.4186,
-      "dist_above_top_atr": -0.4114,
+      "dist_above_top_atr": -0.1633,
       "read_date": "2026-10-14"
     },
     {
@@ -2198,10 +2246,10 @@
       "sl": 124.41,
       "tp": 150.77,
       "rr": 1.87,
-      "latest_close": 130.93,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 7.202,
-      "dist_above_top_atr": -0.4763,
+      "latest_close": 131.1,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 7.3766,
+      "dist_above_top_atr": -0.4419,
       "read_date": "2026-10-09"
     },
     {
@@ -2262,10 +2310,10 @@
       "sl": 906.26,
       "tp": 1165.22,
       "rr": 2.3971,
-      "latest_close": 1016.0,
-      "last_bar": "2026-10-15",
+      "latest_close": 1030.155,
+      "last_bar": "2026-10-16",
       "weekly_atr": 85.3589,
-      "dist_above_top_atr": 0.2498,
+      "dist_above_top_atr": 0.4156,
       "read_date": "2026-10-12"
     },
     {
@@ -2310,10 +2358,10 @@
       "sl": 86.93,
       "tp": 103.83,
       "rr": 2.33,
-      "latest_close": 93.15,
-      "last_bar": "2026-10-15",
+      "latest_close": 94.0,
+      "last_bar": "2026-10-16",
       "weekly_atr": 5.194,
-      "dist_above_top_atr": 0.1155,
+      "dist_above_top_atr": 0.2792,
       "read_date": "2026-10-16"
     },
     {
@@ -2342,11 +2390,11 @@
       "sl": 469.92,
       "tp": 546.93,
       "rr": 1.35,
-      "latest_close": 515.86,
-      "last_bar": "2026-10-15",
+      "latest_close": 499.74,
+      "last_bar": "2026-10-16",
       "weekly_atr": 29.795,
-      "dist_above_top_atr": 0.2692,
-      "read_date": "2026-10-13"
+      "dist_above_top_atr": -0.2719,
+      "read_date": "2026-10-16"
     },
     {
       "ticker": "WAB",
@@ -2358,10 +2406,10 @@
       "sl": 259.64,
       "tp": 301.16,
       "rr": 1.47,
-      "latest_close": 283.8,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 15.5263,
-      "dist_above_top_atr": 0.3407,
+      "latest_close": 286.67,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 15.7188,
+      "dist_above_top_atr": 0.5191,
       "read_date": "2026-10-13"
     },
     {
@@ -2414,7 +2462,7 @@
     },
     {
       "ticker": "WTRG",
-      "symbol": "",
+      "symbol": "NYSE:WTRG",
       "flag": "",
       "detail": "",
       "zone_bottom": 36.58,
@@ -2430,7 +2478,7 @@
     },
     {
       "ticker": "WTS",
-      "symbol": "",
+      "symbol": "NYSE:WTS",
       "flag": "",
       "detail": "",
       "zone_bottom": 327.04,
@@ -2438,11 +2486,11 @@
       "sl": 330.54,
       "tp": 388.28,
       "rr": 2.81,
-      "latest_close": 349.51,
-      "last_bar": "2026-10-15",
-      "weekly_atr": 18.961,
-      "dist_above_top_atr": 0.327,
-      "read_date": "2026-10-15"
+      "latest_close": 356.849,
+      "last_bar": "2026-10-16",
+      "weekly_atr": 19.3655,
+      "dist_above_top_atr": 0.6991,
+      "read_date": "2026-10-16"
     }
   ]
 }
