@@ -119,6 +119,22 @@ def _fv_page(url: str) -> Tuple[Optional[List[Tuple[str, Dict[str, Any]]]], Opti
     table = soup.select_one("table.screener_table")
     out: List[Tuple[str, Dict[str, Any]]] = []
     if table is None:
+        # FinViz redesign (seen 2026-10-19): div grid split into lanes; cells carry
+        # role=gridcell + data-column-id, the ticker cell carries data-ticker. Zip by column.
+        cols: Dict[str, list] = {}
+        for c in soup.find_all(attrs={"role": "gridcell", "data-column-id": True}):
+            cols.setdefault(c["data-column-id"], []).append(c)
+        tick_cells = cols.get("ticker", [])
+        for i, tc in enumerate(tick_cells):
+            t = tc.get("data-ticker")
+            if not t:
+                continue
+            rec = {"inst_own": None, "short_float": None}
+            for col, key in (("instOwn", "inst_own"), ("shortInterestShare", "short_float")):
+                lst = cols.get(col, [])
+                if i < len(lst) and len(lst) == len(tick_cells):
+                    rec[key] = _fv_pct(lst[i].get_text(strip=True))
+            out.append((t, rec))
         return out, total
     trs = table.find_all("tr")
     hdr = {c.get_text(strip=True): i for i, c in enumerate(trs[0].find_all(["th", "td"]))} if trs else {}
@@ -171,12 +187,24 @@ def fetch_screener_tickers(max_pages: int = 200) -> List[str]:
     global _OWNERSHIP
     own: Dict[str, Dict[str, Any]] = {}
     base = _screener_url(131)
-    total = _fv_query(base, own)
-    if total and len(own) < total:
-        for part in ("ind_stocksonly", "ind_exchangetradedfund"):
-            _fv_query(re.sub(r"([?&]f=)", lambda m: m.group(1) + part + ",", base), own)
-            if len(own) >= total:
-                break
+    # FinViz redesign (2026-10-19): /screener now redirects to /screener/stocks (stocks only);
+    # ETFs live under /screener/etf with the same filters. Read both so the universe stays
+    # stocks + ETFs like before. Falls back to the legacy single query if the split fails.
+    total = None
+    if "/screener?" in base:
+        totals = []
+        for seg in ("/screener/stocks?", "/screener/etf?"):
+            tot = _fv_query(base.replace("/screener?", seg), own)
+            if tot:
+                totals.append(tot)
+        total = sum(totals) if totals else None
+    if not own:
+        total = _fv_query(base, own)
+        if total and len(own) < total:
+            for part in ("ind_stocksonly", "ind_exchangetradedfund"):
+                _fv_query(re.sub(r"([?&]f=)", lambda m: m.group(1) + part + ",", base), own)
+                if len(own) >= total:
+                    break
     tickers = sorted(own)
     print(f"[screener] live fetch: {len(tickers)} tickers (FinViz total {total})"
           + ("" if not total or len(tickers) >= total else f" WARNING: {total - len(tickers)} not reached"))
