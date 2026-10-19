@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T00:00:00+03:00",
+  "generated_at": "2026-10-20T00:03:37+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 143,
+  "checked": 144,
   "flagged": 25,
   "flagged_tickers": [
     {
@@ -2411,6 +2411,22 @@
       "weekly_atr": 18.64,
       "dist_above_top_atr": 1.1156,
       "read_date": "2026-10-04"
+    },
+    {
+      "ticker": "TSM",
+      "symbol": "NYSE:TSM",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 344.9,
+      "tp": 470.9,
+      "rr": 3.38,
+      "latest_close": 420.22,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 27.9923,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "TTEK",
