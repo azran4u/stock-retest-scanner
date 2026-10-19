@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:44:14+03:00",
+  "generated_at": "2026-10-19T23:47:15+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -570,7 +570,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 2.786,
       "dist_above_top_atr": -0.0287,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "ASB",
@@ -698,7 +698,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 6.722,
       "dist_above_top_atr": -0.7156,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "BPOP",
@@ -778,7 +778,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 25.9726,
       "dist_above_top_atr": 1.1524,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "CLH",
@@ -906,23 +906,23 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 5.0232,
       "dist_above_top_atr": 0.0836,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "DASH",
       "symbol": "NASDAQ:DASH",
       "flag": "",
       "detail": "",
-      "zone_bottom": 166.58,
-      "zone_top": 172.91,
-      "sl": 152.85,
-      "tp": 235.05,
-      "rr": 2.73,
+      "zone_bottom": 183.38,
+      "zone_top": 192.74,
+      "sl": 165.75,
+      "tp": 235.58,
+      "rr": 2.06,
       "latest_close": 193.53,
       "last_bar": "2026-10-19",
       "weekly_atr": 17.794,
-      "dist_above_top_atr": 1.1588,
-      "read_date": "2026-10-17"
+      "dist_above_top_atr": 0.0444,
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "DE",
@@ -1242,7 +1242,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 1.0375,
       "dist_above_top_atr": -0.5398,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "FTI",
@@ -1354,7 +1354,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 7.6857,
       "dist_above_top_atr": 0.1418,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "INTC",
@@ -1562,7 +1562,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 163.1763,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "LLY",
@@ -2122,7 +2122,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 20.7436,
       "dist_above_top_atr": 0.2107,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "SPG",
@@ -2234,7 +2234,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 5.5103,
       "dist_above_top_atr": 0.1724,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "TGT",
@@ -2314,7 +2314,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 1.8514,
       "dist_above_top_atr": 1.2639,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "UBS",
@@ -2378,7 +2378,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 4.9258,
       "dist_above_top_atr": 1.1572,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "UNP",
@@ -2458,7 +2458,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 4.713,
       "dist_above_top_atr": 0.1846,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "VRSN",
