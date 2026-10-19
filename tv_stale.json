@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:52:53+03:00",
+  "generated_at": "2026-10-19T23:55:53+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -1498,7 +1498,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 13.3845,
       "dist_above_top_atr": 2.9766,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "KEX",
