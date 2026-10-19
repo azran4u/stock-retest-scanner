@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:29:08+03:00",
+  "generated_at": "2026-10-19T23:44:14+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -554,7 +554,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 39.4396,
       "dist_above_top_atr": -0.2394,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "ARMK",
@@ -602,7 +602,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 19.2557,
       "dist_above_top_atr": 0.2498,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "AXTA",
@@ -618,7 +618,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 1.9993,
       "dist_above_top_atr": 0.6902,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "BAX",
@@ -666,7 +666,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 5.2072,
       "dist_above_top_atr": 0.8104,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "BMY",
@@ -858,7 +858,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 6.4795,
       "dist_above_top_atr": 2.9647,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "CSX",
@@ -938,7 +938,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 42.5421,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "DGX",
@@ -1162,7 +1162,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 18.8389,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "FIX",
@@ -1210,7 +1210,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 18.3664,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "FOXA",
@@ -1454,19 +1454,19 @@
     },
     {
       "ticker": "KEX",
-      "symbol": "",
+      "symbol": "NYSE:KEX",
       "flag": "",
       "detail": "",
       "zone_bottom": 129.49,
       "zone_top": 131.81,
       "sl": 123.37,
       "tp": 149.96,
-      "rr": 2.603,
+      "rr": 2.6,
       "latest_close": 136.37,
       "last_bar": "2026-10-19",
       "weekly_atr": 7.2025,
       "dist_above_top_atr": 0.6331,
-      "read_date": "2026-10-12"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "KEYS",
@@ -1626,7 +1626,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 56.8146,
       "dist_above_top_atr": 0.8973,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "MLI",
@@ -1690,7 +1690,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 2.0317,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "MRK",
@@ -1754,7 +1754,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 115.9136,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "MUSA",
@@ -2250,7 +2250,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 8.3829,
       "dist_above_top_atr": 1.1667,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "THC",
@@ -2586,7 +2586,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 18.6989,
       "dist_above_top_atr": 0.7321,
-      "read_date": "2026-10-16"
+      "read_date": "2026-10-19"
     }
   ]
 }
