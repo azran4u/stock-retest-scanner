@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:51:05+03:00",
+  "generated_at": "2026-10-19T23:52:53+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,8 +7,8 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 137,
-  "flagged": 24,
+  "checked": 139,
+  "flagged": 25,
   "flagged_tickers": [
     {
       "ticker": "ADP",
@@ -153,6 +153,22 @@
       "weekly_atr": 8.7555,
       "dist_above_top_atr": 2.9273,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "FROG",
+      "symbol": "NASDAQ:FROG",
+      "flag": "target hit",
+      "detail": "close 91.00 >= TP 49.64",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 31.61,
+      "tp": 49.64,
+      "rr": 1.91,
+      "latest_close": 91.0,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 12.6239,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "IESC",
@@ -1229,6 +1245,22 @@
       "read_date": "2026-10-17"
     },
     {
+      "ticker": "FROG",
+      "symbol": "NASDAQ:FROG",
+      "flag": "target hit",
+      "detail": "close 91.00 >= TP 49.64",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 31.61,
+      "tp": 49.64,
+      "rr": 1.91,
+      "latest_close": 91.0,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 12.6239,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-19"
+    },
+    {
       "ticker": "FSM",
       "symbol": "NYSE:FSM",
       "flag": "",
@@ -1307,6 +1339,22 @@
       "weekly_atr": 2.2094,
       "dist_above_top_atr": 1.299,
       "read_date": "2026-10-07"
+    },
+    {
+      "ticker": "HIMS",
+      "symbol": "NYSE:HIMS",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 25.14,
+      "tp": 36.27,
+      "rr": 1.09,
+      "latest_close": 28.15,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 4.2774,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "IESC",
