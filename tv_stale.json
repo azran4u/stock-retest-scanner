@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:47:15+03:00",
+  "generated_at": "2026-10-19T23:49:00+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -538,7 +538,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 19.6053,
       "dist_above_top_atr": 0.9161,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "ARM",
@@ -782,7 +782,7 @@
     },
     {
       "ticker": "CLH",
-      "symbol": "",
+      "symbol": "NYSE:CLH",
       "flag": "",
       "detail": "",
       "zone_bottom": 310.97,
@@ -794,7 +794,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 13.2054,
       "dist_above_top_atr": 0.2105,
-      "read_date": "2026-10-02"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "CNO",
@@ -842,7 +842,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 19.1307,
       "dist_above_top_atr": 0.8672,
-      "read_date": "2026-10-09"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "CSCO",
@@ -1473,7 +1473,7 @@
       "symbol": "NYSE:KEYS",
       "flag": "",
       "detail": "",
-      "zone_bottom": 305.84,
+      "zone_bottom": 306.84,
       "zone_top": 311.44,
       "sl": 287.45,
       "tp": 358.72,
@@ -1482,7 +1482,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 28.9986,
       "dist_above_top_atr": 0.8421,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "KLAC",
@@ -1834,7 +1834,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 5.2206,
       "dist_above_top_atr": 1.1493,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "OVV",
@@ -2490,7 +2490,7 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 28.3121,
       "dist_above_top_atr": -0.208,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-19"
     },
     {
       "ticker": "WAB",
