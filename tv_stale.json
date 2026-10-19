@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T23:55:53+03:00",
+  "generated_at": "2026-10-19T23:57:56+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 139,
+  "checked": 142,
   "flagged": 25,
   "flagged_tickers": [
     {
@@ -1837,6 +1837,22 @@
       "read_date": "2026-10-07"
     },
     {
+      "ticker": "NET",
+      "symbol": "NYSE:NET",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 254.69,
+      "zone_top": 259.96,
+      "sl": 223.37,
+      "tp": 310.84,
+      "rr": 1.49,
+      "latest_close": 297.58,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 37.975,
+      "dist_above_top_atr": 0.9907,
+      "read_date": "2026-10-19"
+    },
+    {
       "ticker": "NTRS",
       "symbol": "",
       "flag": "",
@@ -1869,6 +1885,22 @@
       "read_date": "2026-10-13"
     },
     {
+      "ticker": "NVDA",
+      "symbol": "NASDAQ:NVDA",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 170.86,
+      "tp": 225.18,
+      "rr": 2.19,
+      "latest_close": 217.09,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 15.2955,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-19"
+    },
+    {
       "ticker": "OKE",
       "symbol": "NYSE:OKE",
       "flag": "",
@@ -1882,6 +1914,22 @@
       "last_bar": "2026-10-19",
       "weekly_atr": 5.2206,
       "dist_above_top_atr": 1.1493,
+      "read_date": "2026-10-19"
+    },
+    {
+      "ticker": "ORKA",
+      "symbol": "NASDAQ:ORKA",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 70.26,
+      "zone_top": 73.74,
+      "sl": null,
+      "tp": null,
+      "rr": null,
+      "latest_close": 74.48,
+      "last_bar": "2026-10-19",
+      "weekly_atr": 10.54,
+      "dist_above_top_atr": 0.0702,
       "read_date": "2026-10-19"
     },
     {
