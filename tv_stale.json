@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T23:49:48+03:00",
+  "generated_at": "2026-10-20T23:53:29+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -188,7 +188,7 @@
     },
     {
       "ticker": "FROG",
-      "symbol": "NASDAQ:FROG",
+      "symbol": "",
       "flag": "target hit",
       "detail": "close 92.37 >= TP 49.64",
       "zone_bottom": null,
@@ -200,7 +200,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 12.6475,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "IESC",
@@ -670,7 +670,7 @@
     },
     {
       "ticker": "ANET",
-      "symbol": "NYSE:ANET",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 160.83,
@@ -682,7 +682,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 19.6053,
       "dist_above_top_atr": 0.8294,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "ARM",
@@ -926,7 +926,7 @@
     },
     {
       "ticker": "CLH",
-      "symbol": "NYSE:CLH",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 310.97,
@@ -938,7 +938,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 13.5107,
       "dist_above_top_atr": 0.1784,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "CNO",
@@ -1022,7 +1022,7 @@
     },
     {
       "ticker": "DAL",
-      "symbol": "NYSE:DAL",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 74.6,
@@ -1034,11 +1034,11 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 5.2955,
       "dist_above_top_atr": -0.0019,
-      "read_date": "2026-10-17"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "DAR",
-      "symbol": "NYSE:DAR",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 57.92,
@@ -1050,7 +1050,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 5.1135,
       "dist_above_top_atr": -0.0098,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "DASH",
@@ -1374,7 +1374,7 @@
     },
     {
       "ticker": "FROG",
-      "symbol": "NASDAQ:FROG",
+      "symbol": "",
       "flag": "target hit",
       "detail": "close 92.37 >= TP 49.64",
       "zone_bottom": null,
@@ -1386,7 +1386,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 12.6475,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "FSM",
@@ -1966,7 +1966,7 @@
     },
     {
       "ticker": "NET",
-      "symbol": "NYSE:NET",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 254.69,
@@ -1978,7 +1978,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 38.7521,
       "dist_above_top_atr": 0.8132,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "NTRS",
@@ -2734,7 +2734,7 @@
     },
     {
       "ticker": "VRTX",
-      "symbol": "NASDAQ:VRTX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 496.62,
@@ -2746,7 +2746,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 29.0196,
       "dist_above_top_atr": 0.2347,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "WAB",
