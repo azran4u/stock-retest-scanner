@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-21T00:00:52+03:00",
+  "generated_at": "2026-10-21T00:03:33+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 147,
+  "checked": 148,
   "flagged": 33,
   "flagged_tickers": [
     {
@@ -2139,6 +2139,22 @@
       "weekly_atr": 3.2943,
       "dist_above_top_atr": 3.4574,
       "read_date": "2026-10-08"
+    },
+    {
+      "ticker": "PANW",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 315.05,
+      "zone_top": 326.47,
+      "sl": null,
+      "tp": null,
+      "rr": null,
+      "latest_close": 340.28,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 43.5868,
+      "dist_above_top_atr": 0.3168,
+      "read_date": "2026-10-21"
     },
     {
       "ticker": "PFG",
