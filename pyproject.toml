@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srs"
+version = "0.1.0"
+description = "stock-retest-scanner: deterministic, tested building blocks (fetch, weekly, trend, info)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pandas>=1.5",
+  "numpy",
+  "yfinance>=0.2.40",
+  "requests",
+  "beautifulsoup4",
+  "lxml",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+srs = "srs.cli:main"
+
+[tool.setuptools]
+packages = ["srs"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

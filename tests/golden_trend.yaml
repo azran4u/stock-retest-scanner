@@ -1,0 +1,139 @@
+# Golden labels for srs.trend (primary weekly UPTREND = True).
+# Built 2026-10-20 from Eyal's own manual calls:
+#  - up: false = tickers Eyal marked 'no clear uptrend' on 2026-10-09 (user_overrides.json) + SSB
+#  - up: true  = PH, VOYA, DLTR (named by Eyal) + every chart where Eyal drew his own zone/long
+#                position in TradingView (tv_drawings.json source=user), excluding the negatives.
+# asof = date the label applies to: 2026-10-09 for the 10-09 review; for a drawing, the first
+#        daily report that showed it (the drawing existed on/before that date).
+# Price data: tests/data/golden_daily.csv.gz (yfinance auto-adjusted, frozen 2026-10-20).
+cases:
+  - {ticker: LPLA, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: MDLZ, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: REGN, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: AJG, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: AMP, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: CACI, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: CHD, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: ICE, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: LW, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: MTG, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: EQIX, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: MSI, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: VLTO, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: SSB, up: false, asof: '2026-10-09', source: 'Eyal 2026-10-09: no clear uptrend'}
+  - {ticker: ADM, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: ADP, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: AIT, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: AIZ, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: ALL, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: AMAT, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: AMGN, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: ANET, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: ARM, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: ARMK, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: ASB, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: ATI, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: AXTA, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: BAX, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: BDX, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: BHP, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: BMY, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: BNY, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: BPOP, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: BWA, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: CAH, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: CGNX, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: CHE, up: true, asof: '2026-10-12', source: 'Eyal own TradingView drawing'}
+  - {ticker: CLH, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: CPAY, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: CSCO, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: CSX, up: true, asof: '2026-10-07', source: 'Eyal own TradingView drawing'}
+  - {ticker: DAL, up: true, asof: '2026-10-12', source: 'Eyal own TradingView drawing'}
+  - {ticker: DAR, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: DASH, up: true, asof: '2026-10-06', source: 'Eyal own TradingView drawing'}
+  - {ticker: DE, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: DGX, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: DLTR, up: true, asof: '2026-10-08', source: 'Eyal named technical'}
+  - {ticker: DOC, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: DOCN, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: EBAY, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: EOG, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: EWBC, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: FIVE, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: FLEX, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: FNV, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: FOXA, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: FROG, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: FSM, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: FTI, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: FWONK, up: true, asof: '2026-10-05', source: 'Eyal own TradingView drawing'}
+  - {ticker: GL, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: GTX, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: HIMS, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: IESC, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: INCY, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: INTC, up: true, asof: '2026-10-12', source: 'Eyal own TradingView drawing'}
+  - {ticker: IRM, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: IVZ, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: JBL, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: JNJ, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: KEX, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: KEYS, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: KLAC, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: LAMR, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: LFUS, up: true, asof: '2026-09-30', source: 'Eyal own TradingView drawing'}
+  - {ticker: LH, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: LITE, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: LLY, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: LNG, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: MDB, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: MLI, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: MNST, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: MOG-A, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: MPLX, up: true, asof: '2026-10-15', source: 'Eyal own TradingView drawing'}
+  - {ticker: MRK, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: MTCH, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: MU, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: MUSA, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: NEM, up: true, asof: '2026-10-05', source: 'Eyal own TradingView drawing'}
+  - {ticker: NET, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: NTRS, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: NUE, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: NVDA, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: ORKA, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: OVV, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: PFG, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: PH, up: true, asof: '2026-10-09', source: 'Eyal named technical'}
+  - {ticker: PRI, up: true, asof: '2026-10-05', source: 'Eyal own TradingView drawing'}
+  - {ticker: PYPL, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: R, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: RHP, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: ROK, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: ROST, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: RPRX, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: SJM, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: SLS, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: SNEX, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: SNX, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: SSNC, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: ST, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: STLD, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: STX, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: SWK, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: TGT, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: THC, up: true, asof: '2026-09-29', source: 'Eyal own TradingView drawing'}
+  - {ticker: THG, up: true, asof: '2026-10-05', source: 'Eyal own TradingView drawing'}
+  - {ticker: TSM, up: true, asof: '2026-10-19', source: 'Eyal own TradingView drawing'}
+  - {ticker: TTEK, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: UBS, up: true, asof: '2026-10-09', source: 'Eyal own TradingView drawing'}
+  - {ticker: UMBF, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: UNP, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: URI, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: VMI, up: true, asof: '2026-10-02', source: 'Eyal own TradingView drawing'}
+  - {ticker: VOYA, up: true, asof: '2026-10-09', source: 'Eyal named technical'}
+  - {ticker: VRTX, up: true, asof: '2026-10-01', source: 'Eyal own TradingView drawing'}
+  - {ticker: WAB, up: true, asof: '2026-09-30', source: 'Eyal own TradingView drawing'}
+  - {ticker: WDC, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: WELL, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}
+  - {ticker: WTRG, up: true, asof: '2026-10-13', source: 'Eyal own TradingView drawing'}
+  - {ticker: WTS, up: true, asof: '2026-09-28', source: 'Eyal own TradingView drawing'}

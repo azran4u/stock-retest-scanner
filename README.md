@@ -106,6 +106,61 @@ The daily export (`export_daily_report.py`) calls `positions.refresh()` (yfinanc
 Alert routine: `/workspace/.venv/bin/python /workspace/stock-screener/positions_check.py` (exit 2 if any flag fires).
 Default target = TP of the user's TradingView drawing (tv_drawings.json) at entry time.
 
+## `srs` — deterministic building blocks (CLI + Python package)
+
+Small pure functions with tests, runnable on any Mac/Linux. Separate from the daily scan
+(`stock_screen.py` / `report_filters.py` are unchanged and do not import it).
+
+| Function | What it returns |
+|---|---|
+| `srs.to_weekly(daily, asof=None, drop_incomplete=False)` | W-FRI weekly OHLCV (open first, high max, low min, close last, volume sum), identical to `stock_screen.to_weekly` with defaults |
+| `srs.trend(weekly, **params)` | `{'trend': 'up'/'down'/'none', 'swing_highs', 'swing_lows', 'used', 'reason', 'params'}` |
+| `srs.info.info(ticker)` | inst own, short float, sector, industry, market cap, next earnings (FinViz, yfinance fallback) |
+
+**Trend rule.** Swing high = weekly High above the 3 weeks before it and not below the 3 weeks after it
+(fractal, `pivot_k=3`; swing low mirrored). Same-kind swings less than 12 weeks apart are merged, keeping
+the more extreme (`min_sep_weeks=12`). **Up** means the last two swing highs are rising (the newest high may
+be unconfirmed) and the last two swing lows before that high are rising. The current pullback after the
+newest high is not judged (`pullback="ignore"`), but the trend is void if the latest weekly close is below
+the last swing low (`break_close`). **Down** is the mirror. Anything else is **none**. Only the last 104
+weeks are used. All parameters live in `srs.trend.TREND_DEFAULTS` and can be overridden from the CLI.
+
+**Golden set.** `tests/golden_trend.yaml` holds Eyal's manual labels: 14 "no clear uptrend" calls and 116
+technical stocks (PH, VOYA, DLTR plus his own TradingView drawings). Each label is evaluated as of its date
+on frozen prices (`tests/data/golden_daily.csv.gz`). `pytest -s` prints the confusion matrix and every
+miss. `python tools/tune_trend.py` runs the parameter grid, and `python tools/cv_trend.py` runs the
+leave-one-out check.
+
+### Install on a Mac
+
+```bash
+git clone https://github.com/azran4u/stock-retest-scanner.git
+cd stock-retest-scanner
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[test]'
+pytest -s                      # unit tests + golden-set accuracy report
+```
+
+### Commands
+
+```bash
+printf "PH\nNYSE:SWK\nNASDAQ:MU\n" > my.txt     # one per line; EXCHANGE:TICKER or comma lists work
+srs fetch my.txt                       # 5y daily OHLCV -> ~/.srs_cache/<T>.csv (incremental)
+srs fetch my.txt --years 5 --cache-dir ~/.srs_cache
+srs weekly PH --last 10                # weekly candles (completed weeks; --include-incomplete for this week)
+srs weekly PH --json --asof 2026-10-09
+srs trend my.txt                       # table: trend, the 2 highs / 2 lows used, reason
+srs trend PH,SWK --asof 2026-10-09 --json
+srs trend my.txt --pivot-k 4 --min-sep-weeks 8   # override any TREND_DEFAULTS key
+srs trend my.txt --fetch               # update the cache first
+srs info PH,SWK                        # inst own / short float / sector / market cap / next earnings
+```
+
+`srs fetch` downloads with yfinance `auto_adjust=True`, the same as the daily scan. On a re-run it
+re-downloads only the last 7 days. If those overlapping closes changed by more than 0.2% (a new dividend
+or split re-adjusted the history), it re-downloads that ticker in full, so the cache stays consistently
+adjusted.
+
 ## Python env (survives box restarts)
 
 Box restarts drop `/workspace/.venv`. Every routine first runs `/workspace/ensure_env.sh`: it (re)creates `/workspace/srs_pyenv` (yfinance, pandas, numpy, requests, lxml, beautifulsoup4) if it's missing, and points `/workspace/.venv` at it, so `/workspace/.venv/bin/python` keeps working.
