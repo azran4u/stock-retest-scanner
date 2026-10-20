@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T23:55:21+03:00",
+  "generated_at": "2026-10-20T23:58:55+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 144,
+  "checked": 146,
   "flagged": 33,
   "flagged_tickers": [
     {
@@ -268,7 +268,7 @@
     },
     {
       "ticker": "JNJ",
-      "symbol": "NYSE:JNJ",
+      "symbol": "",
       "flag": "far",
       "detail": "close 259.42 is 3.31 ATR above zone top 213.95",
       "zone_bottom": 210.29,
@@ -280,7 +280,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 13.7538,
       "dist_above_top_atr": 3.306,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "LLY",
@@ -1293,6 +1293,22 @@
       "read_date": "2026-10-06"
     },
     {
+      "ticker": "FITB",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 49.86,
+      "zone_top": 51.46,
+      "sl": 47.79,
+      "tp": 58.0,
+      "rr": 2.41,
+      "latest_close": 52.41,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 2.4904,
+      "dist_above_top_atr": 0.3815,
+      "read_date": "2026-10-20"
+    },
+    {
       "ticker": "FIVE",
       "symbol": "",
       "flag": "",
@@ -1485,6 +1501,22 @@
       "read_date": "2026-10-19"
     },
     {
+      "ticker": "IBKR",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 77.22,
+      "zone_top": 78.94,
+      "sl": 71.13,
+      "tp": 96.07,
+      "rr": 2.63,
+      "latest_close": 82.91,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 6.0848,
+      "dist_above_top_atr": 0.6524,
+      "read_date": "2026-10-20"
+    },
+    {
       "ticker": "IESC",
       "symbol": "NASDAQ:IESC",
       "flag": "broken",
@@ -1614,7 +1646,7 @@
     },
     {
       "ticker": "JNJ",
-      "symbol": "NYSE:JNJ",
+      "symbol": "",
       "flag": "far",
       "detail": "close 259.42 is 3.31 ATR above zone top 213.95",
       "zone_bottom": 210.29,
@@ -1626,7 +1658,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 13.7538,
       "dist_above_top_atr": 3.306,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "KEX",
