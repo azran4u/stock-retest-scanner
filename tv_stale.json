@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-21T00:03:33+03:00",
+  "generated_at": "2026-10-21T00:06:11+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 148,
+  "checked": 151,
   "flagged": 33,
   "flagged_tickers": [
     {
@@ -2541,6 +2541,22 @@
       "read_date": "2026-10-19"
     },
     {
+      "ticker": "TARS",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": null,
+      "zone_top": null,
+      "sl": 48.03,
+      "tp": 81.05,
+      "rr": 3.12,
+      "latest_close": 71.03,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 7.2734,
+      "dist_above_top_atr": null,
+      "read_date": "2026-10-21"
+    },
+    {
       "ticker": "TGT",
       "symbol": "",
       "flag": "",
@@ -2733,6 +2749,22 @@
       "read_date": "2026-10-12"
     },
     {
+      "ticker": "USB",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 59.31,
+      "zone_top": 59.96,
+      "sl": 57.44,
+      "tp": 65.2,
+      "rr": 2.5,
+      "latest_close": 59.09,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 2.5989,
+      "dist_above_top_atr": -0.3348,
+      "read_date": "2026-10-21"
+    },
+    {
       "ticker": "VLTO",
       "symbol": "",
       "flag": "target hit",
@@ -2907,6 +2939,22 @@
       "weekly_atr": 18.9613,
       "dist_above_top_atr": 0.7821,
       "read_date": "2026-10-20"
+    },
+    {
+      "ticker": "ZION",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 63.23,
+      "zone_top": 64.73,
+      "sl": 60.01,
+      "tp": 71.88,
+      "rr": 1.96,
+      "latest_close": 64.59,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 3.3477,
+      "dist_above_top_atr": -0.0418,
+      "read_date": "2026-10-21"
     }
   ]
 }
