@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T23:45:47+03:00",
+  "generated_at": "2026-10-20T23:49:48+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -702,7 +702,7 @@
     },
     {
       "ticker": "ARMK",
-      "symbol": "NYSE:ARMK",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 55.21,
@@ -714,7 +714,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 2.8146,
       "dist_above_top_atr": 0.1137,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "ASB",
@@ -830,7 +830,7 @@
     },
     {
       "ticker": "BNY",
-      "symbol": "NYSE:BNY",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 145.0,
@@ -842,7 +842,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 6.816,
       "dist_above_top_atr": -0.4394,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "BPOP",
@@ -910,7 +910,7 @@
     },
     {
       "ticker": "CHE",
-      "symbol": "NYSE:CHE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 470.34,
@@ -922,7 +922,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 26.5051,
       "dist_above_top_atr": 1.4293,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "CLH",
@@ -1054,19 +1054,19 @@
     },
     {
       "ticker": "DASH",
-      "symbol": "NASDAQ:DASH",
+      "symbol": "",
       "flag": "",
       "detail": "",
-      "zone_bottom": 183.38,
-      "zone_top": 192.74,
-      "sl": 165.75,
-      "tp": 235.58,
-      "rr": 2.06,
+      "zone_bottom": 166.58,
+      "zone_top": 172.91,
+      "sl": 177.59,
+      "tp": 235.5,
+      "rr": 2.77,
       "latest_close": 191.67,
       "last_bar": "2026-10-20",
       "weekly_atr": 17.9783,
-      "dist_above_top_atr": -0.0595,
-      "read_date": "2026-10-19"
+      "dist_above_top_atr": 1.0435,
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "DE",
@@ -1390,7 +1390,7 @@
     },
     {
       "ticker": "FSM",
-      "symbol": "NYSE:FSM",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 10.79,
@@ -1402,7 +1402,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 1.0546,
       "dist_above_top_atr": -0.7491,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "FTI",
@@ -1518,7 +1518,7 @@
     },
     {
       "ticker": "INCY",
-      "symbol": "NASDAQ:INCY",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 107.48,
@@ -1530,7 +1530,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 7.8729,
       "dist_above_top_atr": 0.5659,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "INTC",
@@ -1646,7 +1646,7 @@
     },
     {
       "ticker": "KEYS",
-      "symbol": "NYSE:KEYS",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 306.84,
@@ -1658,7 +1658,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 29.3282,
       "dist_above_top_atr": 0.7849,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "KLAC",
@@ -1726,7 +1726,7 @@
     },
     {
       "ticker": "LITE",
-      "symbol": "NASDAQ:LITE",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
@@ -1738,7 +1738,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 165.9713,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "LLY",
@@ -2014,7 +2014,7 @@
     },
     {
       "ticker": "NVDA",
-      "symbol": "NASDAQ:NVDA",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": null,
@@ -2026,7 +2026,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 15.3927,
       "dist_above_top_atr": null,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "OKE",
@@ -2318,7 +2318,7 @@
     },
     {
       "ticker": "SLS",
-      "symbol": "NASDAQ:SLS",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 9.17,
@@ -2330,7 +2330,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 2.1271,
       "dist_above_top_atr": 0.9261,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "SNEX",
@@ -2350,7 +2350,7 @@
     },
     {
       "ticker": "SNX",
-      "symbol": "NYSE:SNX",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 238.73,
@@ -2362,7 +2362,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 20.9586,
       "dist_above_top_atr": 0.1913,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "SPG",
@@ -2478,7 +2478,7 @@
     },
     {
       "ticker": "TGT",
-      "symbol": "NYSE:TGT",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 139.02,
@@ -2490,7 +2490,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 8.5186,
       "dist_above_top_atr": 1.2361,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "THC",
@@ -2558,7 +2558,7 @@
     },
     {
       "ticker": "TTEK",
-      "symbol": "NASDAQ:TTEK",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 31.48,
@@ -2570,7 +2570,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 1.8721,
       "dist_above_top_atr": 1.4262,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "UBS",
@@ -2702,7 +2702,7 @@
     },
     {
       "ticker": "VOYA",
-      "symbol": "NYSE:VOYA",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 90.93,
@@ -2714,7 +2714,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 4.898,
       "dist_above_top_atr": 0.6227,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "VRSN",
