@@ -109,3 +109,57 @@ Default target = TP of the user's TradingView drawing (tv_drawings.json) at entr
 ## Python env (survives box restarts)
 
 Box restarts drop `/workspace/.venv`. Every routine first runs `/workspace/ensure_env.sh`: it (re)creates `/workspace/srs_pyenv` (yfinance, pandas, numpy, requests, lxml, beautifulsoup4) if it's missing, and points `/workspace/.venv` at it, so `/workspace/.venv/bin/python` keeps working.
+
+## Web app (iPhone, `/app/`)
+
+**https://azran4u.github.io/stock-retest-scanner/app/** — installable PWA (Safari → Share → Add to Home Screen). Dark TradingView-style UI, Hebrew RTL.
+
+- **List**: today's candidates (`app/data/index.json`) with search, filter chips (PASS / needs drawing / review / obsolete / hammer / position / my drawings / commands) and sort. Persisted in localStorage.
+- **Chart**: `lightweight-charts` v5, weekly ⇄ daily candles + volume. Prev / next buttons and horizontal swipe on the header / tool bar / panel; neighbours are prefetched.
+- **Editing (touch)**: `+ אזור` then tap two price levels (first tap = start date); `+ לונג` then tap entry and stop (target starts at 2R). Select a drawing (its chart tag or "בחר / גרור") to get drag handles (top / bottom / entry / stop / target, and the start-date bar); numeric inputs in the card are the fallback. Live R:R. Delete own drawings, approve / reject bot drawings (`status=review`), technical yes/no + free note (`labels`), "send command to bot" (`commands`). Every edit is written to Supabase immediately; other open clients update via Realtime.
+- **TradingView drawings** are shown read-only (dashed grey, `TV`) from `app/data/tv_drawings.json` (export of `/workspace/stock-screener/tv_drawings.json`, `source: "tv"`); they are never inserted into Supabase.
+- **Auth**: Supabase email OTP (magic link **or** the 6-digit code typed in the app — needed for the home-screen PWA, which on iOS does not share Safari's storage). Session persists in localStorage. RLS: only `azran4u@gmail.com`.
+- Demo / test mode: `?demo=1` (in-memory backend, nothing is written anywhere) — used by `webapp/e2e.mjs`.
+
+### Layout
+
+| Path | Purpose |
+|---|---|
+| `webapp/` | Source (Vite + TypeScript). `npm install && npm run build` → writes `app/index.html`, `app/assets/*`, manifest, icons, `sw.js` (base `/stock-retest-scanner/app/`). `node e2e.mjs` = headless iPhone smoke test against `npx vite preview` |
+| `app/` | Built site served by Pages (committed; legacy Pages build from `main` /) |
+| `app/data/` | Generated data: `index.json`, `tv_drawings.json`, `candles/<T>.json` (daily OHLCV 5y: `{"t":T,"d":[[date,o,h,l,c,v],…]}`) |
+| `srs_app/export_data.py` | Generates `app/data/` from `historical-reports/latest.csv`, `tv_drawings.json` and the scanner's history cache `/workspace/hist_cache.pkl` (same yfinance data as the screen). Candidates = PASS ∪ needs drawing ∪ bot review ∪ obsolete ∪ last-week hammer ∪ any TV drawing ∪ open position |
+| `srs_app/sync.py` | SQL + parsers for the bot to read app edits (below) |
+
+### Daily publish
+
+`export_daily_report.py` calls `srs_app.export_data.export()` at the end (guarded; never blocks the report), so the nightly run refreshes `app/data/`. Commit it with the report: `git add app/data historical-reports … && git pull --rebase && git push`. After a nightly TradingView read / `tv_drawings.py merge`, refresh manually: `cd /workspace/publish-stock-retest-scanner && /workspace/.venv/bin/python -m srs_app.export_data` and commit `app/data`. Rebuild the UI only when `webapp/src` changes (`cd webapp && npm run build`, commit `app/`).
+
+### Reading the app's tables (bot, via the Supabase connector)
+
+No service key on the box: run SQL with the Supabase connector (`execute_sql`, project `wkkdblnykgolqijzagva`), then parse with `srs_app.sync` (`levels_by_ticker`, `labels_by_ticker`, `pending_commands`).
+
+```sql
+-- current drawings (rejected / obsolete excluded; review = bot proposals not yet approved)
+select id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start, t_end, source, status, note, updated_at
+from public.drawings where status in ('active','approved','review') order by ticker, kind, updated_at desc;
+
+-- one ticker
+select * from public.drawings where ticker = 'CSCO' order by updated_at desc;
+
+-- latest label per ticker (technical = yes/no, note = free text)
+select distinct on (ticker, label) ticker, label, value, note, asof, created_at
+from public.labels order by ticker, label, asof desc, created_at desc;
+
+-- commands Eyal sent from the app, oldest first
+select id, ticker, text, created_at from public.commands where status = 'pending' order by created_at;
+
+-- mark one handled (reply is shown under the command in the app)
+update public.commands set status = 'done', reply = '…', done_at = now() where id = 42;
+
+-- bot proposal (always source='bot', status='review'; Eyal approves / rejects in the app)
+insert into public.drawings (ticker, kind, zone_top, zone_bottom, t_start, source, status, note)
+values ('OKE', 'zone', 70.5, 68.0, '2026-05-04', 'bot', 'review', 'BOT - review needed');
+```
+
+Rule mirror of TradingView: bot drawings in `review` do not count toward PASS until approved.

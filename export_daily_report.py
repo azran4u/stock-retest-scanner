@@ -446,6 +446,14 @@ def main() -> None:
     except Exception as e:  # never block the report
         print(f"  [positions] skipped: {e}")
 
+    try:  # iPhone web app data (app/data: candidate index, TV drawings, 5y daily candles) -> GitHub Pages /app/
+        _sys.path.insert(0, "/workspace/publish-stock-retest-scanner")
+        from srs_app import export_data as _app_export  # noqa: E402
+
+        _app_export.export(Path("/workspace/publish-stock-retest-scanner"), Path(paths["latest"]), report_date=args.date)
+    except Exception as e:  # never block the report
+        print(f"  [app data] skipped: {e}")
+
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
     n_bo = int(df["earnings_blackout"].astype(bool).sum())
