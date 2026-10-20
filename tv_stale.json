@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-20T23:58:55+03:00",
+  "generated_at": "2026-10-21T00:00:52+03:00",
   "as_of": "latest cached close",
   "close_basis": "low",
   "rules": {
@@ -7,7 +7,7 @@
     "target hit": "latest close >= TP",
     "far": "latest close > zone top + 3 x weekly ATR(14)"
   },
-  "checked": 146,
+  "checked": 147,
   "flagged": 33,
   "flagged_tickers": [
     {
@@ -1949,6 +1949,22 @@
       "read_date": "2026-10-05"
     },
     {
+      "ticker": "MTG",
+      "symbol": "",
+      "flag": "",
+      "detail": "",
+      "zone_bottom": 28.38,
+      "zone_top": 29.17,
+      "sl": 27.43,
+      "tp": 31.06,
+      "rr": 1.81,
+      "latest_close": 28.165,
+      "last_bar": "2026-10-20",
+      "weekly_atr": 1.3685,
+      "dist_above_top_atr": -0.7344,
+      "read_date": "2026-10-20"
+    },
+    {
       "ticker": "MU",
       "symbol": "",
       "flag": "",
@@ -2078,7 +2094,7 @@
     },
     {
       "ticker": "ORKA",
-      "symbol": "NASDAQ:ORKA",
+      "symbol": "",
       "flag": "",
       "detail": "",
       "zone_bottom": 70.26,
@@ -2090,7 +2106,7 @@
       "last_bar": "2026-10-20",
       "weekly_atr": 10.7936,
       "dist_above_top_atr": 0.4957,
-      "read_date": "2026-10-19"
+      "read_date": "2026-10-20"
     },
     {
       "ticker": "OVV",
