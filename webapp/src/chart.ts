@@ -1,6 +1,6 @@
 // lightweight-charts candles + volume, with an SVG overlay for zones / long positions and touch handles.
 import {
-  createChart, CandlestickSeries, HistogramSeries, CrosshairMode,
+  createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode,
   type IChartApi, type ISeriesApi, type Time,
 } from 'lightweight-charts';
 import type { Bar, Drawing, TvDrawing } from './types';
@@ -23,6 +23,7 @@ export class ChartView {
   chart: IChartApi;
   candles: ISeriesApi<'Candlestick'>;
   vol: ISeriesApi<'Histogram'>;
+  volMa: ISeriesApi<'Line'>;
   svg: SVGSVGElement;
   bars: Bar[] = [];
   drawings: Drawing[] = [];
@@ -48,6 +49,11 @@ export class ChartView {
       upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
     });
     this.vol = this.chart.addSeries(HistogramSeries, { priceScaleId: 'vol', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+    // 30-bar SMA of volume, same 'vol' scale (weekly bars in weekly view, daily in daily)
+    this.volMa = this.chart.addSeries(LineSeries, {
+      priceScaleId: 'vol', color: '#ffd600', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, priceFormat: { type: 'volume' },
+    });
     this.chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
 
     this.svg = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
@@ -80,6 +86,14 @@ export class ChartView {
     this.bars = bars;
     this.candles.setData(bars.map((b) => ({ time: b.time as Time, open: b.open, high: b.high, low: b.low, close: b.close })));
     this.vol.setData(bars.map((b) => ({ time: b.time as Time, value: b.volume, color: b.close >= b.open ? 'rgba(38,166,154,.45)' : 'rgba(239,83,80,.45)' })));
+    const ma: { time: Time; value: number }[] = [];
+    let sum = 0;
+    for (let i = 0; i < bars.length; i++) {
+      sum += bars[i].volume;
+      if (i >= 30) sum -= bars[i - 30].volume;
+      if (i >= 29) ma.push({ time: bars[i].time as Time, value: sum / 30 });
+    }
+    this.volMa.setData(ma);
     const n = bars.length;
     this.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - visible), to: n + 6 });
     this.lastKey = '';
