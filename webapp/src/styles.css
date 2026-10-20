@@ -100,3 +100,14 @@ header.ch { position: static; padding: calc(4px + var(--safe-t)) 4px 4px; }
 .cmds li { padding: 6px 0; border-bottom: 1px solid var(--bg3); }
 .reply { color: var(--mut); font-size: 13px; margin-top: 3px; white-space: pre-wrap; }
 .spacer { height: 40px; }
+.b-watch { background: rgba(247,201,72,.25); color: var(--yellow); }
+.b-ni { background: rgba(120,123,134,.3); color: #c0c3cc; }
+.b-tv { background: rgba(0,188,212,.22); color: #6fe3f2; }
+.star { background: transparent; min-height: 36px; min-width: 36px; padding: 0 6px; font-size: 20px; color: var(--mut); }
+.star.on { color: var(--yellow); outline: 0; }
+.r1 > span { display: flex; align-items: center; gap: 2px; }
+.nib { font-size: 18px; opacity: .55; min-width: 40px; }
+.nib.on { opacity: 1; outline: 0; background: rgba(239,83,80,.2); }
+.nodata { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center; text-align: center; background: rgba(19,23,34,.92); color: var(--mut); padding: 20px; font-size: 15px; direction: rtl; }
+.addrow { padding: 12px 14px; border-bottom: 1px solid var(--bg2); display: flex; flex-direction: column; gap: 6px; }
+.row2.ni select { width: auto; flex: 1; }

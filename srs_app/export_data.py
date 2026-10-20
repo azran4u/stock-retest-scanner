@@ -18,7 +18,7 @@ import math
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -92,6 +92,16 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
     return rows
 
 
+def load_watchlist() -> List[str]:
+    """Watchlist tickers from the app (bot writes /workspace/stock-screener/app_state.json via srs_app.sync.write_app_state)."""
+    try:
+        from srs_app.sync import watchlist_from_state
+        return [t for t in watchlist_from_state(os.environ.get("SRS_APP_STATE", "/workspace/stock-screener/app_state.json")) if t]
+    except Exception as e:
+        print(f"  [app data] watchlist skipped: {e}")
+        return []
+
+
 def export_tv(out: Path) -> Dict[str, Any]:
     src = json.loads(TV_DRAWINGS.read_text()) if TV_DRAWINGS.exists() else {}
     keep = {}
@@ -108,8 +118,33 @@ def export_tv(out: Path) -> Dict[str, Any]:
     return keep
 
 
-def export_candles(tickers: List[str], out: Path) -> int:
-    hist = pd.read_pickle(HIST_CACHE)
+def _download_missing(tickers: List[str]) -> Dict[str, pd.DataFrame]:
+    """Tickers not in the scanner cache (e.g. watchlist adds): 5y daily from yfinance, same settings as the screen."""
+    if not tickers:
+        return {}
+    try:
+        import yfinance as yf
+        data = yf.download(tickers=tickers, period=f"{YEARS}y", interval="1d", group_by="ticker",
+                           auto_adjust=True, threads=True, progress=False)
+    except Exception as e:
+        print(f"  [app data] download failed for {tickers}: {e}")
+        return {}
+    out = {}
+    for t in tickers:
+        try:
+            df = data[t] if isinstance(data.columns, pd.MultiIndex) else data
+            df = df.dropna(how="all")
+            if not df.empty:
+                out[t] = df
+        except Exception:
+            pass
+    return out
+
+
+def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None) -> int:
+    hist = dict(pd.read_pickle(HIST_CACHE))
+    miss = [t for t in (fetch_missing or []) if hist.get(t) is None or getattr(hist.get(t), "empty", True)]
+    hist.update(_download_missing(miss))
     cdir = out / "candles"
     cdir.mkdir(parents=True, exist_ok=True)
     cutoff = pd.Timestamp(datetime.now() - timedelta(days=int(365.25 * YEARS)))
@@ -147,12 +182,17 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     out.mkdir(parents=True, exist_ok=True)
     rows = build_index(repo, include_all, report)
     tv = export_tv(out)
-    tickers = sorted({r["ticker"] for r in rows} | set(tv))
+    watch = load_watchlist()
+    tickers = sorted({r["ticker"] for r in rows} | set(tv) | set(watch))
     have = {r["ticker"] for r in rows}
-    for t in tickers:  # TV-drawn tickers that fell out of today's screen still get a list row
+    full = None
+    for t in tickers:  # TV-drawn / watchlist tickers outside today's candidates still get a list row
         if t not in have:
-            rows.append({"ticker": t, "status": "OUT", "badges": ["off_screen"], "tv_found": True})
-    n = export_candles(tickers, out)
+            if full is None:
+                full = {r["ticker"]: r for r in build_index(repo, True, report)}
+            r = dict(full.get(t) or {"ticker": t, "status": "OUT", "badges": ["off_screen"], "tv_found": t in tv})
+            rows.append(r)
+    n = export_candles(tickers, out, fetch_missing=watch)
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:
         r["has_candles"] = r["ticker"] in with_candles

@@ -30,11 +30,29 @@ await page.fill('#q', 'CSC'); await page.waitForTimeout(100);
 ok((await page.locator('.row').count()) >= 1, 'search CSC');
 await page.screenshot({ path: `${OUT}/03_list_filtered.png` });
 
+page.on('dialog', (d) => d.accept());
 await page.locator('.row[data-t="CSCO"]').tap();
 await page.waitForSelector('#chart canvas');
 await page.waitForTimeout(600);
 const box = await page.locator('#chart').boundingBox();
 const X = box.x + box.width * 0.55;
+// TradingView drawings arrive as normal editable rows (source tv)
+const tvCards = page.locator('.card[data-id]');
+ok((await tvCards.count()) === 2 && (await page.locator('.card .b-tv').count()) === 2, 'TV zone + long shown as editable cards');
+await page.locator('.card[data-id]').first().locator('.selbtn').tap();
+await page.waitForSelector('g.h[data-key="zone_top"]');
+const zh = await page.locator('g.h[data-key="zone_top"] circle').nth(1).boundingBox();
+const z0 = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.ticker === 'CSCO' && d.source === 'tv' && d.kind === 'zone').zone_top);
+await page.mouse.move(zh.x + zh.width / 2, zh.y + zh.height / 2); await page.mouse.down();
+await page.mouse.move(zh.x + zh.width / 2, zh.y - 25, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(200);
+const z1 = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.ticker === 'CSCO' && d.source === 'tv' && d.kind === 'zone').zone_top);
+ok(z1 > z0, `drag TV zone top ${z0} -> ${z1}`);
+await page.locator('.card[data-id]').nth(1).locator('.selbtn').tap(); await page.waitForTimeout(2800);
+await page.screenshot({ path: `${OUT}/09_tv_drawing_editable.png` });
+// delete both TV drawings (soft delete)
+for (let i = 0; i < 2; i++) { await page.locator('.card[data-id] .act[data-act="delete"]').first().tap(); await page.waitForTimeout(150); }
+ok(await page.evaluate(() => window.__demoApi.drawings.filter((d) => d.ticker === 'CSCO' && d.source === 'tv').every((d) => d.status === 'deleted')), 'TV drawings soft-deleted (status=deleted)');
+ok((await page.locator('.card[data-id]').count()) === 0, 'deleted rows hidden');
 // + zone: tap two levels
 await page.tap('#addZone');
 await page.touchscreen.tap(X - 60, box.y + box.height * 0.50);
@@ -50,13 +68,13 @@ ok(true, 'long created by 2 taps');
 // drag the target handle up (pointer events)
 const h = page.locator('g.h[data-key="target"] circle').nth(1);
 const hb = await h.boundingBox();
-const before = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.kind === 'long').target);
+const before = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.ticker === 'CSCO' && d.kind === 'long' && d.status !== 'deleted').target);
 await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
 await page.mouse.down();
 await page.mouse.move(hb.x + hb.width / 2, hb.y - 30, { steps: 6 });
 await page.mouse.up();
 await page.waitForTimeout(200);
-const after = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.kind === 'long').target);
+const after = await page.evaluate(() => [...window.__srs.S.drawings.values()].find((d) => d.ticker === 'CSCO' && d.kind === 'long' && d.status !== 'deleted').target);
 ok(after > before, `drag target ${before} -> ${after}`);
 const rrTxt = await page.locator('.card .rr').first().textContent();
 ok(/R:R \d/.test(rrTxt), 'live R:R ' + rrTxt);
@@ -73,7 +91,7 @@ await page.fill('#cmd', 'תבדוק את האזור'); await page.tap('#sendCmd'
 await page.waitForSelector('.cmds li');
 ok(true, 'command sent');
 // select the long so its handles show, then screenshot
-await page.evaluate(() => { const S = window.__srs.S; S.selected = [...S.drawings.values()].find((d) => d.kind === 'long').id; });
+await page.evaluate(() => { const S = window.__srs.S; S.selected = [...S.drawings.values()].find((d) => d.ticker === 'CSCO' && d.kind === 'long' && d.status !== 'deleted').id; });
 await page.locator('.card[data-id] .selbtn').first().tap(); // zone selected -> handles
 await page.waitForTimeout(2800); // let the toast fade
 await page.screenshot({ path: `${OUT}/04_chart_zone_long.png` });
@@ -98,7 +116,30 @@ await page.waitForTimeout(500);
 const t2 = await page.locator('#tk').textContent();
 ok(t2 !== t1, `swipe ${t1} -> ${t2}`);
 // a TV-drawn ticker
-await page.goto(BASE + '?demo=1#/t/CSCO'); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(500);
-await page.screenshot({ path: `${OUT}/07_chart_tv_readonly.png` });
+// watchlist: header star + add any ticker by symbol
+await page.evaluate(() => { location.hash = '#/t/CSCO'; }); await page.waitForFunction(() => document.getElementById('tk')?.textContent === 'CSCO'); await page.waitForTimeout(300);
+await page.tap('#star');
+ok(await page.evaluate(() => window.__srs.S.watch.has('CSCO')), 'star adds CSCO to watchlist');
+// not interesting (8 weeks default)
+await page.locator('#niOn').tap();
+ok(await page.evaluate(() => window.__srs.S.labels.some((l) => l.label === 'not_interesting' && l.value === 'yes' && l.until)), 'not_interesting label with until');
+await page.screenshot({ path: `${OUT}/10_not_interesting_panel.png` });
+await page.tap('#back'); await page.waitForSelector('.row');
+await page.evaluate(() => { window.__srs.S.ui.q = ''; });
+await page.tap('.chip[data-chip="all"]');
+ok((await page.locator('.row[data-t="CSCO"]').count()) === 0, 'not-interesting hidden from main list');
+await page.tap('.chip[data-chip="ni"]');
+ok((await page.locator('.row[data-t="CSCO"] .b-ni').count()) === 1, "shown with badge under 'לא מעניינות'");
+await page.tap('.chip[data-chip="all"]');
+await page.fill('#q', 'ZZZQ'); await page.waitForSelector('#addWatch');
+await page.screenshot({ path: `${OUT}/11_add_watch.png` });
+await page.tap('#addWatch');
+await page.waitForSelector('#nodata:not([hidden])');
+ok(await page.evaluate(() => window.__srs.S.watch.has('ZZZQ')), 'typed ticker added to watchlist; no-data message shown');
+await page.screenshot({ path: `${OUT}/12_no_data.png` });
+await page.tap('#back'); await page.waitForSelector('.chip');
+await page.tap('.chip[data-chip="watch"]');
+ok((await page.locator('.row').count()) === 2, 'watch chip lists CSCO + ZZZQ');
+await page.screenshot({ path: `${OUT}/13_watch_list.png` });
 ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
 await browser.close();

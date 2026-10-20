@@ -285,11 +285,32 @@ def write_grok_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path
     return jp
 
 
+APP_DRAWINGS = Path("/workspace/stock-screener/app_drawings.json")  # srs_app.app_drawings (web app = drawing source)
+APP_STATE = Path("/workspace/stock-screener/app_state.json")  # written by the bot from the web app (srs_app.sync.write_app_state)
+
+
+def app_not_interesting(asof: Optional[str] = None) -> set:
+    """Tickers Eyal marked 'לא מעניינת' in the web app, still active on asof (default today).
+    Excluded from grok_needs_drawing / grok_review targets; their report data is still computed."""
+    try:
+        if "/workspace/publish-stock-retest-scanner" not in _sys.path:
+            _sys.path.insert(0, "/workspace/publish-stock-retest-scanner")
+        from srs_app.sync import not_interesting_from_state  # noqa: E402
+
+        return not_interesting_from_state(APP_STATE, asof)
+    except Exception as e:  # missing file / module -> no exclusions
+        print(f"  [app state] not-interesting skipped: {e}")
+        return set()
+
+
 def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Path:
     """grok_needs_drawing_target.{json,txt}: EXCHANGE:TICKER (TV spelling) for every
     needs_drawing row (read-target filters pass, no TradingView drawing yet)."""
     nd = df["needs_drawing"].map(lambda v: v is True or str(v) == "True") if "needs_drawing" in df.columns \
         else pd.Series(False, index=df.index)
+    ni = app_not_interesting(report_date)
+    if ni:
+        nd &= ~df["ticker"].map(lambda x: str(x).upper() in ni)
     syms = []
     for _, r in df[nd].iterrows():
         m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
@@ -300,7 +321,7 @@ def write_needs_drawing_target(df: pd.DataFrame, report_date: str, out_dir: Path
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_dollar_vol AND f_no_earnings_14d AND f_history "
                                       "AND no TradingView drawing (never read counts) AND not marked not-technical by the user "
-                                      "(user_overrides.json)"}, indent=2) + "\n")
+                                      "(user_overrides.json) AND not marked not-interesting in the app (app_state.json)"}, indent=2) + "\n")
     (out_dir / "grok_needs_drawing_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp
 
@@ -319,6 +340,9 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     for c in ["f_bot_review"] + REVIEW_FILTERS:
         mask &= df[c].map(t) if c in df.columns else False
     mask &= ~df["ticker"].map(lambda x: rf.user_technical(str(x)) is False)  # user: not technical
+    ni = app_not_interesting(report_date)  # user: 'not interesting' in the web app (until date)
+    if ni:
+        mask &= ~df["ticker"].map(lambda x: str(x).upper() in ni)
     syms = []
     for _, r in df[mask].iterrows():
         m = re.search(r"symbol=([^&]+)", str(r.get("tradingview_url") or ""))
@@ -329,7 +353,8 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     jp.write_text(json.dumps({"date": report_date, "count": len(syms), "symbols": syms,
                               "rule": "f_bot_review (bot drawing, review needed: not approved / not edited) AND "
                                       "f_dollar_vol AND f_no_earnings_14d AND f_history "
-                                      "AND not marked not-technical by the user (user_overrides.json)"},
+                                      "AND not marked not-technical by the user (user_overrides.json) "
+                                      "AND not marked not-interesting in the app (app_state.json)"},
                              indent=2) + "\n")
     (out_dir / "grok_review_target.txt").write_text("\n".join(syms) + ("\n" if syms else ""))
     return jp
@@ -401,6 +426,8 @@ def main() -> None:
         help="Where to write grok_sync_target.{json,txt} (status=PASS set)",
     )
     ap.add_argument("--no-grok-target", action="store_true")
+    ap.add_argument("--tv-store", action="store_true",
+                    help="use tv_drawings.json even when the app store app_drawings.json exists")
     rf.add_cli_overrides(ap)
     args = ap.parse_args()
     changed = rf.apply_cli_overrides(args)
@@ -419,7 +446,12 @@ def main() -> None:
             handoff = json.loads(guess.read_text())
 
     base = build_report(results, verify, handoff, args.grok if args.grok.exists() else None)
-    df = rf.apply_filters_to_report(base, date.fromisoformat(args.date))
+    # Drawing store: the web app (app_drawings.json, srs_app.app_drawings) when present, else TradingView reads.
+    tv_store = None
+    if APP_DRAWINGS.exists() and not args.tv_store:
+        tv_store = {str(k).strip().upper(): v for k, v in json.loads(APP_DRAWINGS.read_text()).items() if isinstance(v, dict)}
+        print(f"  drawings: app ({APP_DRAWINGS}, {sum(1 for v in tv_store.values() if v.get('found'))} found)")
+    df = rf.apply_filters_to_report(base, date.fromisoformat(args.date), tv_store=tv_store)
     # TradingView drawings (read-only; stock-screener/tv_drawings.json, latest reading per ticker)
     # are applied inside apply_filters_to_report: tv_* columns, f_rr and therefore status.
     paths = write_reports(df, args.out_dir, args.date)

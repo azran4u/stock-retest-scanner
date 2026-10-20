@@ -1,12 +1,12 @@
 // Data layer: Supabase (real) or in-memory (demo mode, ?demo=1, for screenshots / offline tests).
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
-import type { Command, Drawing, Label } from './types';
+import type { Command, Drawing, Label, TvDrawing, Watch } from './types';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
 export const OWNER_EMAIL = 'azran4u@gmail.com';
 
-export type Table = 'drawings' | 'labels' | 'commands';
+export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist';
 export type ChangeFn = (table: Table, event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) => void;
 
 export interface Api {
@@ -24,6 +24,9 @@ export interface Api {
   upsertLabel(l: Label): Promise<void>;
   loadCommands(): Promise<Command[]>;
   addCommand(ticker: string, text: string): Promise<Command>;
+  loadWatch(): Promise<Watch[]>;
+  addWatch(ticker: string): Promise<void>;
+  removeWatch(ticker: string): Promise<void>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -56,7 +59,7 @@ class SupaApi implements Api {
   }
   async signOut() { await this.sb.auth.signOut(); }
   async loadDrawings() {
-    return check(await this.sb.from('drawings').select('*').neq('status', 'obsolete').order('created_at')) as Drawing[];
+    return check(await this.sb.from('drawings').select('*').not('status', 'in', '(obsolete,deleted)').order('created_at')) as Drawing[];
   }
   async insertDrawing(d: Partial<Drawing>) {
     return check(await this.sb.from('drawings').insert(d).select().single()) as Drawing;
@@ -64,7 +67,8 @@ class SupaApi implements Api {
   async updateDrawing(id: string, patch: Partial<Drawing>) {
     check(await this.sb.from('drawings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id));
   }
-  async deleteDrawing(id: string) { check(await this.sb.from('drawings').delete().eq('id', id)); }
+  // soft delete: the row stays (status 'deleted') so a re-import never resurrects it
+  async deleteDrawing(id: string) { await this.updateDrawing(id, { status: 'deleted' }); }
   async loadLabels() {
     return check(await this.sb.from('labels').select('*').order('asof').order('created_at')) as Label[];
   }
@@ -77,9 +81,12 @@ class SupaApi implements Api {
   async addCommand(ticker: string, text: string) {
     return check(await this.sb.from('commands').insert({ ticker, text }).select().single()) as Command;
   }
+  async loadWatch() { return check(await this.sb.from('watchlist').select('*').order('added_at')) as Watch[]; }
+  async addWatch(ticker: string) { check(await this.sb.from('watchlist').upsert({ ticker }, { onConflict: 'ticker' })); }
+  async removeWatch(ticker: string) { check(await this.sb.from('watchlist').delete().eq('ticker', ticker)); }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
-    for (const t of ['drawings', 'labels', 'commands'] as Table[]) {
+    for (const t of ['drawings', 'labels', 'commands', 'watchlist'] as Table[]) {
       ch.on('postgres_changes' as any, { event: '*', schema: 'public', table: t },
         (p: any) => fn(t, p.eventType, p.new, p.old));
     }
@@ -96,6 +103,7 @@ class MemApi implements Api {
   drawings: Drawing[] = [];
   labels: Label[] = [];
   commands: Command[] = [];
+  watch: Watch[] = [];
   seq = 1;
   constructor(loggedIn: boolean) { this.email = loggedIn ? OWNER_EMAIL : null; }
   async session() { return { email: this.email }; }
@@ -104,7 +112,7 @@ class MemApi implements Api {
   async verifyCode(email: string) { this.email = email; this.authFns.forEach((f) => f(email)); }
   async signOut() { this.email = null; this.authFns.forEach((f) => f(null)); }
   emit(t: Table, e: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) { this.changeFns.forEach((f) => f(t, e, row, old)); }
-  async loadDrawings() { return this.drawings.map((d) => ({ ...d })); }
+  async loadDrawings() { return this.drawings.filter((d) => d.status !== 'deleted' && d.status !== 'obsolete').map((d) => ({ ...d })); }
   async insertDrawing(d: Partial<Drawing>) {
     const row = { zone_top: null, zone_bottom: null, entry: null, stop: null, target: null, t_start: null, t_end: null,
       source: 'user', status: 'active', note: null, ...d, id: crypto.randomUUID(), created_at: new Date().toISOString() } as Drawing;
@@ -114,8 +122,23 @@ class MemApi implements Api {
     const d = this.drawings.find((x) => x.id === id); if (!d) return;
     Object.assign(d, patch); this.emit('drawings', 'UPDATE', { ...d }, { id });
   }
-  async deleteDrawing(id: string) {
-    this.drawings = this.drawings.filter((x) => x.id !== id); this.emit('drawings', 'DELETE', null, { id });
+  async deleteDrawing(id: string) { await this.updateDrawing(id, { status: 'deleted' }); }
+  async loadWatch() { return [...this.watch]; }
+  async addWatch(ticker: string) {
+    if (this.watch.some((w) => w.ticker === ticker)) return;
+    const w = { ticker, note: null, added_at: new Date().toISOString() }; this.watch.push(w); this.emit('watchlist', 'INSERT', w, null);
+  }
+  async removeWatch(ticker: string) { this.watch = this.watch.filter((w) => w.ticker !== ticker); this.emit('watchlist', 'DELETE', null, { ticker }); }
+  /** demo: seed with the TradingView export, mapped like srs_app/import_tv.py */
+  seedTv(tv: Record<string, TvDrawing>) {
+    for (const [t, d] of Object.entries(tv)) {
+      const status = d.owner === 'bot' ? 'review' : 'active';
+      const base = { ticker: t, source: 'tv' as const, status: status as any, note: `TV ${d.owner || ''} read ${d.read_date || '?'}`, t_start: null, t_end: null, created_at: new Date().toISOString() };
+      if (d.zone_top != null && d.zone_bottom != null)
+        this.drawings.push({ ...base, id: crypto.randomUUID(), kind: 'zone', zone_top: d.zone_top, zone_bottom: d.zone_bottom, entry: null, stop: null, target: null, tv_key: `${t}:zone` });
+      if (d.entry != null && d.stop != null && d.target != null)
+        this.drawings.push({ ...base, id: crypto.randomUUID(), kind: 'long', zone_top: null, zone_bottom: null, entry: d.entry, stop: d.stop, target: d.target, tv_key: `${t}:long` });
+    }
   }
   async loadLabels() { return [...this.labels]; }
   async upsertLabel(l: Label) {

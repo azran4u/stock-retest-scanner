@@ -172,7 +172,9 @@ Box restarts drop `/workspace/.venv`. Every routine first runs `/workspace/ensur
 - **List**: today's candidates (`app/data/index.json`) with search, filter chips (PASS / needs drawing / review / obsolete / hammer / position / my drawings / commands) and sort. Persisted in localStorage.
 - **Chart**: `lightweight-charts` v5, weekly ⇄ daily candles + volume. Prev / next buttons and horizontal swipe on the header / tool bar / panel; neighbours are prefetched.
 - **Editing (touch)**: `+ אזור` then tap two price levels (first tap = start date); `+ לונג` then tap entry and stop (target starts at 2R). Select a drawing (its chart tag or "בחר / גרור") to get drag handles (top / bottom / entry / stop / target, and the start-date bar); numeric inputs in the card are the fallback. Live R:R. Delete own drawings, approve / reject bot drawings (`status=review`), technical yes/no + free note (`labels`), "send command to bot" (`commands`). Every edit is written to Supabase immediately; other open clients update via Realtime.
-- **TradingView drawings** are shown read-only (dashed grey, `TV`) from `app/data/tv_drawings.json` (export of `/workspace/stock-screener/tv_drawings.json`, `source: "tv"`); they are never inserted into Supabase.
+- **TradingView drawings** are imported into Supabase (`source='tv'`, `srs_app/import_tv.py`) and are normal editable drawings (small `TV` badge): drag handles, number inputs, delete. **Delete is a soft delete** (`status='deleted'`, hidden in the app) for user and TV rows; bot rows keep approve / reject. `app/data/tv_drawings.json` is still generated but no longer loaded by the app.
+- **Watchlist** (`watchlist` table): ☆/★ on list rows and the chart header; chip `★ מעקב`; type any symbol in the search box → "הוסף X למעקב" (also for tickers outside today's candidates). A ticker without candle JSON shows "no data yet"; the next daily run exports it (below).
+- **לא מעניינת** (`labels`: `label='not_interesting'`, `value='yes'`, `until` date; picker 4 / 8 / 12 weeks (default 8) or forever = `until` null; unmark writes `value='no'`): 🚫 in the chart header (uses the last picked period) and a section in the panel. Hidden from the list unless the `לא מעניינות` chip is on (badge shown).
 - **Auth**: Supabase email OTP (magic link **or** the 6-digit code typed in the app — needed for the home-screen PWA, which on iOS does not share Safari's storage). Session persists in localStorage. RLS: only `azran4u@gmail.com`.
 - Demo / test mode: `?demo=1` (in-memory backend, nothing is written anywhere) — used by `webapp/e2e.mjs`.
 
@@ -184,7 +186,9 @@ Box restarts drop `/workspace/.venv`. Every routine first runs `/workspace/ensur
 | `app/` | Built site served by Pages (committed; legacy Pages build from `main` /) |
 | `app/data/` | Generated data: `index.json`, `tv_drawings.json`, `candles/<T>.json` (daily OHLCV 5y: `{"t":T,"d":[[date,o,h,l,c,v],…]}`) |
 | `srs_app/export_data.py` | Generates `app/data/` from `historical-reports/latest.csv`, `tv_drawings.json` and the scanner's history cache `/workspace/hist_cache.pkl` (same yfinance data as the screen). Candidates = PASS ∪ needs drawing ∪ bot review ∪ obsolete ∪ last-week hammer ∪ any TV drawing ∪ open position |
-| `srs_app/sync.py` | SQL + parsers for the bot to read app edits (below) |
+| `srs_app/sync.py` | SQL + parsers for the bot to read app edits (below), app state file (watchlist / not interesting) |
+| `srs_app/import_tv.py` | TradingView store → idempotent SQL inserts into `drawings` (`source='tv'`, `tv_key`, `ON CONFLICT (tv_key) DO NOTHING`) |
+| `srs_app/app_drawings.py` | App drawings (SQL rows) → `/workspace/stock-screener/app_drawings.json` in the `tv_drawings.json` shape; `export_daily_report.py` prefers it |
 
 ### Daily publish
 
@@ -218,3 +222,50 @@ values ('OKE', 'zone', 70.5, 68.0, '2026-05-04', 'bot', 'review', 'BOT - review 
 ```
 
 Rule mirror of TradingView: bot drawings in `review` do not count toward PASS until approved.
+
+### Nightly routine additions (TradingView retirement)
+
+TradingView is being retired: the app becomes the only drawing source. `drawings.tv_key` = `TICKER:kind:levels` (zone `top-bottom`, long `entry/stop/target`, 2 dp); `source` ∈ user | bot | tv; `status` adds `deleted` (soft delete).
+
+1. **After the (last) nightly TV read** — import new TV drawings only (a row Eyal edited or deleted is never overwritten or resurrected):
+   ```bash
+   cd /workspace/publish-stock-retest-scanner && /workspace/.venv/bin/python -m srs_app.import_tv --out /workspace/tv_import_sql
+   ```
+   then run each `/workspace/tv_import_sql/batch_*.sql` through the Supabase connector `execute_sql` (project `wkkdblnykgolqijzagva`; pass `"query": "$file:/workspace/tv_import_sql/batch_001.sql"` etc.). Each returns `{"inserted": N}`. TV drawings still marked bot ("BOT - review needed") come in as `status='review'`.
+2. **App state for the offline scripts** (watchlist → candles; not interesting → target exclusion): run `sync.SQL_WATCHLIST` and `sync.SQL_NOT_INTERESTING_ACTIVE` with `execute_sql` (`write_to_file: true`), then
+   ```bash
+   cd /workspace/publish-stock-retest-scanner && /workspace/.venv/bin/python -m srs_app.sync --watch-json <watchlist file> --ni-json <not-interesting file>
+   ```
+   → `/workspace/stock-screener/app_state.json`.
+3. **App drawings = source of truth per ticker** (before `export_daily_report.py`): run `app_drawings.SQL_APP_DRAWINGS` with `execute_sql` and `write_to_file: true`, then
+   ```bash
+   cd /workspace/publish-stock-retest-scanner && /workspace/.venv/bin/python -m srs_app.app_drawings --from-json <that file>
+   ```
+   → `/workspace/stock-screener/app_drawings.json` (accepts the connector's raw output). When it exists `export_daily_report.py` uses it instead of `tv_drawings.json` (`--tv-store` forces the old store), so PASS / R:R / needs drawing / review come from the app. Newest row per ticker+kind; user, tv and approved bot rows count (owner user); bot proposals in review stay "bot drawing (review needed)"; zone without long = partial "Rectangle only, no Long Position" (long without zone = "LP only, no Rectangle"); a ticker whose drawings were all deleted becomes "no drawing".
+4. The daily export then writes `app/data` (incl. watchlist tickers: candles downloaded from yfinance when not in the scanner cache). Commit `app/data` with the report.
+
+```sql
+-- converter input (app_drawings.SQL_APP_DRAWINGS)
+select id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start, source, status, tv_key, note, created_at, updated_at
+from public.drawings
+where kind in ('zone', 'long') and status in ('active', 'approved', 'review')
+order by ticker, kind, updated_at desc;
+
+-- source of truth only (user + tv + approved bot), newest per ticker+kind (sync.SQL_SOURCE_OF_TRUTH)
+select distinct on (ticker, kind) id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start, source, status, tv_key, updated_at
+from public.drawings
+where kind in ('zone', 'long') and (status = 'active' and source in ('user', 'tv') or status = 'approved')
+order by ticker, kind, updated_at desc;
+
+-- watchlist (sync.SQL_WATCHLIST)
+select ticker, note, added_at from public.watchlist order by added_at;
+
+-- active "not interesting" tickers (sync.SQL_NOT_INTERESTING_ACTIVE_ONLY)
+select ticker, until from (
+  select distinct on (ticker) ticker, value, until
+  from public.labels where label = 'not_interesting'
+  order by ticker, asof desc, created_at desc
+) x where value = 'yes' and (until is null or until >= current_date) order by ticker;
+```
+
+**Not interesting = excluded, data still computed:** `export_daily_report.py` drops active not-interesting tickers (from `app_state.json`, checked against the report date) from `grok_needs_drawing_target` and `grok_review_target`; all report columns are still computed for them. Bot-drawing generation and review prompts must skip them too (`sync.not_interesting_from_state()`).

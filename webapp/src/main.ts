@@ -2,7 +2,7 @@ import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView } from './chart';
 import { atr, loadDaily, loadIndex, loadTv, rr, toWeekly } from './data';
-import type { Bar, Command, Drawing, Label, Row, TvDrawing } from './types';
+import type { Bar, Command, Drawing, Label, Row, Watch } from './types';
 
 const api = makeApi();
 const app = document.getElementById('app')!;
@@ -14,11 +14,11 @@ const S = {
   rows: [] as Row[],
   byT: new Map<string, Row>(),
   reportDate: null as string | null,
-  tv: {} as Record<string, TvDrawing>,
+  watch: new Map<string, Watch>(),
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -44,14 +44,48 @@ async function guard<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 const BADGES: Record<string, [string, string]> = {
   pass: ['PASS', 'b-pass'], needs_drawing: ['צריך שרטוט', 'b-need'], review: ['לבדיקה', 'b-review'],
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
+  watch: ['מעקב', 'b-watch'], ni: ['לא מעניינת', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
 const CHIPS: [string, string][] = [
   ['all', 'הכל'], ['pass', 'PASS'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
-  ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['mine', 'שרטוט שלי'], ['commands', 'פקודות'],
+  ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מעניינות'],
 ];
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>` : '');
 
-function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete'); }
+function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
+function isNi(t: string): boolean {
+  const l = latestLabel(t, 'not_interesting');
+  return !!l && l.value === 'yes' && (!l.until || l.until >= today());
+}
+const isWatched = (t: string) => S.watch.has(t);
+function allRows(): Row[] {
+  const out = [...S.rows];
+  for (const t of S.watch.keys()) if (!S.byT.has(t)) out.push({ ticker: t, status: 'WATCH', badges: ['nodata'], has_candles: false });
+  return out;
+}
+function badgesOf(r: Row): string[] {
+  const b = [...r.badges];
+  if (isWatched(r.ticker)) b.unshift('watch');
+  if (isNi(r.ticker)) b.unshift('ni');
+  return b;
+}
+const normT = (q: string) => q.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+async function toggleWatch(t: string) {
+  if (isWatched(t)) { S.watch.delete(t); refreshViews(); await guard(api.removeWatch(t), 'הוסר מהמעקב'); }
+  else { S.watch.set(t, { ticker: t, note: null }); refreshViews(); await guard(api.addWatch(t), 'נוסף למעקב ★'); }
+}
+async function setNi(t: string, weeks: number | null, on: boolean) {
+  let until: string | null = null;
+  if (on && weeks) { const d = new Date(today() + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + weeks * 7); until = d.toISOString().slice(0, 10); }
+  const l: Label = { ticker: t, label: 'not_interesting', value: on ? 'yes' : 'no', note: null, asof: today(), until, created_at: new Date().toISOString() };
+  S.labels = S.labels.filter((x) => !(x.ticker === t && x.label === l.label && x.asof === l.asof)); S.labels.push(l);
+  refreshViews();
+  await guard(api.upsertLabel(l), on ? 'סומן לא מעניינת' : 'בוטל סימון');
+}
+function refreshViews() {
+  if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
+  else if ($('.list')) updateListBody();
+}
 function latestLabel(t: string, label: string): Label | undefined {
   let best: Label | undefined;
   for (const l of S.labels) if (l.ticker === t && l.label === label) {
@@ -62,9 +96,12 @@ function latestLabel(t: string, label: string): Label | undefined {
 
 function filtered(): Row[] {
   const q = S.ui.q.trim().toUpperCase();
-  let rows = S.rows.filter((r) => {
+  let rows = allRows().filter((r) => {
     if (q && !r.ticker.includes(q)) return false;
     const c = S.ui.chip;
+    if (c === 'ni') return isNi(r.ticker);
+    if (c === 'watch') return isWatched(r.ticker);
+    if (isNi(r.ticker)) return false; // hidden unless the 'לא מעניינות' chip is on
     if (c === 'all') return true;
     if (c === 'mine') return userDrawings(r.ticker).length > 0;
     if (c === 'commands') return S.commands.some((x) => x.ticker === r.ticker);
@@ -77,7 +114,7 @@ function filtered(): Row[] {
   else if (s === 'zone') rows = [...rows].sort((a, b) => (a.tv_zone_dist_atr == null ? 1e9 : +a.tv_zone_dist_atr) - (b.tv_zone_dist_atr == null ? 1e9 : +b.tv_zone_dist_atr));
   else if (s === 'hammer') rows = [...rows].sort((a, b) => num(b.hammer_score) - num(a.hammer_score));
   else {
-    const rank = (r: Row) => (r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
+    const rank = (r: Row) => (r.badges.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
     rows = [...rows].sort((a, b) => rank(a) - rank(b) || num(b.tv_rr) - num(a.tv_rr) || a.ticker.localeCompare(b.ticker));
   }
   return rows;
@@ -144,7 +181,7 @@ function renderList() {
         ${[['default', 'סדר: עדיפות'], ['rr', 'R:R TV'], ['zone', 'קרבה לאזור'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select></div>
   </div>
-  <ul class="list">${rows.map(rowHtml).join('') || '<li class="muted center">אין תוצאות</li>'}</ul>`;
+  <ul class="list">${listInner(rows)}</ul>`;
   const q = $('#q') as HTMLInputElement;
   q.oninput = () => { S.ui.q = q.value; saveUi(); updateListBody(); };
   app.querySelectorAll<HTMLButtonElement>('.chip').forEach((b) => (b.onclick = () => { S.ui.chip = b.dataset.chip!; saveUi(); renderList(); }));
@@ -155,11 +192,20 @@ function renderList() {
 }
 function updateListBody() {
   const rows = filtered();
-  $('.list')!.innerHTML = rows.map(rowHtml).join('') || '<li class="muted center">אין תוצאות</li>';
+  $('.list')!.innerHTML = listInner(rows);
   $('.sortrow .small')!.textContent = `${rows.length} מניות`;
   bindRows();
 }
+function listInner(rows: Row[]) {
+  const q = normT(S.ui.q);
+  const add = q && !allRows().some((r) => r.ticker === q)
+    ? `<li class="addrow"><button class="primary" id="addWatch" data-t="${esc(q)}">★ הוסף ${esc(q)} למעקב</button><div class="muted small">לא ברשימת המועמדים. נרות יתווספו בריצה הלילית.</div></li>` : '';
+  return add + (rows.map(rowHtml).join('') || (add ? '' : '<li class="muted center">אין תוצאות</li>'));
+}
 function bindRows() {
+  const aw = $('#addWatch') as HTMLButtonElement | null;
+  if (aw) aw.onclick = async () => { const t = aw.dataset.t!; await toggleWatch(t); S.ui.q = ''; saveUi(); location.hash = '#/t/' + t; };
+  app.querySelectorAll<HTMLButtonElement>('.row .star').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleWatch(b.dataset.star!); }));
   app.querySelectorAll<HTMLElement>('.row').forEach((li) => (li.onclick = () => {
     sessionStorage.setItem('srs-scroll', String(window.scrollY));
     location.hash = '#/t/' + li.dataset.t;
@@ -176,8 +222,8 @@ function rowHtml(r: Row) {
   ].join('');
   const dist = r.tv_zone_dist_atr != null ? `${fmt(r.tv_zone_dist_atr, 1)} ATR` : '';
   return `<li class="row" data-t="${esc(r.ticker)}">
-    <div class="r1"><b dir="ltr">${esc(r.ticker)}</b><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
-    <div class="r2">${r.badges.map(badgeHtml).join('')}${extra}</div>
+    <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
+    <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <div class="r3 muted small" dir="ltr">${r.tv_rr != null ? `R:R ${fmt(r.tv_rr)}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
   </li>`;
 }
@@ -203,10 +249,12 @@ function shell() {
     <header class="top ch" id="chhead">
       <button id="back" class="ghost icon" aria-label="חזרה">→</button>
       <div class="tk"><b id="tk" dir="ltr"></b> <span id="tkpx" class="muted small" dir="ltr"></span><div id="tkb" class="tkb"></div></div>
+      <button id="star" class="ghost icon star" aria-label="מעקב">☆</button>
+      <button id="niBtn" class="ghost small nib" aria-label="לא מעניינת">🚫</button>
       <button id="prev" class="ghost icon" aria-label="הקודם">‹</button>
       <button id="next" class="ghost icon" aria-label="הבא">›</button>
     </header>
-    <div id="chart" class="chartwrap" dir="ltr"></div>
+    <div id="chart" class="chartwrap" dir="ltr"><div id="nodata" class="nodata" hidden>אין עדיין נתוני נרות למניה הזו.<br/>הם יתווספו בריצה הלילית הבאה.</div></div>
     <div class="tools" id="tools">
       <div class="seg"><button data-tf="W">שבועי</button><button data-tf="D">יומי</button></div>
       <button id="addZone">+ אזור</button>
@@ -226,6 +274,8 @@ function shell() {
     onTap: (price, date) => onChartTap(price, date),
   });
   $('#back')!.onclick = () => { location.hash = '#/'; };
+  $('#star')!.onclick = () => S.ticker && toggleWatch(S.ticker);
+  $('#niBtn')!.onclick = () => { if (!S.ticker) return; isNi(S.ticker) ? setNi(S.ticker, null, false) : setNi(S.ticker, S.ui.niWeeks ?? 8, true); };
   $('#prev')!.onclick = () => go(-1);
   $('#next')!.onclick = () => go(1);
   app.querySelectorAll<HTMLButtonElement>('[data-tf]').forEach((b) => (b.onclick = () => { S.ui.tf = b.dataset.tf as 'W' | 'D'; saveUi(); applyBars(); }));
@@ -248,11 +298,8 @@ async function openTicker(t: string) {
   if (first) shell();
   if (S.ticker !== t) { S.selected = null; S.tap = null; }
   S.ticker = t;
-  const r = S.byT.get(t);
-  $('#tk')!.textContent = t;
-  $('#tkpx')!.textContent = r?.current_price != null ? fmt(r.current_price) : '';
-  $('#tkb')!.innerHTML = (r?.badges || []).map(badgeHtml).join('');
-  renderHint(); renderPanel();
+  renderHeader(); renderHint(); renderPanel();
+  ($('#nodata') as HTMLElement).hidden = true;
   const seq = ++loadSeq;
   try {
     const daily = await loadDaily(t);
@@ -261,10 +308,20 @@ async function openTicker(t: string) {
     applyBars();
   } catch (e: any) {
     if (seq !== loadSeq) return;
-    curBars = null; cv?.setBars([], 0); toast('אין נתוני נרות ל-' + t, true);
+    curBars = null; cv?.setBars([], 0); ($('#nodata') as HTMLElement).hidden = false;
   }
   // prefetch neighbours for fast swipes
   for (const d of [1, -1] as const) { const n = neighbor(d); if (n) loadDaily(n).catch(() => {}); }
+}
+
+function renderHeader() {
+  const t = S.ticker; if (!t) return;
+  const r = S.byT.get(t) || allRows().find((x) => x.ticker === t) || { ticker: t, status: '', badges: [] };
+  $('#tk')!.textContent = t;
+  $('#tkpx')!.textContent = r.current_price != null ? fmt(r.current_price) : '';
+  $('#tkb')!.innerHTML = badgesOf(r as Row).filter((b) => b !== 'watch').map(badgeHtml).join('');
+  const st = $('#star')!; st.textContent = isWatched(t) ? '★' : '☆'; st.classList.toggle('on', isWatched(t));
+  $('#niBtn')!.classList.toggle('on', isNi(t));
 }
 
 function applyBars() {
@@ -278,7 +335,7 @@ function applyBars() {
 
 function syncChart() {
   if (!cv || !S.ticker) return;
-  cv.setDrawings(userDrawings(S.ticker).filter((d) => d.status !== 'rejected'), S.tv[S.ticker] || null, S.selected);
+  cv.setDrawings(userDrawings(S.ticker).filter((d) => d.status !== 'rejected'), S.selected);
   cv.fitLevels();
 }
 
@@ -334,7 +391,7 @@ function rrText(d: Pick<Drawing, 'entry' | 'stop' | 'target'>) {
 function cardHtml(d: Drawing) {
   const bot = d.source === 'bot';
   const ro = false;
-  const st = { active: 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן' }[d.status];
+  const st = { active: 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
   const kind = { zone: 'אזור', long: 'לונג', line: 'קו', note: 'הערה' }[d.kind];
   let body = '';
   if (d.kind === 'zone') body = numInput(d, 'zone_top', 'עליון', ro) + numInput(d, 'zone_bottom', 'תחתון', ro) + dateInput(d, 't_start', 'מתאריך', ro);
@@ -342,7 +399,7 @@ function cardHtml(d: Drawing) {
   else if (d.kind === 'line') body = numInput(d, 'entry', 'מחיר', ro);
   const risk = d.kind === 'long' && d.entry != null && d.stop != null ? `<span class="muted small" dir="ltr">risk ${fmt(+d.entry - +d.stop)}</span>` : '';
   return `<div class="card ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
-    <div class="ch1"><b>${kind}</b> <span class="badge ${bot ? 'b-review' : 'b-mine'}">${bot ? 'בוט' : 'שלי'}</span> <span class="badge">${st}</span>
+    <div class="ch1"><b>${kind}</b> <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : 'שלי'}</span> <span class="badge">${st}</span>
       ${d.kind === 'long' ? `<b class="rr" dir="ltr">${rrText(d)}</b> ${risk}` : ''}
       <button class="ghost small selbtn">${d.id === S.selected ? 'בטל בחירה' : 'בחר / גרור'}</button></div>
     <div class="grid">${body}</div>
@@ -365,16 +422,21 @@ function renderPanel() {
   const p = $('#panel'); if (!p || !S.ticker) return;
   if (p.contains(document.activeElement) && (document.activeElement as HTMLElement).matches('input,textarea')) { panelDirty = true; return; }
   panelDirty = false;
-  const t = S.ticker, r = S.byT.get(t), tv = S.tv[t];
+  const t = S.ticker, r = S.byT.get(t);
+  const ni = latestLabel(t, 'not_interesting'), niOn = isNi(t);
   const ds = userDrawings(t);
   const tech = latestLabel(t, 'technical'), note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
     <section>
       <h3>שרטוטים</h3>
-      ${tv ? `<div class="card tv"><div class="ch1"><b>TradingView</b> <span class="badge">קריאה בלבד</span> <span class="muted small">${esc(tv.owner || '')} ${esc(tv.read_date || '')}</span></div>
-        <div class="kv" dir="ltr">${tv.zone_top != null ? `zone ${fmt(tv.zone_bottom)}–${fmt(tv.zone_top)}` : ''} ${tv.entry != null ? `· E ${fmt(tv.entry)} SL ${fmt(tv.stop)} TP ${fmt(tv.target)} · R:R ${fmt(rr(tv.entry, tv.stop, tv.target))}` : ''}</div></div>` : ''}
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
+    </section>
+    <section>
+      <h3>לא מעניינת</h3>
+      <div class="row2 ni">${niOn
+        ? `<span class="badge b-ni">לא מעניינת ${ni?.until ? 'עד ' + esc(ni.until) : 'לתמיד'}</span><button id="niOff" class="ok">בטל סימון</button>`
+        : `<select id="niWeeks">${[[4, '4 שבועות'], [8, '8 שבועות'], [12, '12 שבועות'], [0, 'לתמיד']].map(([v, l]) => `<option value="${v}" ${(S.ui.niWeeks ?? 8) === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="niOn" class="bad">סמן לא מעניינת</button>`}</div>
     </section>
     <section>
       <h3>תיוג</h3>
@@ -430,6 +492,10 @@ function renderPanel() {
     S.labels = S.labels.filter((x) => !(x.ticker === t && x.label === 'technical' && x.asof === l.asof)); S.labels.push(l); renderPanel();
     await guard(api.upsertLabel(l), 'נשמר');
   }));
+  const niW = $('#niWeeks') as HTMLSelectElement | null;
+  if (niW) niW.onchange = () => { S.ui.niWeeks = +niW.value; saveUi(); };
+  const niOnB = $('#niOn'); if (niOnB) niOnB.onclick = () => setNi(t, niW && +niW.value ? +niW.value : null, true);
+  const niOffB = $('#niOff'); if (niOffB) niOffB.onclick = () => setNi(t, null, false);
   const noteEl = $('#note') as HTMLTextAreaElement;
   noteEl.addEventListener('change', async () => {
     const l: Label = { ticker: t, label: 'note', value: noteEl.value, note: null, asof: today(), created_at: new Date().toISOString() };
@@ -447,25 +513,28 @@ function renderPanel() {
 // ---------------- realtime ----------------
 function onChange(table: Table, ev: string, row: any, old: any) {
   if (table === 'drawings') {
-    if (ev === 'DELETE') S.drawings.delete(old?.id); else if (row) S.drawings.set(row.id, row);
+    if (ev === 'DELETE' || row?.status === 'deleted') S.drawings.delete(old?.id ?? row?.id); else if (row) S.drawings.set(row.id, row);
   } else if (table === 'labels') {
     if (ev === 'DELETE') S.labels = S.labels.filter((l) => !(l.ticker === old?.ticker && l.label === old?.label && l.asof === old?.asof));
     else if (row) { S.labels = S.labels.filter((l) => !(l.ticker === row.ticker && l.label === row.label && l.asof === row.asof)); S.labels.push(row); }
+  } else if (table === 'watchlist') {
+    if (ev === 'DELETE') S.watch.delete(old?.ticker); else if (row) S.watch.set(row.ticker, row);
   } else if (table === 'commands') {
     if (ev === 'DELETE') S.commands = S.commands.filter((c) => c.id !== old?.id);
     else if (row) { const i = S.commands.findIndex((c) => c.id === row.id); if (i >= 0) S.commands[i] = row; else S.commands.unshift(row); }
   }
-  if (cv && S.ticker) { syncChart(); renderPanel(); }
+  if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
   else if (!location.hash.startsWith('#/t/') && $('.list')) updateListBody();
 }
 
 // ---------------- boot ----------------
 async function loadAll() {
-  const [idx, tv, ds, ls, cs] = await Promise.all([
-    loadIndex(), loadTv(), api.loadDrawings(), api.loadLabels(), api.loadCommands(),
+  if (api.demo && !(window as any).__seeded) { (window as any).__seeded = true; (api as any).seedTv(await loadTv()); }
+  const [idx, ds, ls, cs, ws] = await Promise.all([
+    loadIndex(), api.loadDrawings(), api.loadLabels(), api.loadCommands(), api.loadWatch(),
   ]);
   S.rows = idx.rows; S.byT = new Map(idx.rows.map((r) => [r.ticker, r])); S.reportDate = idx.report_date;
-  S.tv = tv; S.drawings = new Map(ds.map((d) => [d.id, d])); S.labels = ls; S.commands = cs;
+  S.watch = new Map(ws.map((w) => [w.ticker, w])); S.drawings = new Map(ds.map((d) => [d.id, d])); S.labels = ls; S.commands = cs;
   S.loaded = true;
 }
 

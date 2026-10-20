@@ -3,7 +3,7 @@ import {
   createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode,
   type IChartApi, type ISeriesApi, type Time,
 } from 'lightweight-charts';
-import type { Bar, Drawing, TvDrawing } from './types';
+import type { Bar, Drawing } from './types';
 import { rr } from './data';
 
 export type HandleKey = 'zone_top' | 'zone_bottom' | 'entry' | 'stop' | 'target' | 't_start';
@@ -27,7 +27,6 @@ export class ChartView {
   svg: SVGSVGElement;
   bars: Bar[] = [];
   drawings: Drawing[] = [];
-  tv: TvDrawing | null = null;
   selected: string | null = null;
   editable = true;
   private dragging: { id: string; key: HandleKey } | null = null;
@@ -99,10 +98,9 @@ export class ChartView {
     this.lastKey = '';
   }
 
-  setDrawings(ds: Drawing[], tv: TvDrawing | null, selected: string | null) {
+  setDrawings(ds: Drawing[], selected: string | null) {
     if (this.dragging) return; // keep the drag copy until pointerup
     this.drawings = ds.map((d) => ({ ...d }));
-    this.tv = tv;
     this.selected = selected;
     this.lastKey = '';
   }
@@ -111,7 +109,6 @@ export class ChartView {
   fitLevels() {
     const lv: number[] = [];
     for (const d of this.drawings) [d.zone_top, d.zone_bottom, d.entry, d.stop, d.target].forEach((x) => x != null && lv.push(+x));
-    if (this.tv) [this.tv.zone_top, this.tv.zone_bottom, this.tv.stop, this.tv.target].forEach((x) => x != null && lv.push(+x));
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
         const r = orig();
@@ -154,7 +151,7 @@ export class ChartView {
     if (!this.bars.length) return;
     const lr = this.chart.timeScale().getVisibleLogicalRange();
     const key = [lr?.from, lr?.to, this.Y(this.bars[this.bars.length - 1].close), this.Y((this.bars[this.bars.length - 1].close) * 1.1),
-      this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings), this.tv?.ticker].join('|');
+      this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings)].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.render();
@@ -182,22 +179,6 @@ export class ChartView {
         `<text x="${tx + w / 2}" y="${y + 4}" text-anchor="middle">${esc(text)}</text></g>`;
     };
 
-    // TradingView drawing (read-only)
-    const tv = this.tv;
-    if (tv) {
-      const x1 = clampX(this.X(this.bars[Math.max(0, this.bars.length - 60)].time), 0);
-      if (tv.zone_top != null && tv.zone_bottom != null) {
-        s += box(0, W, this.Y(tv.zone_top), this.Y(tv.zone_bottom), 'rgba(120,123,134,.16)', '#787b86', '5 4');
-        s += tag(W - 4, this.Y(tv.zone_top), 'TV ' + (tv.owner === 'bot' ? 'bot' : 'zone'), '#4a4e5a');
-      }
-      if (tv.entry != null) {
-        s += box(x1, W, this.Y(tv.entry), this.Y(tv.target), 'rgba(38,166,154,.07)', 'rgba(38,166,154,.5)', '5 4');
-        s += box(x1, W, this.Y(tv.stop), this.Y(tv.entry), 'rgba(239,83,80,.07)', 'rgba(239,83,80,.5)', '5 4');
-        const q = rr(tv.entry, tv.stop, tv.target);
-        s += tag(x1 + 70, this.Y(tv.target), 'TV R:R ' + (q != null ? q.toFixed(2) : '?'), '#4a4e5a');
-      }
-    }
-
     const handles: string[] = [];
     const handle = (id: string, key: HandleKey, x: number, y: number | null, color: string) => {
       if (y == null || y < -20 || y > H + 20) return;
@@ -210,6 +191,7 @@ export class ChartView {
     for (const d of this.drawings) {
       const sel = d.id === this.selected;
       const bot = d.source === 'bot';
+      const pre = d.source === 'tv' ? 'TV ' : bot ? 'BOT ' : '';
       const review = d.status === 'review';
       const x1 = clampX(this.X(d.t_start), d.kind === 'long' ? W * 0.55 : 0);
       const x2 = clampX(d.t_end ? this.X(d.t_end) : null, W);
@@ -220,7 +202,7 @@ export class ChartView {
         const fill = bot ? 'rgba(255,152,0,.16)' : 'rgba(41,98,255,.20)';
         const stroke = bot ? '#ff9800' : '#2962ff';
         s += box(x1, x2, this.Y(d.zone_top), this.Y(d.zone_bottom), fill, stroke, dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
-        s += tag(x2 - 4, this.Y(d.zone_top), (bot ? 'BOT ' : '') + (review ? 'לבדיקה' : 'אזור'), sel ? stroke : '#2a2e39', d.id);
+        s += tag(x2 - 4, this.Y(d.zone_top), pre + (review ? 'לבדיקה' : 'אזור'), sel ? stroke : '#2a2e39', d.id);
         if (sel && this.editable) {
           handle(d.id, 'zone_top', hx, this.Y(d.zone_top), stroke);
           handle(d.id, 'zone_bottom', hx, this.Y(d.zone_bottom), stroke);
@@ -232,7 +214,7 @@ export class ChartView {
         s += box(x1, x2, this.Y(d.stop), this.Y(d.entry), 'rgba(239,83,80,.22)', '#ef5350', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
         s += line(x1, x2, this.Y(d.entry), '#d1d4dc');
         const q = rr(d.entry, d.stop, d.target);
-        s += tag(x2 - 4, this.Y(d.target), (bot ? 'BOT ' : '') + 'R:R ' + (q != null ? q.toFixed(2) : '—'), sel ? '#26a69a' : '#2a2e39', d.id);
+        s += tag(x2 - 4, this.Y(d.target), pre + 'R:R ' + (q != null ? q.toFixed(2) : '—'), sel ? '#26a69a' : '#2a2e39', d.id);
         if (sel && this.editable) {
           handle(d.id, 'target', hx, this.Y(d.target), '#26a69a');
           handle(d.id, 'entry', hx - 34, this.Y(d.entry), '#d1d4dc');

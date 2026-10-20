@@ -9,7 +9,7 @@ NOT talk to Supabase from Python. It runs these SQL statements through its Supab
     levels = sync.levels_by_ticker(rows)        # rows = the JSON list execute_sql returned
     sync.sql_command_done(42, "drew zone")      # -> execute_sql (mark a command handled)
 
-Tables (public): drawings, labels, commands — see README "Web app".
+Tables (public): drawings, labels, commands, watchlist — see README "Web app".
 """
 from __future__ import annotations
 
@@ -23,6 +23,17 @@ select id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start, t_
        source, status, note, created_at, updated_at
 from public.drawings
 where status in ('active', 'approved', 'review')
+order by ticker, kind, updated_at desc;
+""".strip()
+
+# Source of truth per ticker for the scanner: the app's live rows = user + tv (imported, maybe edited
+# in the app) + approved bot. Excludes review (bot proposals), rejected, obsolete, deleted.
+SQL_SOURCE_OF_TRUTH = """
+select distinct on (ticker, kind) id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start,
+       source, status, tv_key, updated_at
+from public.drawings
+where kind in ('zone', 'long')
+  and (status = 'active' and source in ('user', 'tv') or status = 'approved')
 order by ticker, kind, updated_at desc;
 """.strip()
 
@@ -107,7 +118,7 @@ def levels_by_ticker(rows: Iterable[Dict[str, Any]], include_review: bool = Fals
     rows = sorted(rows, key=lambda r: str(r.get("updated_at") or r.get("created_at") or ""), reverse=True)
     for r in rows:
         st = r.get("status")
-        if st in ("rejected", "obsolete") or (st == "review" and not include_review):
+        if st in ("rejected", "obsolete", "deleted") or (st == "review" and not include_review):
             continue
         t = str(r["ticker"]).upper()
         d = out.setdefault(t, {"ticker": t, "zone_top": None, "zone_bottom": None, "entry": None, "sl": None,
@@ -141,3 +152,93 @@ def labels_by_ticker(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]
 def pending_commands(rows: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [dict(id=int(r["id"]), ticker=r.get("ticker"), text=r.get("text"), created_at=r.get("created_at"))
             for r in rows]
+
+
+# ---------------- watchlist / not interesting (app state file) ----------------
+SQL_WATCHLIST = "select ticker, note, added_at from public.watchlist order by added_at;"
+
+SQL_NOT_INTERESTING_ACTIVE = """
+select distinct on (ticker) ticker, value, until, note, asof, created_at
+from public.labels
+where label = 'not_interesting'
+order by ticker, asof desc, created_at desc;
+""".strip()
+# ^ latest mark per ticker; active = value='yes' and (until is null or until >= current_date).
+# Pure-SQL filter of the active set:
+SQL_NOT_INTERESTING_ACTIVE_ONLY = """
+select ticker, until from (
+  select distinct on (ticker) ticker, value, until
+  from public.labels where label = 'not_interesting'
+  order by ticker, asof desc, created_at desc
+) x where value = 'yes' and (until is null or until >= current_date) order by ticker;
+""".strip()
+
+APP_STATE = "/workspace/stock-screener/app_state.json"
+
+
+def not_interesting_active(rows: Iterable[Dict[str, Any]], asof: Optional[str] = None) -> Dict[str, Optional[str]]:
+    """{ticker: until|None} for rows from SQL_NOT_INTERESTING_ACTIVE(_ONLY) that are active on asof (YYYY-MM-DD, default today)."""
+    from datetime import date
+    day = asof or date.today().isoformat()
+    out: Dict[str, Optional[str]] = {}
+    for r in rows:
+        if str(r.get("value", "yes")).lower() != "yes":
+            continue
+        u = r.get("until")
+        u = str(u)[:10] if u else None
+        if u is None or u >= day:
+            out[str(r["ticker"]).upper()] = u
+    return out
+
+
+def write_app_state(watch_rows: Iterable[Dict[str, Any]], ni_rows: Iterable[Dict[str, Any]], path: str = APP_STATE) -> Dict[str, Any]:
+    """Save what the routine read via SQL (SQL_WATCHLIST, SQL_NOT_INTERESTING_ACTIVE) for the offline scripts:
+    export_data (watchlist tickers get candles) and export_daily_report (not-interesting excluded from targets)."""
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+    ni_rows = list(ni_rows)
+    state = {
+        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "watchlist": sorted({str(r["ticker"]).upper() for r in watch_rows}),
+        # keep every 'yes' mark with its until; activity is re-checked against the report date when read
+        "not_interesting": {str(r["ticker"]).upper(): (str(r["until"])[:10] if r.get("until") else None)
+                            for r in ni_rows if str(r.get("value", "yes")).lower() == "yes"},
+    }
+    Path(path).write_text(json.dumps(state, indent=1) + "\n")
+    return state
+
+
+def _load_state(path) -> Dict[str, Any]:
+    import json
+    from pathlib import Path
+    p = Path(path)
+    return json.loads(p.read_text()) if p.exists() else {}
+
+
+def watchlist_from_state(path=APP_STATE) -> List[str]:
+    return [str(t).upper() for t in _load_state(path).get("watchlist", [])]
+
+
+def not_interesting_from_state(path=APP_STATE, asof: Optional[str] = None) -> set:
+    ni = _load_state(path).get("not_interesting", {}) or {}
+    return set(not_interesting_active([{"ticker": t, "value": "yes", "until": u} for t, u in ni.items()], asof))
+
+
+def main() -> None:
+    """python -m srs_app.sync --watch-json W --ni-json N  ->  /workspace/stock-screener/app_state.json
+    W / N = execute_sql output (raw connector output or a JSON list) of SQL_WATCHLIST / SQL_NOT_INTERESTING_ACTIVE."""
+    import argparse
+    from pathlib import Path
+    from srs_app.app_drawings import load_rows
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("--watch-json", required=True)
+    ap.add_argument("--ni-json", required=True)
+    ap.add_argument("--out", default=APP_STATE)
+    a = ap.parse_args()
+    st = write_app_state(load_rows(Path(a.watch_json)), load_rows(Path(a.ni_json)), a.out)
+    print(f"app state: {len(st['watchlist'])} watchlist, {len(st['not_interesting'])} not-interesting marks -> {a.out}")
+
+
+if __name__ == "__main__":
+    main()

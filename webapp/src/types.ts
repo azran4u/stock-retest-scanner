@@ -1,5 +1,5 @@
 export type Kind = 'zone' | 'long' | 'line' | 'note';
-export type DStatus = 'active' | 'review' | 'approved' | 'rejected' | 'obsolete';
+export type DStatus = 'active' | 'review' | 'approved' | 'rejected' | 'obsolete' | 'deleted';
 
 export interface Drawing {
   id: string;
@@ -12,9 +12,10 @@ export interface Drawing {
   target: number | null;
   t_start: string | null;
   t_end: string | null;
-  source: 'user' | 'bot';
+  source: 'user' | 'bot' | 'tv';
   status: DStatus;
   note: string | null;
+  tv_key?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -25,8 +26,11 @@ export interface Label {
   value: string;
   note: string | null;
   asof: string;
+  until?: string | null;
   created_at?: string;
 }
+
+export interface Watch { ticker: string; note: string | null; added_at?: string }
 
 export interface Command {
   id: number;
