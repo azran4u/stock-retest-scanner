@@ -251,9 +251,13 @@ export class ChartView {
     };
 
     const handles: string[] = [];
+    type R = { x: number; y: number; w: number; h: number };
+    const obst: R[] = []; // visible handle / tag rects that price labels must not cover
+    const hit = (a: R, b: R) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
     const handle = (id: string, key: HandleKey, x: number, y: number | null, color: string) => {
       if (y == null || y < -20 || y > H + 20) return;
       const yy = Math.max(10, Math.min(H - 10, y));
+      obst.push(key === 't_start' ? { x: x - 6, y: yy - 16, w: 12, h: 32 } : { x: x - 11, y: yy - 11, w: 22, h: 22 });
       handles.push(key === 't_start'
         ? `<g class="h" data-id="${id}" data-key="${key}"><rect x="${x - 22}" y="${yy - 26}" width="44" height="52" fill="transparent"/><rect x="${x - 4}" y="${yy - 14}" width="8" height="28" rx="3" fill="${color}" stroke="#fff" stroke-width="1.5"/></g>`
         : `<g class="h" data-id="${id}" data-key="${key}"><circle cx="${x}" cy="${yy}" r="22" fill="transparent"/><circle cx="${x}" cy="${yy}" r="8" fill="${color}" stroke="#fff" stroke-width="2"/></g>`);
@@ -295,20 +299,10 @@ export class ChartView {
         s += box(x1, x2, this.Y(d.stop), this.Y(d.entry), 'rgba(239,83,80,.22)', '#ef5350', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
         s += line(x1, x2, this.Y(d.entry), '#d1d4dc');
         const q = rr(d.entry, d.stop, d.target);
-        s += tag(x2 - 4, this.Y(d.target), pre + 'R:R ' + (q != null ? q.toFixed(2) : '—'), sel ? '#26a69a' : '#2a2e39', d.id);
-        // SL size per share (entry - SL), inside the red box next to the SL edge
-        const ye = this.Y(d.entry), ys = this.Y(d.stop);
-        if (d.entry != null && d.stop != null && ye != null && ys != null) {
-          const risk = +d.entry - +d.stop;
-          const txt = `SL $${risk.toFixed(2)}` + (+d.entry > 0 ? ` (${(risk / +d.entry * 100).toFixed(1)}%)` : '');
-          const tw = txt.length * 6.3 + 8;
-          const tx = Math.max(2, Math.min(W - tw - 2, x1 + 4));
-          // inside the red box just above the SL edge (clear of the SL handle); below the edge if the box is too short
-          const inside = Math.abs(ys - ye) >= 32;
-          const ty = inside ? ys - 12 : ys + 22;
-          if (ty > -10 && ty < H + 10)
-            s += `<g class="slsz"><rect x="${tx - 3}" y="${ty - 11}" width="${tw}" height="14" rx="3" fill="rgba(19,23,34,.55)"/><text x="${tx + 1}" y="${ty}" style="fill:#ff8a87;font-size:10.5px">${esc(txt)}</text></g>`;
-        }
+        const rrTxt = pre + 'R:R ' + (q != null ? q.toFixed(2) : '—');
+        s += tag(x2 - 4, this.Y(d.target), rrTxt, sel ? '#26a69a' : '#2a2e39', d.id);
+        const yt0 = this.Y(d.target);
+        if (yt0 != null) { const w = rrTxt.length * 6.4 + 12; obst.push({ x: Math.max(2, Math.min(W - w - 2, x2 - 4 - w)), y: yt0 - 9, w, h: 18 }); }
         if (sel && this.editable) {
           // price handles in the visible middle of the box; time handles on the box edges, mid-height of the
           // green box (not on the entry line, so they never cover the Entry handle on a narrow box)
@@ -321,6 +315,7 @@ export class ChartView {
           if (xs >= -10 && xs <= W + 10) handle(d.id, 't_start', Math.max(6, Math.min(W - 6, xs)), ty, '#d1d4dc');
           if (x2 > 0 && x2 < W) handle(d.id, 't_end', x2, ty, '#d1d4dc');
         }
+        s += this.longLabels(d, x1, W, H, obst, hit);
       } else if (d.kind === 'line') {
         const y = this.Y(d.entry ?? d.zone_top);
         s += line(0, W, y, bot ? '#ff9800' : '#f7c948', dash);
@@ -341,6 +336,61 @@ export class ChartView {
       }
     }
     this.svg.innerHTML = s + guide + handles.join('');
+  }
+
+  /** TP / Entry / SL price labels on a long. Each label tries a few slots (inside the box next to its edge, the other
+   *  side of the edge, then right of the handles / left of the box) and a smaller font / shorter text, and takes the
+   *  first slot that overlaps no handle, tag or other label. */
+  private longLabels(d: Drawing, x1: number, W: number, H: number, obst: { x: number; y: number; w: number; h: number }[],
+    hit: (a: any, b: any) => boolean): string {
+    if (d.entry == null) return '';
+    const E = +d.entry, ye = this.Y(E), yt = this.Y(d.target), ys = this.Y(d.stop);
+    const m = (x: number) => '$' + x.toFixed(2);
+    const pct = (x: number) => (E > 0 ? (x / E * 100).toFixed(1) + '%' : '');
+    type L = { cls: string; color: string; full: string; short: string; edge: number | null; first: 'above' | 'below' };
+    const labels: L[] = [];
+    if (d.target != null) {
+      const g = +d.target - E;
+      labels.push({ cls: 'lbl-tp', color: '#5fd4c6', full: `TP ${m(+d.target)} (${g >= 0 ? '+' : '-'}${m(Math.abs(g))}, ${pct(g)})`, short: `TP ${m(+d.target)}`, edge: yt, first: 'below' });
+    }
+    labels.push({ cls: 'lbl-entry', color: '#d1d4dc', full: `Entry ${m(E)}`, short: `E ${m(E)}`, edge: ye, first: 'above' });
+    if (d.stop != null) {
+      const r = E - +d.stop;
+      labels.push({ cls: 'slsz', color: '#ff8a87', full: `SL ${m(r)} (${pct(r)})`, short: `SL ${m(r)}`, edge: ys, first: 'above' });
+    }
+    const variants = [{ fs: 10.5, cw: 6.1, k: 'full' }, { fs: 9, cw: 5.3, k: 'full' }, { fs: 9, cw: 5.3, k: 'short' }] as const;
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    let out = '';
+    for (const l of labels) {
+      if (l.edge == null || l.edge < -30 || l.edge > H + 30) continue;
+      const e = l.edge;
+      type P = { x: number; y: number; w: number; h: number; fs: number; txt: string };
+      let best = null as P | null;
+      let fallback = null as P | null;
+      search: for (const v of variants) {
+        const txt = v.k === 'full' ? l.full : l.short;
+        const w = txt.length * v.cw + 8, h = v.fs + 4;
+        const above = e - 11 - h, below = e + 11;
+        // near the edge first (inside / outside), then stacked further out (short boxes: labels fan out)
+        const ys2 = l.first === 'above' ? [above, below] : [below, above];
+        for (let n = 1; n <= 3; n++) ys2.push(...(l.cls === 'slsz' ? [below + n * (h + 2)] : l.cls === 'lbl-tp' ? [above - n * (h + 2)] : [above - n * (h + 2), below + n * (h + 2)]));
+        const xs2 = [x1 + 8, ...obst.filter((o) => o.y < e + 12 && o.y + o.h > e - 12).map((o) => o.x + o.w + 4), x1 - w - 4];
+        for (const y of ys2) for (const x0 of xs2) {
+          const x = Math.max(2, Math.min(W - w - 2, x0));
+          const r = { x, y, w, h };
+          if (y < 0 || y + h > H) continue;
+          fallback ??= { ...r, fs: v.fs, txt };
+          if (obst.some((o) => hit(r, o)) || placed.some((o) => hit(r, o))) continue;
+          best = { ...r, fs: v.fs, txt }; break search;
+        }
+      }
+      const b = best ?? fallback;
+      if (!b) continue;
+      placed.push(b);
+      out += `<g class="plbl ${l.cls}"><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="3" fill="rgba(19,23,34,.6)"/>` +
+        `<text x="${b.x + 4}" y="${b.y + b.h - 3.5}" style="fill:${l.color};font-size:${b.fs}px">${esc(b.txt)}</text></g>`;
+    }
+    return out;
   }
 
   // ---- interaction ----

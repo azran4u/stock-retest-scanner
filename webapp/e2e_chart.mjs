@@ -14,6 +14,33 @@ page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 const cdp = await ctx.newCDPSession(page);
 const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1 }] });
+// label boxes (text bbox ∪ background) vs each other and vs visible handle shapes / R:R tag; returns overlaps + texts
+const layout = () => page.evaluate(() => {
+  const bb = (e) => { const b = e.getBBox(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+  const uni = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const labels = [...document.querySelectorAll('svg.overlay g.plbl')].map((g) => ({ name: g.classList[1], text: g.querySelector('text').textContent, r: uni(bb(g.querySelector('rect')), bb(g.querySelector('text'))) }));
+  const others = [...document.querySelectorAll('svg.overlay g.h')].map((g) => ({ name: 'handle:' + g.dataset.key, r: bb(g.children[1]) }))
+    .concat([...document.querySelectorAll('svg.overlay g.tag')].map((g) => ({ name: 'tag', r: bb(g.querySelector('rect')) })));
+  const W = window.__srs.cv.chart.timeScale().width();
+  const bad = [];
+  labels.forEach((a, i) => {
+    if (a.r.x < 0 || a.r.x + a.r.w > W + 0.5) bad.push(a.name + ' outside pane');
+    labels.slice(i + 1).forEach((b) => hit(a.r, b.r) && bad.push(a.name + 'x' + b.name));
+    others.forEach((o) => hit(a.r, o.r) && bad.push(a.name + 'x' + o.name));
+  });
+  return { bad, t: Object.fromEntries(labels.map((l) => [l.name, l.text])) };
+});
+const expTp = (d) => { const g = d.target - d.entry; return `TP $${d.target.toFixed(2)} (${g >= 0 ? '+' : '-'}$${Math.abs(g).toFixed(2)}, ${(g / d.entry * 100).toFixed(1)}%)`; };
+const expE = (d) => `Entry $${d.entry.toFixed(2)}`;
+const labelsOk = async (d, what) => {
+  const l = await layout();
+  // full text, or (only when nothing fits) the short form: 'TP $x' / 'E $x' / 'SL $x'
+  const m = (got, full, short) => got === full || got === short;
+  ok(m(l.t['lbl-tp'], expTp(d), `TP $${d.target.toFixed(2)}`) && m(l.t['lbl-entry'], expE(d), `E $${d.entry.toFixed(2)}`) && m(l.t['slsz'], expSl(d), `SL $${(d.entry - d.stop).toFixed(2)}`),
+    `${what}: labels ${JSON.stringify(l.t)}`);
+  ok(l.bad.length === 0, `${what}: no overlaps between labels / handles / tag ${JSON.stringify(l.bad)}`);
+};
 const shot = async (n) => { await page.screenshot({ path: `${OUT}/${n}.png` }); console.log('     shot', `${OUT}/${n}.png`); };
 
 await page.goto(BASE + '?demo=1#/t/CSCO');
@@ -51,7 +78,9 @@ ok(long0.t_start && long0.t_end && long0.t_end > long0.t_start, `new long stores
 const slTxt = () => page.locator('g.slsz text').first().textContent();
 const expSl = (d) => `SL $${(d.entry - d.stop).toFixed(2)} (${((d.entry - d.stop) / d.entry * 100).toFixed(1)}%)`;
 ok((await slTxt()) === expSl(long0), `SL label "${await slTxt()}"`);
+await labelsOk(long0, 'selected long');
 await shot('03_long_selected_sl_label');
+await shot('10_long_labels');
 
 // ---- 4. dashed guide during touch drag of SL ----
 const sh = await page.locator('g.h[data-key="stop"] circle').nth(1).boundingBox();
@@ -66,6 +95,7 @@ const LV = () => page.evaluate(() => ({ ...window.__srs.cv.drawings.find((d) => 
 const mid = await LV();
 const midLbl = await slTxt();
 ok(midLbl === expSl(mid) && mid.stop < long0.stop, `SL label live during drag: "${midLbl}" (stop ${long0.stop} -> ${mid.stop})`);
+await labelsOk(mid, 'mid SL drag (live)');
 await shot('04_dragging_sl_dashed_guide');
 await touch('touchEnd'); await page.waitForTimeout(150);
 ok((await page.locator('g.dragguide').count()) === 0, 'guide removed after touch release');
@@ -77,6 +107,7 @@ await page.mouse.move(eh.x + eh.width / 2, eh.y + eh.height / 2); await page.mou
 await page.mouse.move(eh.x + eh.width / 2, eh.y - 15, { steps: 4 }); await page.waitForTimeout(60);
 const midE = await LV();
 ok((await page.locator('g.dragguide').count()) === 1 && (await slTxt()) === expSl(midE), `mouse drag Entry: guide shown, SL label "${await slTxt()}"`);
+await labelsOk(midE, 'mid Entry drag (live)');
 await page.mouse.up(); await page.waitForTimeout(120);
 ok((await page.locator('g.dragguide').count()) === 0, 'guide removed after mouseup');
 const saved = await page.evaluate(() => window.__demoApi.drawings.find((d) => d.kind === 'long' && d.source === 'user' && d.status !== 'deleted'));
@@ -88,6 +119,16 @@ const th = await page.locator('g.h[data-key="t_start"] rect').nth(1).boundingBox
 await page.mouse.move(th.x + th.width / 2, th.y + th.height / 2); await page.mouse.down();
 await page.mouse.move(th.x + th.width / 2 + 21, th.y + th.height / 2, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(150);
 const sp1 = await span();
+// short boxes: TP / Entry / SL only a few px apart -> labels move outside / shrink, still no overlap
+const idU = (await L()).id;
+for (const [k, gap] of [['short', 0.6], ['tiny', 0.15], ['medium', 3]]) {
+  await page.evaluate(async ([id, gap]) => { const d = window.__srs.S.drawings.get(id); await window.__srs.api.updateDrawing(id, { stop: +(d.entry - gap).toFixed(2), target: +(+d.entry + gap * 1.5).toFixed(2) }); }, [idU, gap]);
+  await page.waitForTimeout(150);
+  await labelsOk(await LV(), `${k} box (risk ${gap})`);
+  if (k === 'short') await shot('11_long_labels_short_box');
+}
+await page.evaluate(async ([id, d]) => window.__srs.api.updateDrawing(id, { stop: d.stop, target: d.target }), [idU, saved]);
+await page.waitForTimeout(150);
 ok(sp1[0] - sp0[0] >= 2 && sp1[1] - sp1[0] === sp0[1] - sp0[0], `drag start handle moves the position in time: bars ${sp0} -> ${sp1}`);
 
 // ---- 5. sticky: pan / zoom keep the long glued to its candles ----
