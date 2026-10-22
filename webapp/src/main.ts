@@ -1,6 +1,6 @@
 import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
-import { ChartView } from './chart';
+import { ChartView, LONG_W_BARS } from './chart';
 import { atr, loadDaily, loadIndex, loadTv, rr, toWeekly } from './data';
 import type { Bar, Command, Drawing, Label, Row, Watch } from './types';
 
@@ -308,7 +308,7 @@ async function openTicker(t: string) {
     applyBars();
   } catch (e: any) {
     if (seq !== loadSeq) return;
-    curBars = null; cv?.setBars([], 0); ($('#nodata') as HTMLElement).hidden = false;
+    curBars = null; cv?.setBars([], 0); cv?.setAtr(null); ($('#nodata') as HTMLElement).hidden = false;
   }
   // prefetch neighbours for fast swipes
   for (const d of [1, -1] as const) { const n = neighbor(d); if (n) loadDaily(n).catch(() => {}); }
@@ -329,7 +329,10 @@ function applyBars() {
   if (!cv || !curBars) return;
   const bars = S.ui.tf === 'W' ? curBars.weekly : curBars.daily;
   syncChart();
-  cv.setBars(bars, S.ui.tf === 'W' ? 110 : 160);
+  cv.setBars(bars, S.ui.tf === 'W' ? 110 : 160, S.ui.tf === 'W');
+  // weekly ATR (Wilder 14) from the weekly candles, whatever timeframe is shown; scanner value as fallback
+  const wAtr = atr(curBars.weekly) ?? (S.ticker ? S.byT.get(S.ticker)?.weekly_atr ?? null : null);
+  cv.setAtr(wAtr == null ? null : +wAtr);
   cv.fitLevels();
 }
 
@@ -370,7 +373,9 @@ async function onChartTap(price: number, date: string) {
     row = { ticker: S.ticker, kind: 'zone', zone_top: Math.max(a, b), zone_bottom: Math.min(a, b), t_start: t.date, source: 'user', status: 'active' };
   } else {
     if (b >= a) { t.pts.pop(); toast('הסטופ חייב להיות מתחת לכניסה', true); return; }
-    row = { ticker: S.ticker, kind: 'long', entry: a, stop: b, target: Math.round((a + 2 * (a - b)) * 100) / 100, t_start: t.date, source: 'user', status: 'active' };
+    // anchored in time: t_start = tapped candle, t_end = LONG_W_BARS bars later (moves with pan / zoom)
+    const tEnd = t.date && cv ? cv.shiftDate(t.date, LONG_W_BARS) : null;
+    row = { ticker: S.ticker, kind: 'long', entry: a, stop: b, target: Math.round((a + 2 * (a - b)) * 100) / 100, t_start: t.date, t_end: tEnd, source: 'user', status: 'active' };
   }
   S.tap = null; renderHint();
   const d = await guard(api.insertDrawing(row), 'נשמר');
@@ -395,7 +400,7 @@ function cardHtml(d: Drawing) {
   const kind = { zone: 'אזור', long: 'לונג', line: 'קו', note: 'הערה' }[d.kind];
   let body = '';
   if (d.kind === 'zone') body = numInput(d, 'zone_top', 'עליון', ro) + numInput(d, 'zone_bottom', 'תחתון', ro) + dateInput(d, 't_start', 'מתאריך', ro);
-  else if (d.kind === 'long') body = numInput(d, 'entry', 'כניסה', ro) + numInput(d, 'stop', 'סטופ', ro) + numInput(d, 'target', 'יעד', ro) + dateInput(d, 't_start', 'מתאריך', ro);
+  else if (d.kind === 'long') body = numInput(d, 'entry', 'כניסה', ro) + numInput(d, 'stop', 'סטופ', ro) + numInput(d, 'target', 'יעד', ro) + dateInput(d, 't_start', 'מתאריך', ro) + dateInput(d, 't_end', 'עד תאריך', ro);
   else if (d.kind === 'line') body = numInput(d, 'entry', 'מחיר', ro);
   const risk = d.kind === 'long' && d.entry != null && d.stop != null ? `<span class="muted small" dir="ltr">risk ${fmt(+d.entry - +d.stop)}</span>` : '';
   return `<div class="card ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
@@ -470,7 +475,10 @@ function renderPanel() {
       i.addEventListener('change', async () => {
         const d = S.drawings.get(id); if (!d) return;
         const f = i.dataset.f as keyof Drawing;
-        await guard(api.updateDrawing(id, { [f]: d[f] } as Partial<Drawing>), 'נשמר');
+        const patch = { [f]: d[f] } as Partial<Drawing>;
+        // first edit of a long without a time anchor: store the anchor it is drawn at
+        if (d.kind === 'long' && cv && (!d.t_start || !d.t_end)) { Object.assign(d, cv.longAnchor(d)); patch.t_start = d.t_start; patch.t_end = d.t_end; }
+        await guard(api.updateDrawing(id, patch), 'נשמר');
       });
       i.addEventListener('blur', () => setTimeout(() => { if (panelDirty) renderPanel(); }, 0));
     });
@@ -559,4 +567,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr };
+(window as any).__srs = { S, api, atr, get cv() { return cv; } };
