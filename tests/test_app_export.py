@@ -1,0 +1,49 @@
+"""App index: the 'hammer' badge / inclusion needs the must-haves ($vol, history, no earnings <=14d)."""
+import json
+
+import pandas as pd
+
+from srs_app.export_data import build_index, hammer_ok
+
+BASE = {"status": "FAIL", "needs_drawing": False, "f_bot_review": False, "f_tv_stale": False, "tv_found": None,
+        "f_last_week_reversal": True, "f_dollar_vol": True, "f_history": True, "f_no_earnings_14d": True}
+
+
+def _index(tmp_path, rows, watch_positions=()):
+    df = pd.DataFrame([{**BASE, **r} for r in rows])
+    csv = tmp_path / "latest.csv"
+    df.to_csv(csv, index=False)
+    (tmp_path / "positions.json").write_text(json.dumps({"positions": [{"ticker": t, "status": "open"} for t in watch_positions]}))
+    return {r["ticker"]: r for r in build_index(tmp_path, report=csv)}
+
+
+def test_hammer_needs_must_haves(tmp_path):
+    idx = _index(tmp_path, [
+        {"ticker": "GOOD"},
+        {"ticker": "LOWVOL", "f_dollar_vol": False},                  # e.g. BBMC: $vol $4.1M
+        {"ticker": "NOEARN", "f_no_earnings_14d": None},              # unknown earnings date = not passing
+        {"ticker": "EARN", "f_no_earnings_14d": False},
+        {"ticker": "SHORT", "f_history": False},
+        {"ticker": "NOHAM", "f_last_week_reversal": False},
+    ])
+    assert idx["GOOD"]["badges"] == ["hammer"]
+    for t in ("LOWVOL", "NOEARN", "EARN", "SHORT", "NOHAM"):
+        assert t not in idx, t  # hammer alone no longer brings them into the app list
+
+
+def test_other_inclusion_reasons_unchanged(tmp_path):
+    idx = _index(tmp_path, [
+        {"ticker": "PASSLV", "status": "PASS", "f_dollar_vol": False},
+        {"ticker": "NDLV", "needs_drawing": True, "f_dollar_vol": False},
+        {"ticker": "POSLV", "f_dollar_vol": False},
+        {"ticker": "TVLV", "tv_found": "yes", "f_no_earnings_14d": False},
+    ], watch_positions=["POSLV"])
+    assert idx["PASSLV"]["badges"] == ["pass"]
+    assert idx["NDLV"]["badges"] == ["needs_drawing"]
+    assert idx["POSLV"]["badges"] == ["position"]
+    assert idx["TVLV"]["badges"] == [] and idx["TVLV"]["tv_found"] is True
+
+
+def test_hammer_ok_string_flags():
+    assert hammer_ok({"f_last_week_reversal": "True", "f_dollar_vol": "True", "f_history": "True", "f_no_earnings_14d": "True"})
+    assert not hammer_ok({"f_last_week_reversal": "True", "f_dollar_vol": "True", "f_history": "True", "f_no_earnings_14d": float("nan")})

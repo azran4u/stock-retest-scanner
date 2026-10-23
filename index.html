@@ -171,8 +171,14 @@ function hammerCard(r) {
     <dl><dt>Close</dt><dd>${f2(r.current_price)}</dd><dt>Own</dt><dd>${esc(SrsFilters.ownershipText(r))}${SrsFilters.ownershipChip(r)}</dd></dl></div></div>`;
 }
 
+/** Last-week hammer that also passes the must-haves ($vol, history, no earnings ≤14d; unknown earnings = fail).
+ *  Same gate as the app (srs_app/export_data.py hammer_ok, Eyal 2026-10-23). */
+function hammerOk(r) {
+  return r.f_last_week_reversal === "True" && r.f_dollar_vol === "True" && r.f_history === "True" && r.f_no_earnings_14d === "True";
+}
+
 function card(r) {
-  if (r.tv_found !== "yes" && !r.tv_screenshot && r.tv_source !== "bot" && r.tv_source !== "bot-approved" && r.tv_source !== "user-lines" && r.f_last_week_reversal === "True") return hammerCard(r);
+  if (r.tv_found !== "yes" && !r.tv_screenshot && r.tv_source !== "bot" && r.tv_source !== "bot-approved" && r.tv_source !== "user-lines" && hammerOk(r)) return hammerCard(r);
   if (r.tv_found !== "yes") return ndCard(r);
   const sym = tvSymbolFromUrl(r.tradingview_url);
   const pass = String(r.status).toUpperCase() === "PASS";
@@ -310,8 +316,8 @@ function render(persist = true) {
   // + bot drawings awaiting the nightly read / review + user lines-only charts
   const drawn = rows.filter(r => r.tv_found === "yes" || (r.tv_found === "no" && r.tv_screenshot)
     || r.tv_source === "bot" || r.tv_source === "bot-approved" || r.tv_source === "user-lines"
-    // last-week hammer rows join as cards (no screenshot) while the hammer filter is on
-    || (checked.has("f_last_week_reversal") && r.f_last_week_reversal === "True"));
+    // last-week hammer rows join as cards (no screenshot) while the hammer filter is on, only if they pass the must-haves
+    || (checked.has("f_last_week_reversal") && hammerOk(r)));
   const active = [...checked].filter(c => available.has(c));
   const bySort = document.getElementById("sortSel").value;
   const sel = drawn

@@ -5,8 +5,11 @@ Writes, relative to the repo root:
   app/data/tv_drawings.json    read-only TradingView drawings (source 'tv') from /workspace/stock-screener/tv_drawings.json
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
 
-Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer
+Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
              ∪ any TradingView drawing found ∪ open positions.
+
+Hammer gate (Eyal 2026-10-23): a last-week hammer only earns the 'hammer' badge / list inclusion when it also passes the
+basic must-haves f_dollar_vol AND f_history AND f_no_earnings_14d (report columns; unknown earnings = not passing).
 
 Usage:  python -m srs_app.export_data [--repo .] [--all]
 """
@@ -33,6 +36,7 @@ INDEX_COLS = [
     "f_technical", "f_near_zone", "needs_drawing", "f_bot_review", "f_tv_stale", "f_last_week_reversal",
     "last_week_reversal_kind", "hammer_entry", "hammer_sl", "hammer_tp", "hammer_rr", "hammer_calm_weeks",
     "hammer_score", "inst_own_pct", "short_float_pct", "tradingview_url",
+    "f_dollar_vol", "f_history", "f_no_earnings_14d",
 ]
 
 
@@ -59,6 +63,14 @@ def _truthy(v: Any) -> bool:
     return _clean(v) is True or str(v).strip().lower() in ("yes", "true", "1")
 
 
+HAMMER_MUST_HAVES = ("f_dollar_vol", "f_history", "f_no_earnings_14d")
+
+
+def hammer_ok(r: Any) -> bool:
+    """Last-week hammer that also passes the must-haves ($vol, 3y history, no earnings within 14d; unknown = fail)."""
+    return _truthy(r.get("f_last_week_reversal")) and all(_truthy(r.get(c)) for c in HAMMER_MUST_HAVES)
+
+
 def build_index(repo: Path, include_all: bool = False, report: Path | None = None) -> List[Dict[str, Any]]:
     df = pd.read_csv(report or (repo / "historical-reports" / "latest.csv"))
     positions = set()
@@ -78,7 +90,7 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
             badges.append("review")
         if _truthy(r.get("f_tv_stale")):
             badges.append("obsolete")
-        if _truthy(r.get("f_last_week_reversal")):
+        if hammer_ok(r):
             badges.append("hammer")
         if r["ticker"] in positions:
             badges.append("position")

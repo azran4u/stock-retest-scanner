@@ -112,7 +112,11 @@ function filtered(): Row[] {
   if (s === 'ticker') rows = [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
   else if (s === 'rr') rows = [...rows].sort((a, b) => num(b.tv_rr) - num(a.tv_rr));
   else if (s === 'zone') rows = [...rows].sort((a, b) => (a.tv_zone_dist_atr == null ? 1e9 : +a.tv_zone_dist_atr) - (b.tv_zone_dist_atr == null ? 1e9 : +b.tv_zone_dist_atr));
-  else if (s === 'hammer') rows = [...rows].sort((a, b) => num(b.hammer_score) - num(a.hammer_score));
+  else if (s === 'hammer') {
+    // only gated hammers (badge from export_data.hammer_ok) rank by hammer score
+    const hs = (r: Row) => num(r.badges.includes('hammer') ? r.hammer_score : null);
+    rows = [...rows].sort((a, b) => hs(b) - hs(a) || a.ticker.localeCompare(b.ticker));
+  }
   else {
     const rank = (r: Row) => (r.badges.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
     rows = [...rows].sort((a, b) => rank(a) - rank(b) || num(b.tv_rr) - num(a.tv_rr) || a.ticker.localeCompare(b.ticker));
