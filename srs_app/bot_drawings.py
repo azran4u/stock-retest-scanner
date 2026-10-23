@@ -14,7 +14,8 @@ Each row carries meta = {rule_version, why{...}} so feedback can be analyzed lat
 
 Candidates: f_dollar_vol AND f_history AND f_no_earnings_14d AND f_technical, no live user/tv drawing, no active
 'not interesting' mark, not one of his lines-only charts (tv_source user-lines), no 'structure' feedback in the last 8 weeks, and no live bot drawing (unless it is broken:
-any price since it was drawn below its SL -> obsolete + redraw). A bot drawing rejected via feedback under the current
+any price since it was drawn below its SL, latest close >= TP, or close > zone top + 3 ATR -> obsolete + redraw).
+A zone more than FAR_CAP_ATR (3) weekly ATRs below the close is never drawn (it would be 'far' on arrival). A bot drawing rejected via feedback under the current
 RULE_VERSION is not redrawn until the rule version changes.
 
     # 1) read state through the Supabase connector (execute_sql), save the JSON outputs:
@@ -32,11 +33,15 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RULE_VERSION = "v3d-2026-10-23"
+RULE_VERSION = "v3d-2026-10-23b"  # b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
 LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
 STRUCTURE_EXCLUDE_WEEKS = 8
+# A zone more than this many weekly ATRs below the latest close is not drawn: the obsolete check (report_filters
+# stale_far_atr = 3) would flag it 'far' on arrival, and none of his 37 zone drawings was more than 1.8 ATR below
+# price when drawn (drawing-learn/features.csv close_vs_zt_atr max 1.77). BMO / RY 2026-10-23: 3.25 / 3.63 ATR.
+FAR_CAP_ATR = 3.0
 # v3d parameters (fit on all 54 of his drawings, bot_drawings.json 'fit'; frozen so runs are reproducible)
 FIT = dict(grace=3, wick_n=1, body_piv=2, s_min=3, wick_cap=0.5, L=52, X=0.75, lo=0.9, hi=1.2, mode="fit")
 
@@ -94,6 +99,12 @@ def compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     zones = [z for z in zones if not (z["lows_rel"] and min(z["lows_rel"]) < (z["sl"] - z["zb"]) / A)]
     if not zones:
         return dict(out, has_level=False, reason="no valid level: every clear retest/support below price is broken or none exists")
+    near = [z for z in zones if (last - z["zt"]) / A <= FAR_CAP_ATR]
+    if not near:
+        d = min((last - z["zt"]) / A for z in zones)
+        return dict(out, has_level=False, reason=f"price ran away: nearest valid level is {d:.2f} ATR below the close "
+                                                 f"(> {FAR_CAP_ATR:g} ATR = obsolete 'far'); no drawing until a closer level forms")
+    zones = near
     # (v3d keeps zones the price dipped under within the grace weeks: a retest in progress, as in his drawings)
     lo52 = V1.fib_anchor_low(C, 52)
     fib382 = C["rh"] - 0.382 * (C["rh"] - lo52)
@@ -151,9 +162,54 @@ def low_since(ticker: str, since: str) -> Optional[float]:
     return float(d["Low"].min()) if len(d) else None
 
 
+def close_atr(ticker: str) -> Optional[tuple]:
+    """(latest close, weekly ATR(14)) from the scanner cache, same basis as report_filters.compute_stale."""
+    V1 = _rules()["V1"]
+    d = V1.H.get(ticker)
+    if d is None or d.empty:
+        return None
+    import report_filters as rf
+    import stock_screen as ss
+    try:
+        a = ss.atr_series(ss.to_weekly(d), int(rf.CONFIG["near_zone_atr_period"])).dropna()
+        atr = float(a.iloc[-1]) if len(a) else None
+    except Exception:
+        atr = None
+    return float(d["Close"].iloc[-1]), atr
+
+
+def bot_obsolete(ticker: str, bots: List[Dict[str, Any]], today: str, low_fn=low_since, price_fn=close_atr) -> List[str]:
+    """Why a live bot drawing is obsolete (same rules as report_filters.compute_stale), [] if still valid:
+    broken = any low since it was drawn < SL; target hit = latest close >= TP;
+    far = latest close > zone top + FAR_CAP_ATR x weekly ATR."""
+    f = lambda v: None if v is None else float(v)
+    longs = [d for d in bots if d.get("kind") == "long"]
+    zones = [d for d in bots if d.get("kind") == "zone"]
+    stops = [f(d.get("stop")) for d in longs if d.get("stop") is not None]
+    tps = [f(d.get("target")) for d in longs if d.get("target") is not None]
+    tops = [f(d.get("zone_top")) for d in zones if d.get("zone_top") is not None]
+    out = []
+    since = min(str(d.get("created_at") or today)[:10] for d in bots)
+    lo = low_fn(ticker, since) if stops else None
+    if stops and lo is not None and lo < min(stops):
+        out.append("broken")
+    if tps or tops:
+        pa = price_fn(ticker)
+        if pa:
+            px, atr = pa
+            if tps and px >= min(tps):
+                out.append("target hit")
+            if tops and atr and px > max(tops) + FAR_CAP_ATR * atr:
+                out.append("far")
+    return out
+
+
 def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any]], labels: Iterable[Dict[str, Any]],
-         feedback: Iterable[Dict[str, Any]], today: Optional[str] = None, low_fn=low_since) -> Dict[str, Any]:
-    """Which tickers to draw / redraw. Returns {draw: [t], obsolete: {t: [ids]}, skip: {t: reason}}."""
+         feedback: Iterable[Dict[str, Any]], today: Optional[str] = None, low_fn=low_since,
+         price_fn=close_atr) -> Dict[str, Any]:
+    """Which tickers to draw / redraw. Returns {draw: [t], obsolete: {t: [ids]}, why_obsolete: {t: [flags]}, skip: {t: reason}}.
+    A live bot drawing that is broken / target hit / far is marked obsolete; it is redrawn only when the ticker is
+    still a candidate (live bot rows of tickers outside the candidate list are only retired)."""
     today = today or date.today().isoformat()
     ni = ni_active(labels, today)
     cutoff = (datetime.strptime(today, "%Y-%m-%d") - timedelta(weeks=STRUCTURE_EXCLUDE_WEEKS)).isoformat()
@@ -162,7 +218,8 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
     by_t: Dict[str, List[Dict[str, Any]]] = {}
     for d in drawings:
         by_t.setdefault(str(d["ticker"]).upper(), []).append(d)
-    draw, obsolete, skip = [], {}, {}
+    draw, obsolete, why, skip = [], {}, {}, {}
+    seen = set()
     for r in report_rows:
         t = str(r["ticker"]).upper()
         if not all(_truthy(r.get(c)) for c in ("f_dollar_vol", "f_history", "f_no_earnings_14d", "f_technical")):
@@ -179,11 +236,11 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
             skip[t] = f"structure feedback < {STRUCTURE_EXCLUDE_WEEKS}w"; continue
         bots = [d for d in live if d.get("source") == "bot"]
         if bots:
-            stops = [float(d["stop"]) for d in bots if d.get("kind") == "long" and d.get("stop") is not None]
-            since = min(str(d.get("created_at") or today)[:10] for d in bots)
-            lo = low_fn(t, since) if stops else None
-            if stops and lo is not None and lo < min(stops):
+            seen.add(t)
+            fl = bot_obsolete(t, bots, today, low_fn, price_fn)
+            if fl:
                 obsolete[t] = [d["id"] for d in bots]
+                why[t] = fl
                 draw.append(t)
             else:
                 skip[t] = "live bot drawing"
@@ -192,7 +249,18 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
         if any(_meta(d).get("rule_version") == RULE_VERSION for d in rej):
             skip[t] = "rejected under the current rule version"; continue
         draw.append(t)
-    return {"draw": draw, "obsolete": obsolete, "skip": skip}
+    # live bot drawings of tickers not handled above (dropped out of the screen, or next to his own drawing): retire only
+    for t, rows in by_t.items():
+        if t in seen:
+            continue
+        bots = [d for d in rows if d.get("source") == "bot" and d.get("status") in ("active", "approved", "review")]
+        if not bots:
+            continue
+        fl = bot_obsolete(t, bots, today, low_fn, price_fn)
+        if fl:
+            obsolete[t] = [d["id"] for d in bots]
+            why[t] = fl
+    return {"draw": draw, "obsolete": obsolete, "why_obsolete": why, "skip": skip}
 
 
 def emit_sql(results: List[Dict[str, Any]], obsolete: Dict[str, List[str]]) -> List[str]:
@@ -248,6 +316,7 @@ def main() -> None:
             print(r["ticker"], "LEVEL" if r.get("has_level") else "none", {k: r.get(k) for k in
                   ("zone_bottom", "zone_top", "entry", "stop", "target", "rr")} if r.get("has_level") else r.get("reason"))
         print("skip:", pl["skip"])
+        print("obsolete:", pl.get("why_obsolete"))
 
 
 if __name__ == "__main__":

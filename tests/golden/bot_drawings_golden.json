@@ -219,7 +219,8 @@
 "sl": 41.79,
 "tp": 56.35,
 "kind": "retest",
-"pivot_date": "2026-02-06"
+"pivot_date": "2026-02-06",
+"expect_no_level": "far cap 2026-10-23: zone 44.36 was > 3 ATR below the close when drawn (flagged 'far'); he drew his own CNO zone at 52.43-53.22"
 },
 {
 "ticker": "COP",

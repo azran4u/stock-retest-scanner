@@ -42,6 +42,9 @@ def rules_on_fixture(tmp_path_factory):
 @pytest.mark.parametrize("g", GOLD, ids=[g["ticker"] for g in GOLD])
 def test_v3d_golden(g, rules_on_fixture):
     r = rules_on_fixture.compute(g["ticker"], g["data_date"])
+    if g.get("expect_no_level"):  # retired by a later rule fix (kept so the change stays visible)
+        assert not r["has_level"] and "price ran away" in r["reason"], r
+        return
     assert r["has_level"]
     for a, b in (("zone_bottom", "zone_bottom"), ("zone_top", "zone_top"), ("entry", "entry"), ("stop", "sl"), ("target", "tp")):
         assert abs(r[a] - g[b]) < 0.02, (a, r[a], g[b])
@@ -102,3 +105,27 @@ def test_bot_rows_count_by_default():
     assert "bot_drawn" not in st["CCC"]
     src = drawing_source("AAA", st["AAA"], registry={}, approved={})
     assert src["tv_source"] == "bot-approved" and src["f_bot_review"] is False
+
+
+def test_plan_retires_target_hit_and_far_bot_drawings():
+    """BMO / RY 2026-10-23: a live bot drawing is obsolete also when the close reached TP or ran > 3 ATR above the
+    zone (same rules as the report's obsolete check); outside the candidate list it is only retired, never redrawn;
+    his own drawing next to it is never touched."""
+    rows = [dict(REP, ticker=t) for t in ("OK", "TP", "FAR")] + [dict(REP, ticker="GONE", f_technical=False)]
+    def bot(i, t, **k):
+        return dict(id=i, ticker=t, source="bot", status="active", created_at="2026-10-05", **k)
+    dr = [bot("1", "OK", kind="zone", zone_top=100), bot("2", "OK", kind="long", stop=90, target=130),
+          bot("3", "TP", kind="long", stop=90, target=110), bot("4", "FAR", kind="zone", zone_top=100),
+          bot("5", "FAR", kind="long", stop=90, target=200), bot("6", "GONE", kind="long", stop=90, target=110),
+          bot("7", "MINE", kind="long", stop=90, target=110),
+          {"id": "8", "ticker": "MINE", "kind": "zone", "source": "user", "status": "active"}]
+    px = {"OK": (120.0, 10.0), "TP": (111.0, 10.0), "FAR": (131.0, 10.0), "GONE": (115.0, 10.0), "MINE": (112.0, 10.0)}
+    p = B.plan(rows, dr, [], [], today="2026-10-23", low_fn=lambda t, s: 95.0, price_fn=px.get)
+    assert sorted(p["draw"]) == ["FAR", "TP"]
+    assert p["why_obsolete"] == {"TP": ["target hit"], "FAR": ["far"], "GONE": ["target hit"], "MINE": ["target hit"]}
+    assert p["obsolete"]["MINE"] == ["7"] and p["skip"]["OK"] == "live bot drawing"
+
+
+def test_far_cap_matches_obsolete_rule():
+    import report_filters as rf
+    assert B.FAR_CAP_ATR == float(rf.CONFIG["stale_far_atr"])
