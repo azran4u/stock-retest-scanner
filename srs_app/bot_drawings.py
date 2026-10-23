@@ -33,7 +33,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RULE_VERSION = "v3d-2026-10-23b"  # b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
+RULE_VERSION = "v3d-2026-10-23c"  # c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
 LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
@@ -79,8 +79,71 @@ def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
+# An isolated one-day wick (low more than SPIKE_K x the 20-day median true range below BOTH neighbouring days' lows,
+# with open and close in the top quarter of the bar) is treated as a bad print / flash wick when choosing the level:
+# HWC 2026-10-14 low 65.47 (neighbours 71.81 / 72.00, close 71.87, normal volume) made v3d call the Feb-2026 high /
+# Jun-Oct support 72.5-73.8 "broken" and draw 62.4-63.3 instead; he drew 72.53-73.6 with SL 69.69 above that wick.
+# Only level selection uses the cleaned lows; the obsolete check (low_since) still counts every wick, as he asked.
+SPIKE_K = 3.0
+
+
+def despike_lows(d, k: float = SPIKE_K):
+    """Copy of daily OHLC with isolated one-day spike lows clipped to min(open, close); returns (df, spike dates)."""
+    import numpy as np
+    l, h, o, c = (d[x].to_numpy(dtype=float) for x in ("Low", "High", "Open", "Close"))
+    if len(l) < 3:
+        return d, []
+    pc = np.r_[np.nan, c[:-1]]
+    tr = np.nanmax(np.c_[h - l, np.abs(h - pc), np.abs(l - pc)], axis=1)
+    import pandas as pd
+    m = pd.Series(tr).rolling(20, min_periods=10).median().shift(1).to_numpy()
+    nb = np.minimum(np.r_[np.inf, l[:-1]], np.r_[l[1:], np.inf])
+    rng = np.where(h - l > 0, h - l, np.nan)
+    with np.errstate(invalid="ignore"):
+        s = (l < nb - k * m) & ((c - l) / rng >= 0.75) & ((o - l) / rng >= 0.75)
+    s[0] = s[-1] = False
+    if not s.any():
+        return d, []
+    d = d.copy()
+    col = d.columns.get_loc("Low")
+    for i in np.where(s)[0]:
+        d.iat[i, col] = min(o[i], c[i])
+    return d, [str(x.date()) for x in d.index[s]]
+
+
+def _clear_caches() -> None:
+    """The v3d helpers memoize on (ticker, date); drop them when the price frame behind a ticker is swapped."""
+    import sys as _s
+    for mod, fn in (("infer", "ctx"), ("infer_v2", "raw_levels"), ("infer_v3", "raw_v3"), ("infer_v3d", "sl_d")):
+        f = getattr(_s.modules.get(mod), fn, None)
+        if f is not None and hasattr(f, "cache_clear"):
+            f.cache_clear()
+
+
 def compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
-    """Zone + Long Position for one ticker (v3d). has_level False -> reason, no levels."""
+    """Zone + Long Position for one ticker (v3d) on spike-cleaned lows. has_level False -> reason, no levels."""
+    R = _rules()
+    V1 = R["V1"]
+    t = ticker.upper()
+    raw = V1.H.get(t)
+    if raw is None or raw.empty:
+        return _compute(t, read_date)
+    clean, sp = despike_lows(raw)
+    if not sp:
+        return _compute(t, read_date)
+    V1.H[t] = clean
+    _clear_caches()
+    try:
+        r = _compute(t, read_date)
+    finally:
+        V1.H[t] = raw
+        _clear_caches()
+    if r.get("why") is not None:
+        r["why"]["ignored_spike_lows"] = sp[-5:]
+    return r
+
+
+def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     R = _rules()
     V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
     import numpy as np

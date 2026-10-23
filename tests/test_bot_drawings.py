@@ -129,3 +129,20 @@ def test_plan_retires_target_hit_and_far_bot_drawings():
 def test_far_cap_matches_obsolete_rule():
     import report_filters as rf
     assert B.FAR_CAP_ATR == float(rf.CONFIG["stale_far_atr"])
+
+
+def test_despike_lows_only_isolated_wicks():
+    """HWC 2026-10-14: a lone 6-point wick with open/close near the high is clipped; normal bars and real
+    multi-day drops are left alone (app feedback cmd 5)."""
+    import pandas as pd
+    idx = pd.bdate_range("2026-09-01", periods=30)
+    base = [70 + 0.1 * i for i in range(30)]
+    d = pd.DataFrame({"Open": base, "High": [b + 1 for b in base], "Low": [b - 1 for b in base],
+                      "Close": [b + 0.5 for b in base], "Volume": 1e6}, index=idx)
+    d.iloc[25, d.columns.get_loc("Low")] = d["Low"].iloc[25] - 7      # lone spike, recovers same day
+    clean, sp = B.despike_lows(d)
+    assert sp == [str(idx[25].date())] and clean["Low"].iloc[25] == min(d["Open"].iloc[25], d["Close"].iloc[25])
+    assert d["Low"].iloc[25] < 70  # the input frame is not modified
+    e = d.copy()
+    e.iloc[26, e.columns.get_loc("Low")] = e["Low"].iloc[25]           # next day also trades down there: real move
+    assert B.despike_lows(e)[1] == []
