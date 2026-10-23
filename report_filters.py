@@ -7,7 +7,10 @@ earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
-sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr. (f_short_float / f_inst_own are
+sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_no_red_vol_week. status = WAIT
+('waiting for the weekly close', Eyal 2026-10-23) when f_no_red_vol_week is the only failing core
+filter: the last completed weekly candle is a healthy red bar on above-average volume
+(see compute_red_vol_week). (f_short_float / f_inst_own are
 informational dashboard filters since 2026-10-14; None = data missing.)
 The smooth/reversal filters never change PASS.
 
@@ -113,11 +116,21 @@ CONFIG: Dict[str, Any] = {
     # bot drawings (review needed): levels within max(0.011, 0.15% of the level) = same drawing
     "bot_match_rel": 0.0015,
     "bot_match_abs": 0.011,
+    # f_no_red_vol_week (Eyal 2026-10-23, CLMT): the last COMPLETED weekly candle is a healthy red bar
+    # (close < open, body >= red_vol_body_min x the week's high-low range) on above-average volume
+    # (the week's average daily volume > the average daily volume of the red_vol_avg_days trading days
+    # before that week = same 30-day basis as $vol) -> not PASS yet, status WAIT until a later weekly close
+    "red_vol_body_min": 0.5,
+    "red_vol_avg_days": 30,
 }
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
-    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr",
+    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_no_red_vol_week",
 ]
+# filters that only make a stock WAIT (status WAIT = 'waiting for the weekly close') when they are the
+# only failing core filters (Eyal 2026-10-23)
+WAIT_FILTERS = ["f_no_red_vol_week"]
+RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
 # ownership data (informational filters; None = data missing, never silently False)
 OWNERSHIP_COLS = ["f_short_float", "f_inst_own", "short_float_src", "inst_own_src", "ownership_missing"]
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
@@ -161,6 +174,7 @@ REPORT_COLS = [
     "weekly_reversal_kind", "weekly_reversal_date",
     "f_last_week_reversal", "last_week_reversal_kind", "last_week_date",
     *HAMMER_COLS,
+    *RED_VOL_COLS,
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
@@ -421,6 +435,7 @@ def compute_row(
     r["ticker"] = ticker
     for f in ALL_FILTERS:
         r[f] = False
+    r["f_no_red_vol_week"] = True  # blocks only on evidence (compute_red_vol_week)
     r["f_rr_computed"] = False
     r["smooth_pullback"] = False
     r["weekly_reversal_kind"] = r["daily_reversal_kind"] = ""
@@ -539,6 +554,11 @@ def compute_row(
         r.update(compute_reversals(daily, report_date, r))
     except Exception as e:  # pragma: no cover
         notes.append(f"reversal error: {e}")
+    try:
+        r.update(compute_red_vol_week(daily, report_date))
+    except Exception as e:  # pragma: no cover
+        r["f_no_red_vol_week"] = True
+        notes.append(f"red-vol-week error: {e}")
 
     # --- informational smooth_pullback (needs a zone) -----------------------
     if setup is not None:
@@ -584,6 +604,68 @@ def compute_reversals(daily: Optional[pd.DataFrame], report_date: date, r: Dict[
         out.update(compute_hammer_trade(str(r.get("ticker") or ""), wk))
     hit, kind, dt = _scan_reversals(dd, C["daily_reversal_lookback_days"], zone)
     out["f_daily_reversal"], out["daily_reversal_kind"], out["daily_reversal_date"] = hit, kind, dt
+    return out
+
+
+RED_VOL_WEEK_CLOSE_MIN = 16 * 60 + 30  # a W-FRI week is complete after Friday 16:30 New York
+
+
+def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
+                         now_et: Optional[pd.Timestamp] = None) -> Dict[str, Any]:
+    """f_no_red_vol_week (Eyal 2026-10-23, example CLMT). On the last COMPLETED W-FRI week (Mon-Fri; complete
+    after Friday 16:30 New York; report_date < today -> as of the end of the report day):
+      healthy red  = Close < Open AND |Close - Open| >= red_vol_body_min (0.5) x (High - Low)
+      above avg    = the week's average daily volume (week volume / trading days in the week)
+                     > the average daily volume of the red_vol_avg_days (30) trading days before the week
+    Both -> f_no_red_vol_week False (status WAIT: wait for the next weekly close; a later week that closes
+    without being another healthy red loud week clears it, a close below the zone/SL is 'broken' as usual).
+    Not enough data -> True (the rule only blocks on evidence). red_vol_* columns describe the checked week."""
+    C = CONFIG
+    out: Dict[str, Any] = {"f_no_red_vol_week": True, **{c: None for c in RED_VOL_COLS}}
+    out["red_vol_detail"] = ""
+    if daily is None or len(daily) < 2:
+        out["red_vol_detail"] = "no history"
+        return out
+    as_of = now_et if now_et is not None else _as_of_ts(report_date)
+    dd = ssa.flatten_cols(daily)
+    dd = dd[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Open", "High", "Low", "Close"])
+    dd = ssa.completed_daily_bars(dd, as_of=as_of)
+    if dd is None or len(dd) < 2:
+        out["red_vol_detail"] = "no completed bars"
+        return out
+    wk = ssa.completed_weeks(ssa.to_weekly(dd), dd.index[-1])
+    if len(wk):  # Friday between the cash close and 16:30 NY: the week is not complete yet
+        t = pd.Timestamp.now(tz="America/New_York") if as_of is None else pd.Timestamp(as_of)
+        t = t.tz_localize("America/New_York") if t.tzinfo is None else t.tz_convert("America/New_York")
+        if (pd.Timestamp(wk.index[-1]).normalize() == t.normalize().tz_localize(None)
+                and t.hour * 60 + t.minute < RED_VOL_WEEK_CLOSE_MIN):
+            wk = wk.iloc[:-1]
+    if wk.empty:
+        out["red_vol_detail"] = "no completed week"
+        return out
+    wend = pd.Timestamp(wk.index[-1]).normalize()
+    o, h, l, c = (float(wk[k].iloc[-1]) for k in ("Open", "High", "Low", "Close"))
+    idx = dd.index.normalize()
+    days = dd[(idx > wend - pd.Timedelta(days=7)) & (idx <= wend)]
+    prior = dd[idx <= wend - pd.Timedelta(days=7)]["Volume"].astype(float).tail(int(C["red_vol_avg_days"]))
+    rng = h - l
+    body_pct = abs(c - o) / rng if rng > 0 else 0.0
+    out["red_vol_week_date"] = wend.date().isoformat()
+    out["red_vol_body_pct"] = round(body_pct * 100, 1)
+    wavg = float(days["Volume"].astype(float).mean()) if len(days) else None
+    pavg = float(prior.mean()) if len(prior) >= int(C["red_vol_avg_days"]) else None
+    ratio = (wavg / pavg) if (wavg is not None and pavg) else None
+    out["red_vol_ratio"] = None if ratio is None else round(ratio, 2)
+    red = c < o
+    healthy = red and body_pct >= float(C["red_vol_body_min"])
+    loud = ratio is not None and ratio > 1.0
+    col = "red" if red else ("green" if c > o else "doji")
+    vtxt = "n/a" if ratio is None else f"{ratio:.2f}x"
+    out["red_vol_detail"] = (f"week {wend.date().isoformat()}: {col}, body {body_pct * 100:.0f}% of range, "
+                             f"avg daily vol {vtxt} the {int(C['red_vol_avg_days'])}d avg before it")
+    if healthy and loud:
+        out["f_no_red_vol_week"] = False
+        out["red_vol_detail"] = "WAIT weekly close - healthy red " + out["red_vol_detail"]
     return out
 
 
@@ -1199,7 +1281,8 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
-    r["status"] = "PASS" if not failed else "FAIL"
+    # WAIT = everything passes except the red-volume week -> wait for the next weekly close
+    r["status"] = "PASS" if not failed else ("WAIT" if all(f in WAIT_FILTERS for f in failed) else "FAIL")
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
 
@@ -1208,7 +1291,7 @@ def _truthy(v: Any) -> bool:
     return v is True or (not isinstance(v, str) and bool(v) and v == v) or str(v).strip().lower() in ("true", "1", "yes")
 
 
-_FAIL_SUFFIX = re.compile(r"\s*\|?\s*FAIL: .*$")
+_FAIL_SUFFIX = re.compile(r"\s*\|?\s*(FAIL|WAIT): .*$")
 _PASS_PREFIX = "PASS (all core filters) | screen: "
 # screen reasons that describe the old computed geometry / R:R: never shown any more
 _COMPUTED_REASON = re.compile(r"^(PASS\b|R:R\b|no weekly retest setup)")
@@ -1238,8 +1321,11 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
             rec_note = {"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}",
                         "no": "TV drawing not found"}.get(str(r.get("tv_found")), "no TV drawing read")
             f = f"rr ({rec_note})"
+        elif f == "no_red_vol_week":
+            f = f"no_red_vol_week ({r.get('red_vol_detail') or 'healthy red week on above-average volume'})"
         fails.append(f)
-    return f"{base} | FAIL: {', '.join(fails)}".strip(" |")
+    tag = "WAIT" if r["status"] == "WAIT" else "FAIL"
+    return f"{base} | {tag}: {', '.join(fails)}".strip(" |")
 
 
 # ---------------------------------------------------------------------------
@@ -1316,7 +1402,7 @@ def apply_filters_to_report(
     out["days_to_earnings"] = pd.array(out["days_to_earnings"], dtype="Int64")
 
     def key(i: int):
-        s = 0 if out.at[i, "status"] == "PASS" else 1
+        s = {"PASS": 0, "WAIT": 1}.get(out.at[i, "status"], 2)
         rr = _num(out.at[i, "tv_rr"])
         return (s, -(rr if rr is not None else -999.0), out.at[i, "ticker"])
 
@@ -1371,6 +1457,7 @@ def summarize(df: pd.DataFrame) -> Dict[str, Any]:
     s.update(summarize_evidence(df))
     s["rows"] = int(len(df))
     s["pass"] = int((df["status"] == "PASS").sum())
+    s["wait"] = int((df["status"] == "WAIT").sum())
     return s
 
 

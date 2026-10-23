@@ -95,6 +95,12 @@ export interface Row {
   hammer_tp?: number | null;
   last_week_reversal_kind?: string | null;
   f_technical?: boolean | null;
+  /** WAIT rule (healthy red last completed week on above-average volume) */
+  f_no_red_vol_week?: boolean | null;
+  red_vol_week_date?: string | null;
+  red_vol_body_pct?: number | null;
+  red_vol_ratio?: number | null;
+  red_vol_detail?: string | null;
   has_candles?: boolean;
   tradingview_url?: string | null;
   [k: string]: unknown;

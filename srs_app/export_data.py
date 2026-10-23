@@ -6,7 +6,7 @@ Writes, relative to the repo root:
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
   app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) OHLC candles per exported ticker, 1 byte/value
 
-Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
+Candidates = PASS ∪ WAIT (badge 'waiting': PASS except a healthy red last week on above-average volume) ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
              ∪ any TradingView drawing found ∪ open positions.
 
 Hammer gate (Eyal 2026-10-23): a last-week hammer only earns the 'hammer' badge / list inclusion when it also passes the
@@ -40,6 +40,7 @@ INDEX_COLS = [
     "last_week_reversal_kind", "hammer_entry", "hammer_sl", "hammer_tp", "hammer_rr", "hammer_calm_weeks",
     "hammer_score", "inst_own_pct", "short_float_pct", "tradingview_url",
     "f_dollar_vol", "f_history", "f_no_earnings_14d",
+    "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
 ]
 
 
@@ -87,6 +88,8 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         badges = []
         if r.get("status") == "PASS":
             badges.append("pass")
+        elif r.get("status") == "WAIT":  # healthy red week on above-avg volume: wait for the weekly close
+            badges.append("waiting")
         if _truthy(r.get("needs_drawing")):
             badges.append("needs_drawing")
         if _truthy(r.get("f_bot_review")):

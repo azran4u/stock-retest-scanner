@@ -42,14 +42,24 @@ async function guard<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 }
 
 const BADGES: Record<string, [string, string]> = {
-  pass: ['PASS', 'b-pass'], needs_drawing: ['צריך שרטוט', 'b-need'], review: ['לבדיקה', 'b-review'],
+  pass: ['PASS', 'b-pass'], waiting: ['ממתינה לסגירה', 'b-wait'], needs_drawing: ['צריך שרטוט', 'b-need'], review: ['לבדיקה', 'b-review'],
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
   watch: ['מעקב', 'b-watch'], ni: ['לא מעניינת', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
 const CHIPS: [string, string][] = [
-  ['all', 'הכל'], ['pass', 'PASS'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
+  ['all', 'הכל'], ['pass', 'PASS'], ['waiting', 'ממתינה לסגירה'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
   ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מעניינות'],
 ];
+/** WAIT (Eyal 2026-10-23): last completed weekly candle = healthy red bar on above-average volume -> wait for the next weekly close */
+const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
+function waitShort(r: Row): string {
+  if (!r.badges.includes('waiting')) return '';
+  return `נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`;
+}
+function waitLong(r: Row): string {
+  if (!r.badges.includes('waiting')) return '';
+  return `נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. המניה תחזור ל-PASS אם הנר השבועי הבא ייסגר בלי לשבור את האזור.`;
+}
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>` : '');
 
 function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
@@ -118,7 +128,7 @@ function filtered(): Row[] {
     rows = [...rows].sort((a, b) => hs(b) - hs(a) || a.ticker.localeCompare(b.ticker));
   }
   else {
-    const rank = (r: Row) => (r.badges.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
+    const rank = (r: Row) => (r.badges.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('waiting') ? 1.5 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
     rows = [...rows].sort((a, b) => rank(a) - rank(b) || num(b.tv_rr) - num(a.tv_rr) || a.ticker.localeCompare(b.ticker));
   }
   return rows;
@@ -293,6 +303,7 @@ function rowHtml(r: Row) {
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     <div class="r3 muted small" dir="ltr">${r.tv_rr != null ? `R:R ${fmt(r.tv_rr)}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
+    ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
 
@@ -563,6 +574,7 @@ function renderPanel() {
   const tech = latestLabel(t, 'technical'), note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
+    ${r && waitLong(r) ? `<section class="wait-box"><h3>ממתינה לסגירה שבועית</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section>
       <h3>שרטוטים</h3>
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
