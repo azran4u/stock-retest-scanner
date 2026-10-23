@@ -289,6 +289,36 @@ def compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     return r
 
 
+def long_from_zone(ticker: str, zone_bottom: float, zone_top: float, read_date: Optional[str] = None) -> Dict[str, Any]:
+    """The bot's Long entry / SL for a GIVEN zone (Eyal 2026-10-23: when he moves a zone, a bot Long follows it;
+    TP is not touched). Same rules as compute(): entry = zone top - 0.13 x weekly ATR(14, SMA of TR);
+    SL = infer_v3d.sl_d 'fit' (L=52, X=0.75, band 0.9-1.2 weekly Wilder ATR, 0.1% under the wick), else entry - 1 Wilder
+    ATR; on spike-cleaned lows (despike_lows). Mirrored in TS by webapp/src/botlong.ts (golden test
+    tests/golden/zone_long_golden.json). Returns {entry, stop, sl_src, atr, atr_w, data_date} (prices rounded to 0.01)."""
+    R = _rules()
+    V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
+    t = ticker.upper()
+    raw = V1.H.get(t)
+    if raw is None or raw.empty:
+        raise ValueError(f"{t}: no price history in the scanner cache")
+    zb, zt = sorted((float(zone_bottom), float(zone_top)))
+    clean, sp = despike_lows(raw)
+    if sp:
+        V1.H[t] = clean
+        _clear_caches()
+    try:
+        rd = read_date or str(V1.H[t].index.max().date())
+        C = V1.ctx(t, rd)
+        e = zt - V3.ENTRY_BELOW_TOP * C["atr"]
+        sl, src = V3D.sl_d(t, rd, zb, zt, e, *V3D.slp(P))
+    finally:
+        if sp:
+            V1.H[t] = raw
+            _clear_caches()
+    return {"entry": round(e, 2), "stop": round(sl, 2), "sl_src": src, "atr": round(C["atr"], 4),
+            "atr_w": round(C["atr_w"], 4), "data_date": rd}
+
+
 def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     import pandas as pd
     R = _rules()

@@ -2,6 +2,7 @@ import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
 import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { botLongFromZone } from './botlong';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -53,14 +54,43 @@ const CHIPS: [string, string][] = [
 /** WAIT (Eyal 2026-10-23): last completed weekly candle = healthy red bar on above-average volume -> wait for the next weekly close */
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
-  if (!r.badges.includes('waiting')) return '';
+  if (!badgesOf(r).includes('waiting')) return '';
   return `נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`;
 }
 function waitLong(r: Row): string {
-  if (!r.badges.includes('waiting')) return '';
+  if (!badgesOf(r).includes('waiting')) return '';
   return `נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. המניה תחזור ל-PASS אם הנר השבועי הבא ייסגר בלי לשבור את האזור.`;
 }
-const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>` : '');
+const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>`
+  : b.startsWith('rrfail:') ? `<span class="badge b-obs" dir="rtl">FAIL · ${esc(b.slice(7))}</span>` : '');
+
+// ---------------- live PASS (Eyal 2026-10-23: re-check R:R whenever a drawing changes) ----------------
+// PASS = exported gates ($vol, no earnings <= 14d, 3y history; WAIT = red loud week) AND the R:R of the ticker's
+// CURRENT Long in the app >= 2. The Long that counts = newest active / approved long row (same pick as
+// srs_app/app_drawings.build_store, which the nightly export uses). No Long -> R:R unknown -> not PASS.
+const RR_MIN = 2;
+const GATES = ['f_dollar_vol', 'f_no_earnings_14d', 'f_history'] as const;
+const stamp = (d: Drawing) => String(d.updated_at || d.created_at || '');
+function countedOf(t: string, kind: 'zone' | 'long'): Drawing | null {
+  let best: Drawing | null = null;
+  for (const d of S.drawings.values()) {
+    if (d.ticker !== t || d.kind !== kind || (d.status !== 'active' && d.status !== 'approved')) continue;
+    if (!best || stamp(d) > stamp(best)) best = d;
+  }
+  return best;
+}
+interface Live { status: 'PASS' | 'WAIT' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string }
+function liveOf(r: Row): Live | null {
+  if (GATES.some((g) => r[g] === undefined)) return null; // no gate data exported for this row -> keep the export
+  const gatesOk = GATES.every((g) => r[g] === true);
+  const lg = countedOf(r.ticker, 'long');
+  const q = lg ? rr(lg.entry, lg.stop, lg.target) : null;
+  const rrOk = q != null && q >= RR_MIN;
+  const status = !gatesOk || !rrOk ? 'FAIL' : r.f_no_red_vol_week === false ? 'WAIT' : 'PASS';
+  const why = rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
+  return { status, rr: q, gatesOk, why };
+}
+const liveRR = (r: Row) => { const l = liveOf(r); return l ? l.rr : (r.tv_rr ?? null); };
 
 function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
 function isNi(t: string): boolean {
@@ -74,7 +104,12 @@ function allRows(): Row[] {
   return out;
 }
 function badgesOf(r: Row): string[] {
-  const b = [...r.badges];
+  const live = liveOf(r);
+  const b = live ? r.badges.filter((x) => x !== 'pass' && x !== 'waiting') : [...r.badges];
+  if (live?.status === 'PASS') b.unshift('pass');
+  else if (live?.status === 'WAIT') b.unshift('waiting');
+  else if (live && live.gatesOk && live.why) b.unshift('rrfail:' + live.why); // would pass except the R:R
+
   if (isWatched(r.ticker)) b.unshift('watch');
   if (isNi(r.ticker)) b.unshift('ni');
   return b;
@@ -115,12 +150,12 @@ function filtered(): Row[] {
     if (c === 'all') return true;
     if (c === 'mine') return userDrawings(r.ticker).length > 0;
     if (c === 'commands') return S.commands.some((x) => x.ticker === r.ticker);
-    return r.badges.includes(c);
+    return badgesOf(r).includes(c);
   });
   const num = (x: unknown) => (x == null ? -Infinity : +x);
   const s = S.ui.sort;
   if (s === 'ticker') rows = [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
-  else if (s === 'rr') rows = [...rows].sort((a, b) => num(b.tv_rr) - num(a.tv_rr));
+  else if (s === 'rr') rows = [...rows].sort((a, b) => num(liveRR(b)) - num(liveRR(a)));
   else if (s === 'zone') rows = [...rows].sort((a, b) => (a.tv_zone_dist_atr == null ? 1e9 : +a.tv_zone_dist_atr) - (b.tv_zone_dist_atr == null ? 1e9 : +b.tv_zone_dist_atr));
   else if (s === 'hammer') {
     // only gated hammers (badge from export_data.hammer_ok) rank by hammer score
@@ -128,8 +163,9 @@ function filtered(): Row[] {
     rows = [...rows].sort((a, b) => hs(b) - hs(a) || a.ticker.localeCompare(b.ticker));
   }
   else {
-    const rank = (r: Row) => (r.badges.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : r.badges.includes('position') ? 0 : r.badges.includes('pass') ? 1 : r.badges.includes('waiting') ? 1.5 : r.badges.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5);
-    rows = [...rows].sort((a, b) => rank(a) - rank(b) || num(b.tv_rr) - num(a.tv_rr) || a.ticker.localeCompare(b.ticker));
+    const rank = (r: Row) => { const bs = badgesOf(r); return bs.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : bs.includes('pass') ? 1 : bs.includes('waiting') ? 1.5 : bs.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5; };
+    const rk = new Map(rows.map((r) => [r.ticker, [rank(r), num(liveRR(r))] as const]));
+    rows = [...rows].sort((a, b) => rk.get(a.ticker)![0] - rk.get(b.ticker)![0] || rk.get(b.ticker)![1] - rk.get(a.ticker)![1] || a.ticker.localeCompare(b.ticker));
   }
   return rows;
 }
@@ -302,7 +338,7 @@ function rowHtml(r: Row) {
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
-    <div class="r3 muted small" dir="ltr">${r.tv_rr != null ? `R:R ${fmt(r.tv_rr)}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
+    <div class="r3 muted small" dir="ltr">${liveRR(r) != null ? `R:R ${fmt(liveRR(r))}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
@@ -347,9 +383,10 @@ function shell() {
     onDragMove: (d) => updateCardValues(d),
     onDragEnd: async (id, patch) => {
       const d = S.drawings.get(id);
-      if (d) { Object.assign(patch, ownEdit(d)); Object.assign(d, patch); }
-      renderPanel();
+      if (d) { Object.assign(patch, ownEdit(d)); Object.assign(d, patch, { updated_at: new Date().toISOString() }); }
+      renderHeader(); renderPanel();
       await guard(api.updateDrawing(id, patch));
+      if (d?.kind === 'zone') await followZone(d);
     },
     onTap: (price, date) => onChartTap(price, date),
   });
@@ -459,7 +496,7 @@ async function onChartTap(price: number, date: string) {
   }
   S.tap = null; renderHint();
   const d = await guard(api.insertDrawing(row), 'נשמר');
-  if (d) { S.drawings.set(d.id, d); S.selected = d.id; syncChart(); renderPanel(); }
+  if (d) { S.drawings.set(d.id, d); S.selected = d.id; renderHeader(); syncChart(); renderPanel(); if (d.kind === 'zone') await followZone(d); }
 }
 
 // ---------------- bot drawings: edits + feedback ----------------
@@ -500,7 +537,7 @@ async function sendFeedback(d: Drawing, cat: FeedbackCategory, note: string) {
   // negative feedback: stops counting toward PASS now (rejected) until the bot redraws under a fixed rule
   const status = cat === 'approved' ? 'approved' : 'rejected';
   for (const x of rows) { if (x.source === 'bot') x.status = status; }
-  syncChart(); renderPanel();
+  renderHeader(); syncChart(); renderPanel();
   for (const x of rows) if (x.source === 'bot') await guard(api.updateDrawing(x.id, { status }));
   const c = await guard(api.addCommand(t, `[feedback] ${cat}: ${note || label}`, 'feedback', payload), 'המשוב נשלח לבוט');
   if (c) {
@@ -520,6 +557,48 @@ function feedbackHtml(d: Drawing) {
     <textarea class="fbnote" rows="1" placeholder="הערה למשוב (לא חובה)"></textarea>
     ${hist ? `<ul class="cmds fbh">${hist}</ul>` : ''}
   </div>`;
+}
+
+// ---------------- zone -> Long (Eyal 2026-10-23) ----------------
+// When a zone is saved (new or edited) the ticker's Long follows it if it is the BOT's Long (source 'bot'):
+// entry / SL are rebuilt from the new zone with the bot rule (botlong.ts = srs_app.bot_drawings.long_from_zone),
+// TP stays. His own Long (user / TV / a bot Long he edited) is never moved: only its R:R is re-checked (live PASS).
+function liveBoxHtml(r: Row): string {
+  const l = liveOf(r); if (!l || !l.gatesOk) return '';
+  if (l.status === 'FAIL') return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">${l.rr == null ? 'אין לונג פעיל, ולכן ה-R:R לא ידוע.' : 'ה-R:R של הלונג הנוכחי מתחת ל-2.'} הסטטוס מתעדכן מיד כשמשנים אזור או לונג.</div></section>`;
+  return '';
+}
+async function followZone(z: Drawing) {
+  if (z.kind !== 'zone' || z.zone_top == null || z.zone_bottom == null) return;
+  const t = z.ticker;
+  const lg = countedOf(t, 'long');
+  if (!lg) { toast('אין לונג — R:R לא ידוע, המניה לא ב-PASS'); refreshLive(); return; }
+  if (lg.source !== 'bot') {
+    const q = rr(lg.entry, lg.stop, lg.target);
+    toast(`הלונג שלך לא זז · R:R ${q == null ? '—' : q.toFixed(2)}${q != null && q < RR_MIN ? ' < 2 → לא PASS' : ''}`);
+    refreshLive(); return;
+  }
+  let daily: Bar[] | null = null;
+  try { daily = await loadDaily(t); } catch { daily = null; }
+  const b = daily ? botLongFromZone(daily, +z.zone_bottom, +z.zone_top) : null;
+  if (!b) { toast('אין נתוני נרות לחישוב הלונג מחדש', true); return; }
+  if (b.entry === lg.entry && b.stop === lg.stop) { refreshLive(); return; }
+  const now = new Date().toISOString();
+  const patch: Partial<Drawing> = {
+    entry: b.entry, stop: b.stop,
+    meta: { ...(lg.meta || {}), zone_follow: { zone_top: +z.zone_top, zone_bottom: +z.zone_bottom, entry_before: lg.entry,
+      stop_before: lg.stop, sl_src: b.sl_src, at: now, rule: 'botlong.ts = srs_app.bot_drawings.long_from_zone' } },
+  };
+  Object.assign(lg, patch, { updated_at: now });
+  const q = rr(lg.entry, lg.stop, lg.target);
+  refreshLive();
+  await guard(api.updateDrawing(lg.id, patch),
+    `לונג הבוט עודכן לפי האזור · R:R ${q == null ? '—' : q.toFixed(2)}${q != null && q < RR_MIN ? ' < 2 → לא PASS' : ''}`);
+}
+/** Re-render whatever shows status / R:R after a drawing change. */
+function refreshLive() {
+  if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
+  else if ($('.list')) updateListBody();
 }
 
 // ---------------- panel ----------------
@@ -574,6 +653,7 @@ function renderPanel() {
   const tech = latestLabel(t, 'technical'), note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
+    ${r ? liveBoxHtml(r) : ''}
     ${r && waitLong(r) ? `<section class="wait-box"><h3>ממתינה לסגירה שבועית</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section>
       <h3>שרטוטים</h3>
@@ -599,7 +679,7 @@ function renderPanel() {
       <ul class="cmds">${cmds.map((c) => `<li><span class="badge ${c.status === 'done' ? 'b-pass' : c.status === 'error' ? 'b-obs' : 'b-review'}">${{ pending: 'ממתין', done: 'בוצע', error: 'שגיאה' }[c.status]}</span> ${esc(c.text)}${c.reply ? `<div class="reply">${esc(c.reply)}</div>` : ''}</li>`).join('')}</ul>
     </section>
     ${r ? `<section><h3>נתוני סריקה</h3><div class="kv small" dir="ltr">
-      status ${esc(r.status)} · TV R:R ${fmt(r.tv_rr)} · zone dist ${fmt(r.tv_zone_dist_atr, 1)} ATR · wATR ${fmt(r.weekly_atr)}<br/>
+      status ${esc(liveOf(r)?.status ?? r.status)}${liveOf(r) && liveOf(r)!.status !== r.status ? ` (export ${esc(r.status)})` : ''} · R:R ${fmt(liveRR(r))} · zone dist ${fmt(r.tv_zone_dist_atr, 1)} ATR · wATR ${fmt(r.weekly_atr)}<br/>
       earnings ${r.days_to_earnings ?? '?'}d ${r.tv_stale ? `· stale: ${esc(r.tv_stale)}` : ''}<br/>
       ${r.badges.includes('hammer') ? `${esc(r.last_week_reversal_kind)} E ${fmt(r.hammer_entry)} SL ${fmt(r.hammer_sl)} TP ${fmt(r.hammer_tp)} R:R ${fmt(r.hammer_rr)} calm ${r.hammer_calm_weeks ?? '?'}w` : ''}
       ${r.tradingview_url ? `<br/><a href="${esc(r.tradingview_url)}" target="_blank" rel="noopener">TradingView ↗</a>` : ''}</div></section>` : ''}
@@ -622,7 +702,10 @@ function renderPanel() {
         Object.assign(d, patch);
         // first edit of a long without a time anchor: store the anchor it is drawn at
         if (d.kind === 'long' && cv && (!d.t_start || !d.t_end)) { Object.assign(d, cv.longAnchor(d)); patch.t_start = d.t_start; patch.t_end = d.t_end; }
+        d.updated_at = new Date().toISOString();
+        renderHeader();
         await guard(api.updateDrawing(id, patch), 'נשמר');
+        if (d.kind === 'zone' && (f === 'zone_top' || f === 'zone_bottom')) await followZone(d);
       });
       i.addEventListener('blur', () => setTimeout(() => { if (panelDirty) renderPanel(); }, 0));
     });
@@ -635,11 +718,11 @@ function renderPanel() {
       const a = b.dataset.act!;
       if (a === 'delete') {
         if (!confirm('למחוק את השרטוט?')) return;
-        S.drawings.delete(id); if (S.selected === id) S.selected = null; syncChart(); renderPanel();
+        S.drawings.delete(id); if (S.selected === id) S.selected = null; renderHeader(); syncChart(); renderPanel();
         await guard(api.deleteDrawing(id), 'נמחק');
       } else {
         const status = a === 'approve' ? 'approved' : a === 'reject' ? 'rejected' : 'review';
-        const d = S.drawings.get(id); if (d) d.status = status; syncChart(); renderPanel();
+        const d = S.drawings.get(id); if (d) d.status = status; renderHeader(); syncChart(); renderPanel();
         await guard(api.updateDrawing(id, { status }), status === 'approved' ? 'אושר' : status === 'rejected' ? 'נדחה' : 'הוחזר');
       }
     }));
@@ -716,4 +799,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr, get cv() { return cv; } };
+(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, get cv() { return cv; } };
