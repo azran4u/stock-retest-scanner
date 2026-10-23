@@ -33,7 +33,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RULE_VERSION = "v3d-2026-10-23c"  # c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
+RULE_VERSION = "v4-2026-10-23"  # v4: touch-count zone scoring with recency (his principle) on top of v3e; v3e: reclaimed levels count again + pullback from the latest swing high (QCOM) + last higher low with clarity 2 (TWST) + reclaimed level not above price; c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
 LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
@@ -42,6 +42,40 @@ STRUCTURE_EXCLUDE_WEEKS = 8
 # stale_far_atr = 3) would flag it 'far' on arrival, and none of his 37 zone drawings was more than 1.8 ATR below
 # price when drawn (drawing-learn/features.csv close_vs_zt_atr max 1.77). BMO / RY 2026-10-23: 3.25 / 3.63 ATR.
 FAR_CAP_ATR = 3.0
+# v3e (QCOM zone feedback, approved by him 2026-10-23; accepted that COP / MA / OXY / WTRG move away from his drawings):
+#  RECLAIM      - a level that broke (a close or low under its SL) and was then reclaimed by >= RECLAIM_CLOSES weekly
+#                 closes back above its top counts again; only the bars since the reclaim are checked for breaks.
+#  SWING_ANCHOR - the current pullback is measured from the latest swing high (a high >= 2 ATR above the 26-week
+#                 pullback low, followed by >= 1 ATR of decline), not from the 26-week high.
+RECLAIM = True
+RECLAIM_CLOSES = 2
+SWING_ANCHOR = True
+SWING_MIN_ATR = 2.0
+# Zone must sit at/below the current price (TWST 2026-10-23: the reclaimed 145.59-155.44 level was picked with price
+# 135.47 under it). "reclaimed" (shipped): a reclaimed level the price has fallen back under is not a support - its
+# bottom must be <= close + ABOVE_PRICE_TOL_ATR (QCOM's reclaimed 176.95 is 0.26 ATR above the 172.83 close, like his
+# own 173.47 zone; TWST's 145.59 is 0.37 ATR above). "all" = same test for every level: on his 99 own zones mean IoU
+# 0.325 vs 0.334 ("reclaimed"), because v3d retests-in-progress slightly under price match him (BWA, FSM, FWONK, WDC).
+ABOVE_PRICE_GUARD = "reclaimed"
+ABOVE_PRICE_TOL_ATR = 0.3
+# LAST_HL (TWST feedback, policy 2026-10-23: his old drawings are a soft reference, the bot decides the zone):
+# in a run-up the base after the breakout candle = the last higher low (support pivot) before the latest 26-week
+# high counts even with clarity 2 (< s_min 3), when its body clarity is >= 2 and it is not broken.
+LAST_HL = True
+LAST_HL_MIN_CLARITY = 2
+# TOUCH SCORING (his principle 2026-10-23: the PRIMARY zone criterion is the touch count = how many weekly (and daily)
+# closes or wicks reached the zone; pivot clarity is only a sanity check / tie-breaker). A bar touches when its close,
+# low or high lies inside [zone bottom - TOUCH_TOL_ATR x ATR, zone top + TOUCH_TOL_ATR x ATR]; consecutive touching
+# bars count as one touch; counted over the last TOUCH_LOOKBACK_W weeks. Pick = max of weekly touches
+#   - PROX_W x (ATR from the close down to the zone top) - RECENCY_W x (age of the underlying pivot in years);
+# ties -> daily touches -> newer pivot -> clarity. Weights from a sweep (lookback 52/104/156, PROX 1.5/3, RECENCY 1/3/6):
+# the only set that keeps TWST / QCOM / HWC on his current zones with the best soft match on his old drawings.
+ZONE_SCORING = "touches"   # "touches" | "v3d"
+TOUCH_TOL_ATR = 0.25
+TOUCH_LOOKBACK_W = 52
+TOUCH_MIN_CLARITY = 2      # sanity: a swing pivot with >= 2 weekly bars on each side
+PROX_W = 3.0
+RECENCY_W = 6.0  # per year of pivot age: the RECENT support / resistance wins among viable levels (his rule)  # zone bottom may sit at most this many weekly ATR above the close (retest in progress)
 # v3d parameters (fit on all 54 of his drawings, bot_drawings.json 'fit'; frozen so runs are reproducible)
 FIT = dict(grace=3, wick_n=1, body_piv=2, s_min=3, wick_cap=0.5, L=52, X=0.75, lo=0.9, hi=1.2, mode="fit")
 
@@ -55,6 +89,7 @@ SQL_READ = {
 }
 
 _R: Dict[str, Any] = {}
+_DEBUG: Dict[str, Any] = {}
 
 
 def _rules():
@@ -120,6 +155,117 @@ def _clear_caches() -> None:
             f.cache_clear()
 
 
+def valid_levels(t: str, rd: str, reclaim: bool = RECLAIM, last_hl: Optional[bool] = None) -> List[Dict[str, Any]]:
+    """v3d valid levels (infer_v3d.valid_levels_d + "no low under the SL since the pivot"), plus v3e RECLAIM:
+    after the last break (a weekly close or low under the SL) a level whose top was closed above on
+    >= RECLAIM_CLOSES later weeks is re-validated, and only the weeks from the first reclaim close on are checked."""
+    R = _rules()
+    V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
+    last_hl = LAST_HL if last_hl is None else last_hl
+    s_min = TOUCH_MIN_CLARITY if ZONE_SCORING == "touches" else P["s_min"]
+    Pz = dict(P, s_min=s_min)
+    if ZONE_SCORING == "touches":
+        last_hl = False  # covered: clarity 2 levels are candidates anyway
+    C = V1.ctx(t, rd)
+    A = C["atr"]
+    g = int(P["grace"])
+    ref_close = C["c"][-1 - g]
+    res = []
+    for z in V3.raw_v3(t, rd, P["wick_cap"]):
+        if z["strength"] < s_min or z["zb"] > ref_close or not V3D.zone_ok(z, C, Pz):
+            continue
+        e = z["zt"] - V3.ENTRY_BELOW_TOP * A
+        sl, src = V3D.sl_d(t, rd, z["zb"], z["zt"], e, *V3D.slp(P))
+        slr, ztr = (sl - z["zb"]) / A, (z["zt"] - z["zb"]) / A
+        cr, lr = list(z["closes_rel"]), list(z["lows_rel"])
+        k0 = 0
+        if reclaim:
+            brk = [j for j in range(len(cr)) if cr[j] < slr or lr[j] < slr]
+            if brk:
+                above = [j for j in range(brk[-1] + 1, len(cr)) if cr[j] > ztr]
+                if len(above) >= RECLAIM_CLOSES:
+                    k0 = above[0]
+        cr2, lr2 = cr[k0:], lr[k0:]
+        crg = cr2[:len(cr2) - g] if g else cr2
+        lrg = lr2[:len(lr2) - g] if g else lr2
+        if len(crg) and min(crg) < slr:
+            continue
+        if sum(1 for x in lrg if x < slr) >= P["wick_n"]:
+            continue
+        if lr2 and min(lr2) < slr:  # bot rule: no low under the SL at all (since the pivot / the reclaim)
+            continue
+        zz = dict(z, sl=sl, sl_src=src, reclaimed=k0 > 0)
+        if k0:
+            zz["reclaim_i"] = C["n"] - len(cr) + k0  # closes_rel runs over the weeks after the pivot up to the last week
+        res.append(zz)
+    if last_hl:
+        res += last_hl_level(t, rd, res)
+    return res
+
+
+def last_hl_level(t: str, rd: str, have: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """LAST_HL: the most recent support pivot before the 26-week high, if it is not already a valid level and only
+    misses the clarity bar (>= LAST_HL_MIN_CLARITY), sits below the price (as of the grace bar) and was never broken."""
+    R = _rules()
+    V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
+    C = V1.ctx(t, rd)
+    A, g = C["atr"], int(P["grace"])
+    sup = [z for z in V3.raw_v3(t, rd, P["wick_cap"]) if z["kind"] == "support" and z["i"] < C["ihi"]]
+    if not sup:
+        return []
+    z = max(sup, key=lambda z: z["i"])
+    if any(h["kind"] == z["kind"] and h["i"] == z["i"] for h in have):
+        return []
+    if z["strength"] < LAST_HL_MIN_CLARITY or min(V3.strength(C["bb"], z["i"], "lo")) < LAST_HL_MIN_CLARITY:
+        return []
+    if z["zb"] > C["c"][-1 - g]:
+        return []
+    e = z["zt"] - V3.ENTRY_BELOW_TOP * A
+    sl, src = V3D.sl_d(t, rd, z["zb"], z["zt"], e, *V3D.slp(P))
+    slr = (sl - z["zb"]) / A
+    cr, lr = list(z["closes_rel"]), list(z["lows_rel"])
+    if (cr and min(cr) < slr) or (lr and min(lr) < slr):
+        return []
+    return [dict(z, sl=sl, sl_src=src, reclaimed=False, last_hl=True)]
+
+
+def touches(lo: Any, hi: Any, cl: Any, zb: float, zt: float, tol: float) -> tuple:
+    """(# touches, index of the last touching bar or -1): bars whose close, low or high lies in [zb - tol, zt + tol];
+    a run of consecutive touching bars is one touch."""
+    import numpy as np
+    a, b = zb - tol, zt + tol
+    inb = lambda x: (x >= a) & (x <= b)
+    m = inb(np.asarray(cl)) | inb(np.asarray(lo)) | inb(np.asarray(hi))
+    if not m.any():
+        return 0, -1
+    starts = m & ~np.r_[False, m[:-1]]
+    return int(starts.sum()), int(np.where(m)[0][-1])
+
+
+def _below_price_ok(z: Dict[str, Any], last: float, A: float) -> bool:
+    if ABOVE_PRICE_GUARD == "all" or (ABOVE_PRICE_GUARD == "reclaimed" and z.get("reclaimed")):
+        return z["zb"] <= last + ABOVE_PRICE_TOL_ATR * A
+    return True
+
+
+def pullback_anchor(C: Dict[str, Any], swing: bool = SWING_ANCHOR):
+    """(pullback low, recent high, fib anchor low, swing used?). v3d: low since the 26-week high. v3e SWING_ANCHOR: when
+    a new swing high (>= SWING_MIN_ATR above that low, then >= 1 ATR of decline) formed after it, the current pullback
+    is measured from that swing high and the fib runs from the earlier low to it."""
+    R = _rules()
+    V1 = R["V1"]
+    import numpy as np
+    A, l, h, n = C["atr"], C["l"], C["h"], C["n"]
+    pb, rh, lo = float(C["pb_low"]), float(C["rh"]), V1.fib_anchor_low(C, 52)
+    if swing and C["ihi"] < n - 2:
+        ipb = C["ihi"] + 1 + int(np.argmin(l[C["ihi"] + 1:]))
+        if ipb < n - 2:
+            i2 = ipb + 1 + int(np.argmax(h[ipb + 1:]))
+            if h[i2] - pb >= SWING_MIN_ATR * A and i2 < n - 1 and h[i2] - l[i2 + 1:].min() >= 1.0 * A:
+                return float(l[i2 + 1:].min()), float(h[i2]), pb, True
+    return pb, rh, lo, False
+
+
 def compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     """Zone + Long Position for one ticker (v3d) on spike-cleaned lows. has_level False -> reason, no levels."""
     R = _rules()
@@ -144,6 +290,7 @@ def compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
 
 
 def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
+    import pandas as pd
     R = _rules()
     V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
     import numpy as np
@@ -158,8 +305,8 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     jump = float((dly / dly.shift() - 1).abs().max())
     if jump > 0.4:
         return dict(out, has_level=False, reason=f"data issue: {jump:.0%} one-day jump in 26 weeks (split?)")
-    zones = V3D.valid_levels_d(t, rd, P)
-    zones = [z for z in zones if not (z["lows_rel"] and min(z["lows_rel"]) < (z["sl"] - z["zb"]) / A)]
+    zones = valid_levels(t, rd, reclaim=RECLAIM)
+    zones = [z for z in zones if _below_price_ok(z, last, A)]
     if not zones:
         return dict(out, has_level=False, reason="no valid level: every clear retest/support below price is broken or none exists")
     near = [z for z in zones if (last - z["zt"]) / A <= FAR_CAP_ATR]
@@ -169,10 +316,29 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
                                                  f"(> {FAR_CAP_ATR:g} ATR = obsolete 'far'); no drawing until a closer level forms")
     zones = near
     # (v3d keeps zones the price dipped under within the grace weeks: a retest in progress, as in his drawings)
-    lo52 = V1.fib_anchor_low(C, 52)
-    fib382 = C["rh"] - 0.382 * (C["rh"] - lo52)
-    ch = min(zones, key=lambda z: 0.5 * V1.zdist(C["pb_low"], z["zb"] - 0.3 * A, z["zt"] + 0.3 * A) / A
-             + 0.6 * V1.zdist(last, z["zb"], z["zt"]) / A + 0.3 * abs((z["zb"] + z["zt"]) / 2 - fib382) / A)
+    pb, rh, lo52, swing = pullback_anchor(C, swing=SWING_ANCHOR)
+    fib382 = rh - 0.382 * (rh - lo52)
+    # touch counts (weekly = primary, daily = tie-breaker), stored on every candidate
+    w_ = C["w"].iloc[-TOUCH_LOOKBACK_W:]
+    d_ = V1.H[t]
+    d_ = d_[(d_.index >= w_.index[0] - timedelta(days=7)) & (d_.index <= pd.Timestamp(rd))]
+    tol = TOUCH_TOL_ATR * A
+    nw = len(w_)
+    for z in zones:
+        z["touches_w"], lw = touches(w_["Low"].values, w_["High"].values, w_["Close"].values, z["zb"], z["zt"], tol)
+        z["touches_d"], _ = touches(d_["Low"].values, d_["High"].values, d_["Close"].values, z["zb"], z["zt"], tol)
+        z["weeks_since_touch"] = (nw - 1 - lw) if lw >= 0 else nw
+        z["pivot_age_w"] = int(C["n"] - 1 - z["i"])
+        z["dist_atr"] = round(max(0.0, (last - z["zt"]) / A), 2)
+    _DEBUG["zones"] = zones
+    if ZONE_SCORING == "touches":
+        def tscore(z):
+            return (z["touches_w"] - PROX_W * max(0.0, (last - z["zt"]) / A) - RECENCY_W * z["pivot_age_w"] / 52.0,
+                    z["touches_d"], -z["pivot_age_w"], z["strength"])
+        ch = max(zones, key=tscore)
+    else:
+        ch = min(zones, key=lambda z: 0.5 * V1.zdist(pb, z["zb"] - 0.3 * A, z["zt"] + 0.3 * A) / A
+                 + 0.6 * V1.zdist(last, z["zb"], z["zt"]) / A + 0.3 * abs((z["zb"] + z["zt"]) / 2 - fib382) / A)
     zb, zt = float(ch["zb"]), float(ch["zt"])
     en = zt - V3.ENTRY_BELOW_TOP * A
     sl = float(ch["sl"])
@@ -186,11 +352,18 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     last_week = _monday(datetime.strptime(rd, "%Y-%m-%d").date())
     t_start = last_week + timedelta(days=7)
     why = {
-        "rule": "v3d", "branch": ch["kind"], "pivot_date": piv, "breakout_date": bo or None,
+        "rule": "v4", "branch": ch["kind"], "pivot_date": piv, "breakout_date": bo or None,
         "clarity": int(ch["strength"]), "wick_confirmations": int(ch.get("conf", 0)),
         "sl_src": ch["sl_src"], "sl_wick_low": round(sl, 2) if ch["sl_src"] == "wick_low" else None,
         "atr": round(A, 4), "atr_w": round(Aw, 4), "risk_atr_w": round((en - sl) / Aw, 2),
-        "pullback_low": round(C["pb_low"], 2), "recent_high": round(C["rh"], 2), "fib382": round(fib382, 2),
+        "pullback_low": round(pb, 2), "recent_high": round(rh, 2), "fib382": round(fib382, 2),
+        "swing_anchor": swing, "reclaimed": bool(ch.get("reclaimed")), "last_hl": bool(ch.get("last_hl")),
+        "zone_scoring": ZONE_SCORING, "touches_w": int(ch["touches_w"]), "touches_d": int(ch["touches_d"]),
+        "weeks_since_touch": int(ch["weeks_since_touch"]), "touch_tol_atr": TOUCH_TOL_ATR,
+        "pivot_age_w": int(ch["pivot_age_w"]), "touch_lookback_w": TOUCH_LOOKBACK_W,
+        "alt_levels": [{"zb": round(float(z["zb"]), 2), "zt": round(float(z["zt"]), 2), "touches_w": int(z["touches_w"]),
+                        "touches_d": int(z["touches_d"]), "pivot_age_w": int(z["pivot_age_w"])} for z in sorted(zones, key=lambda z: -z["touches_w"])[:4]],
+        "reclaim_date": str(w.index[ch["reclaim_i"]].date()) if ch.get("reclaimed") else None,
         "n_valid_levels": len(zones), "price_below_zone": bool(last < zb), "dist_price_to_zone_top_atr": round((last - zt) / A, 2),
         "entry_rule": "zone_top - 0.13 ATR", "tp_rule": "max 26w body top - 0.09 ATR", "data_date": rd,
     }

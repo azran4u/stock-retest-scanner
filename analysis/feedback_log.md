@@ -35,3 +35,67 @@ One entry per app feedback item on a bot drawing: what he said, the diagnosis ag
 - **Diagnosis (v3d branch):** the 2026-09-11 swing low (zone 120.02–121.38) is a raw candidate, but its clarity is 2 (only two higher weekly lows / body bottoms to its left before the 2026-08-21 low 115.28), below `s_min` = 3, so it is skipped (and `zone_ok` body-pivot check fails too). Nothing else exists between 105.47 and the price, so the score picked the July high retest. Under the v3e work in progress (reclaim + swing anchor, not yet committed) the pick would be the 2026-08-21 high retest 145.59–155.44, above the current price — also not his zone.
 - **Fix tried (not shipped):** let the last swing low before the 26-week high count with clarity 2 (body clarity ≥ 2, not broken). On his drawings it lowers mean IoU (54-drawing fit set 0.343 → 0.328; 114 app TV/user zones 0.261 → 0.258) and breaks CSX (0.81 → 0), PFG (0.40 → 0), RPRX (0.80 → 0); and it still does not reach his TWST zone (scoring keeps 145.59–155.44). Cause is clear but no rule found that fixes TWST without breaking earlier drawings → rule unchanged; asked him in chat. Experiment: `/workspace/twst_fb/exp.py`.
 - **Data actions:** bot zone already rejected by the app; the bot Long (fc87c125…, built on that zone) also set to `rejected` so TWST stops counting toward PASS. His zone left untouched. No bot redraw (his own drawing exists). For reference, the v3d Long rules on his zone give entry 117.66 / SL 96.22 (wick low, 0.95 weekly ATR) / TP 191.01, R:R 3.4 — not drawn.
+
+## 2026-10-23 · QCOM follow-up · rule v3e shipped (he approved it in chat)
+
+- **Decision:** he approved the reclaim + swing-anchor change from the QCOM diagnosis and accepted that COP, MA, OXY and WTRG move away from his drawings.
+- **Rule (v3e-2026-10-23, `srs_app/bot_drawings.py` `valid_levels` / `pullback_anchor`):**
+  - (a) A level that broke (a weekly close or low under its SL) and was then reclaimed by ≥ 2 weekly closes above its top is valid again. Breaks are checked only from the reclaim on.
+  - (b) The current pullback is measured from the latest swing high: a high ≥ 2 ATR above the 26-week pullback low, followed by ≥ 1 ATR of decline.
+  - Guard (TWST): a reclaimed level the price has fallen back under is skipped (zone bottom ≤ close + 0.3 weekly ATR). Without it, TWST picked 145.59–155.44 above its 135.47 close.
+  - Kept: the v3d-c spike-wick cleaning (HWC) and the 3-ATR far cap.
+- **QCOM:** retest 176.95–180.62 (pivot 2025-12-19, reclaimed 2026-09-11), entry 178.56 / SL 160.04 / TP 247.32, R:R 3.71.
+  - It overlaps his 173.47–179.04 (IoU 0.29). The v3d pick was 142.12–145.41 (IoU 0).
+  - Not drawn: his own drawing exists.
+- **Regression:**
+  - QCOM: golden case with `his_zone` + `test_qcom_reclaimed_level_and_swing_anchor`.
+  - TWST: `test_twst_reclaimed_level_above_price_not_picked` (the reclaimed 145.59–155.44 is never picked).
+  - QCOM and TWST price history added to the fixture.
+  - 30 of 56 golden drawings changed; the old v3d values are kept under `v3d`.
+- **Match score** (zone IoU vs his TV drawings at their read dates, production compute):
+  - All 126: mean IoU 0.401 → 0.334.
+  - His own 99 (owner user): mean IoU 0.331 → 0.334; IoU ≥ 0.3: 45 → 46; IoU ≥ 0.9: 11 → 8.
+  - The drop on all 126 comes from the bot's own approved TV drawings, which equal v3d by construction: ALSN, COP, EHC, ELV, EW, MA, OXY, PKG, VLTO, VRSN.
+  - His own drawings that got worse: DASH 1.0 → 0, WTRG 0.91 → 0, WAB 0.90 → 0.48, CHE 0.39 → 0, FWONK 0.58 → 0, LFUS 0.60 → 0, ROK 0.46 → 0.
+  - His own drawings that got better: FITB 0 → 0.76, IESC 0 → 0.58, INCY 0 → 0.21, PYPL 0 → 0.63, SWK 0 → 0.55, VMI 0 → 0.66, VRTX 0 → 0.77, WELL 0 → 0.51. Also WSM 0.19 → 0.81.
+  - Variants tried and not shipped:
+    - Guard on every level: 0.321–0.325.
+    - Reclaim without the swing anchor: QCOM 166.86–169.98, which does not overlap his zone.
+- **Policy change (2026-10-23, from him):** his old TV/user zones may be stale and the bot decides where the zone is, so they are a soft reference, not a regression veto. Score deltas are reported, they do not block a fix.
+- **Added with it: `LAST_HL` (TWST, cmd 6):** the last higher low (support pivot) before the latest 26-week high counts with clarity 2 (body clarity ≥ 2, below the price, never broken).
+  - TWST: 120.02–121.38 (2026-09-11 swing low), overlapping his 115.7–121.2. Bot Long entry 117.84 / SL 95.30 / TP 191.01, R:R 3.25. Inserted as a Long only; his zone row is untouched. Regression: `test_twst_last_higher_low_counts_with_clarity_2`.
+  - Match score with LAST_HL: all 126 0.334 → 0.318; his own 99 0.334 → 0.314; IoU ≥ 0.3 46 → 43. It costs CSX 0.81 → 0, PFG 0.40 → 0, RPRX 0.80 → 0 (old drawings, soft reference).
+  - Golden: CSX, PFG, DGX, THG also change (33 of 57 golden drawings now differ from v3d).
+  - Live redraws from LAST_HL:
+    - PTGX 105.98–107.00 (R:R 4.22) → 130.63–135.78, entry 134.17 / SL 122.50 / TP 154.00, R:R 1.70.
+    - RVMD 192.25–193.82 (R:R 1.08) → 178.07–184.43, entry 181.97 / SL 164.65 / TP 208.32, R:R 1.52.
+    - SMTC 103.10–114.22 (R:R 3.06) → 115.00–119.63, entry 115.93 / SL 89.41 / TP 192.32, R:R 2.88.
+- **Redraw** (live bot drawings whose zone differs between v3d and v3e on the same data): EW, S, SDGR, U, VOD, VRSN, ZM.
+  - Old rows were set to `obsolete` with `meta.obsolete.why`; new rows were inserted with rule_version v3e-2026-10-23.
+  - TWST: its bot zone and Long were already rejected; see LAST_HL above for the new bot Long.
+  - No new candidate gets a drawing: BMO and RY are still > 3 ATR above their nearest level, and DFTX has a data issue.
+
+## 2026-10-23 · rule v4: touch-count zone scoring + recency (his principles, shipped)
+
+- **His principles:**
+  - The primary zone criterion is the touch count: how many weekly (and daily) closes or wicks reached the zone.
+  - Among viable zones, prefer the support / resistance that is recent in time.
+  - His old drawings are a soft reference, not a veto. The bot decides the zone.
+- **Rule** (`srs_app/bot_drawings.py`, `ZONE_SCORING = "touches"`):
+  - Touch: a bar whose close, low or high lies inside zone ± 0.25 weekly ATR. Consecutive touching bars count as one touch. Weekly touches are counted over the last 52 weeks; daily touches are the tie-breaker.
+  - Score = weekly touches − 3 × (ATR from the close down to the zone top) − 6 × (pivot age in years).
+  - Pivot clarity ≥ 2 is only a sanity check (it used to be a hard ≥ 3 skip, which dropped TWST). The v3e reclaim / swing anchor / reclaimed-not-above-price guard and the 3-ATR far cap stay.
+- **Weights** come from a sweep (lookback 52/104/156 weeks × proximity 1.5/3 × recency 1/3/6 per year). 52 / 3 / 6 is one of only two sets that keep TWST, QCOM and HWC on his current zones, and it has the better soft match on his old drawings of the two. With a 156-week lookback the raw touch count picks old bases (TWST 52.78–54.14, QCOM 150.54–151.55).
+- **Validation** (touch counts of the chosen zone; weekly / daily touches, pivot age):
+  - TWST: 120.02–121.38. 2 weekly / 2 daily touches, pivot 6 weeks old. His zone is 115.7–121.2. Candidates with more touches were older and further away: 52.78–54.14 has 8 touches but is 97 weeks old and 2.98 ATR below.
+  - QCOM: reclaimed 176.95–180.62. 7 / 12 touches. His zone is 173.47–179.04.
+  - HWC: 72.80–72.97. 5 / 14 touches, pivot 11 weeks old. His zone is 72.53–73.60.
+  - CNO (golden, 2026-10-02): 52.66–53.34 vs his 52.43–53.22. This was far-capped under v3d-b.
+- **Soft match vs his old TV drawings** (mean zone IoU at their read dates), v3d → v4:
+  - All 126: 0.401 → 0.282.
+  - His own 99: 0.331 → 0.258; IoU ≥ 0.3: 45 → 36.
+  - Reported, not blocking (policy).
+- **Golden:** 39 of 57 stored drawings now differ from v3d (old values kept under `v3d`; `touches_w` stored per row). Tests added: `test_touch_count_and_recency` and `test_touch_meta_stored`.
+- **Redraw:** 28 live bot drawings whose zone moved by > 0.5% of price. Old rows were set to `obsolete` with `meta.obsolete.why`, and new rows were inserted under v4: ABCL, ALSN, ARGX, BAP, CLMT, DELL, DXCM, ESS, EW, EWTX, HPE, MSI, OKE, PENG, PKG, RLAY, RS, RVMD, S, SDGR, SMTC, TGTX, TXG, U, UNM, VOD, VRSN, ZM.
+- **New drawing:** RY 188.79–191.91 (support pivot 2026-10-09, 2 / 3 touches), entry 190.85 / SL 183.36 / TP 215.83, R:R 3.33. It was far-capped under v3e.
+- **TWST:** the bot Long (entry 117.84 / SL 95.30 / TP 191.01) is unchanged, because the v4 pick is the same zone. His zone row is untouched.

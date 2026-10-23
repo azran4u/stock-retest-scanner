@@ -46,6 +46,9 @@ def test_v3d_golden(g, rules_on_fixture):
         assert not r["has_level"] and "price ran away" in r["reason"], r
         return
     assert r["has_level"]
+    if g.get("his_zone"):  # app feedback case: the bot zone must overlap the zone he drew himself
+        lo, hi = g["his_zone"]
+        assert r["zone_bottom"] < hi and r["zone_top"] > lo, (r["zone_bottom"], r["zone_top"], g["his_zone"])
     for a, b in (("zone_bottom", "zone_bottom"), ("zone_top", "zone_top"), ("entry", "entry"), ("stop", "sl"), ("target", "tp")):
         assert abs(r[a] - g[b]) < 0.02, (a, r[a], g[b])
     assert r["why"]["branch"] == g["kind"] and r["why"]["pivot_date"] == g["pivot_date"]
@@ -146,3 +149,57 @@ def test_despike_lows_only_isolated_wicks():
     e = d.copy()
     e.iloc[26, e.columns.get_loc("Low")] = e["Low"].iloc[25]           # next day also trades down there: real move
     assert B.despike_lows(e)[1] == []
+
+
+def test_qcom_reclaimed_level_and_swing_anchor(rules_on_fixture):
+    """QCOM zone feedback (cmd 3, 2026-10-23): the Dec 2025 - Jan 2026 level broke in Jul-Aug 2026 and was reclaimed in
+    Sep 2026; v3e must pick it (overlapping his 173.47-179.04), measuring the pullback from the 2026-09-25 swing high."""
+    r = rules_on_fixture.compute("QCOM", "2026-10-22")
+    assert r["has_level"] and r["why"]["reclaimed"] and r["why"]["swing_anchor"]
+    assert r["zone_bottom"] < 179.04 and r["zone_top"] > 173.47
+    B = rules_on_fixture
+    old = (B.RECLAIM, B.SWING_ANCHOR, B.ZONE_SCORING)
+    try:
+        B.RECLAIM = B.SWING_ANCHOR = False  # v3d picked the deep August support 142.12-145.41
+        B.ZONE_SCORING = "v3d"
+        v = B.compute("QCOM", "2026-10-22")
+        assert v["zone_top"] < 150
+    finally:
+        B.RECLAIM, B.SWING_ANCHOR, B.ZONE_SCORING = old
+
+
+def test_twst_reclaimed_level_above_price_not_picked(rules_on_fixture):
+    """TWST 2026-10-22 (close 135.47): the reclaimed 2026-08-21 level 145.59-155.44 sits above the price; a reclaimed
+    level the price has fallen back under is no support (bottom <= close + ABOVE_PRICE_TOL_ATR x ATR)."""
+    r = rules_on_fixture.compute("TWST", "2026-10-22")
+    assert r["has_level"]
+    assert r["zone_bottom"] <= r["price"] + rules_on_fixture.ABOVE_PRICE_TOL_ATR * r["why"]["atr"]
+    assert not (abs(r["zone_bottom"] - 145.59) < 0.05 and abs(r["zone_top"] - 155.44) < 0.05)
+
+
+def test_twst_recent_higher_low_is_the_zone(rules_on_fixture):
+    """TWST zone feedback (cmd 6): in the run-up the last higher low before the 2026-10-09 high (2026-09-11 swing low,
+    clarity 2) is the zone; it must overlap his current zone 115.7-121.2 and sit below the 135.47 close."""
+    r = rules_on_fixture.compute("TWST", "2026-10-22")
+    assert r["has_level"] and r["why"]["pivot_date"] == "2026-09-11" and r["why"]["touches_w"] >= 1
+    assert r["zone_bottom"] < 121.2 and r["zone_top"] > 115.7 and r["zone_top"] <= r["price"]
+    assert r["rr"] >= 2
+
+
+def test_touch_count_and_recency():
+    """v4 scoring helpers: consecutive touching bars are one touch; a close, low or high in the band counts."""
+    import numpy as np
+    lo = np.array([10.0, 9.9, 9.95, 12.0, 12.0, 10.1, 13.0])
+    hi = lo + 0.5
+    cl = lo + 0.3
+    n, last = B.touches(lo, hi, cl, 10.0, 10.2, 0.05)
+    assert n == 2 and last == 5
+    assert B.touches(lo, hi, cl, 20, 21, 0.1) == (0, -1)
+
+
+def test_touch_meta_stored(rules_on_fixture):
+    r = rules_on_fixture.compute("QCOM", "2026-10-22")
+    w = r["why"]
+    for k in ("touches_w", "touches_d", "pivot_age_w", "weeks_since_touch", "alt_levels", "zone_scoring"):
+        assert k in w
+    assert w["zone_scoring"] == "touches" and w["touches_w"] >= 1
