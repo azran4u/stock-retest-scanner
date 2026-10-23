@@ -10,11 +10,11 @@ which writes /workspace/stock-screener/app_drawings.json. export_daily_report.py
 instead of tv_drawings.json when it exists (PASS / R:R / needs drawing / review then come from the app).
 
 Per ticker (newest row per kind wins):
-  - user, tv (imported, maybe edited in the app) and approved bot rows -> owner "user"
-    (source_override "user": counts toward PASS like a user drawing);
-  - bot proposals still in review (source bot, or tv rows imported from a TV bot drawing, status
-    review) -> owner "bot" = review needed, not counted (standing rule) — only when the ticker has
-    no user / tv / approved row of that kind;
+  - user, tv (imported, maybe edited in the app) and active / approved bot rows -> counted
+    (source_override "user": counts toward PASS like a user drawing). Policy 2026-10-23: bot drawings
+    are approved by default; they keep bot_drawn=True (shown as "bot-approved" in the report);
+  - legacy 'review' rows (none left after 2026-10-23) -> owner "bot", not counted — only when the
+    ticker has no counted row of that kind; 'rejected' (negative feedback) never counts;
   - deleted / rejected / obsolete rows are ignored;
   - zone without long -> drawing_status "Rectangle only, no Long Position" (partial, same as TV);
     long without zone -> "LP only, no Rectangle".
@@ -56,9 +56,9 @@ def _rr(e, s, t) -> Optional[float]:
 
 
 def _counts(r: Dict[str, Any]) -> bool:
-    """user / tv active, or any approved row -> counts like a user drawing."""
-    st, src = r.get("status"), r.get("source")
-    return st == "approved" or (st == "active" and src in ("user", "tv"))
+    """active or approved rows count like a user drawing - including bot rows (policy 2026-10-23: bot drawings are
+    approved by default; negative feedback sets them to 'rejected', which never counts). Legacy 'review' rows don't."""
+    return r.get("status") in ("approved", "active")
 
 
 def build_store(rows: Iterable[Dict[str, Any]], tv_store: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -105,6 +105,8 @@ def build_store(rows: Iterable[Dict[str, Any]], tv_store: Optional[Dict[str, Dic
         }
         if owner_user:
             rec["source_override"] = "user"
+            if all(x.get("source") == "bot" for x in (z, lg) if x):
+                rec["bot_drawn"] = True  # auto-approved bot drawing: counts, but marked as bot-drawn
         if z and not lg:
             rec["drawing_status"] = "Rectangle only, no Long Position"
         elif lg and not z:

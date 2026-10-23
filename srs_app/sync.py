@@ -27,13 +27,14 @@ order by ticker, kind, updated_at desc;
 """.strip()
 
 # Source of truth per ticker for the scanner: the app's live rows = user + tv (imported, maybe edited
-# in the app) + approved bot. Excludes review (bot proposals), rejected, obsolete, deleted.
+# in the app) + active/approved bot (approved by default since 2026-10-23). Excludes legacy review, rejected,
+# obsolete, deleted.
 SQL_SOURCE_OF_TRUTH = """
 select distinct on (ticker, kind) id, ticker, kind, zone_top, zone_bottom, entry, stop, target, t_start,
        source, status, tv_key, updated_at
 from public.drawings
 where kind in ('zone', 'long')
-  and (status = 'active' and source in ('user', 'tv') or status = 'approved')
+  and status in ('active', 'approved')  -- bot rows included: approved by default (policy 2026-10-23)
 order by ticker, kind, updated_at desc;
 """.strip()
 
@@ -81,11 +82,19 @@ def sql_command_done(cmd_id: int, reply: str, error: bool = False) -> str:
 
 
 def sql_insert_bot_drawing(ticker: str, kind: str, *, zone_top=None, zone_bottom=None, entry=None, stop=None,
-                           target=None, t_start: Optional[str] = None, note: str = "BOT - review needed") -> str:
-    """Bot proposals always go in as source='bot', status='review' (Eyal approves / rejects in the app)."""
+                           target=None, t_start: Optional[str] = None, t_end: Optional[str] = None,
+                           note: str = "BOT", status: str = "active", meta: Optional[Dict[str, Any]] = None) -> str:
+    """Bot drawings go in as source='bot'. Policy 2026-10-23 (Eyal: "everything is approved unless I say otherwise"):
+    status 'active' = approved by default, counts toward PASS like his own drawings; negative feedback in the app
+    sets it to 'rejected'. meta = {rule_version, why} (jsonb) for feedback analysis."""
+    import json
     cols = dict(ticker=ticker.upper(), kind=kind, zone_top=zone_top, zone_bottom=zone_bottom, entry=entry,
-                stop=stop, target=target, t_start=t_start, source="bot", status="review", note=note)
-    return (f"insert into public.drawings ({', '.join(cols)}) values ({', '.join(_lit(v) for v in cols.values())}) "
+                stop=stop, target=target, t_start=t_start, t_end=t_end, source="bot", status=status, note=note)
+    vals = [_lit(v) for v in cols.values()]
+    if meta is not None:
+        cols["meta"] = None
+        vals.append(_lit(json.dumps(meta, separators=(",", ":"), default=str)) + "::jsonb")
+    return (f"insert into public.drawings ({', '.join(cols)}) values ({', '.join(vals)}) "
             f"returning id;")
 
 

@@ -1048,6 +1048,10 @@ def drawing_source(ticker: str, rec: Optional[Dict[str, Any]],
     found = bool(rec and rec.get("found"))
     override = str((rec or {}).get("source_override") or "")
     src, status, note = ("user" if found else ""), "", ""
+    if found and (rec or {}).get("bot_drawn"):
+        # app bot drawing, approved by default (policy 2026-10-23): counts like a user drawing, marked bot
+        return {"tv_source": "bot-approved", "f_bot_review": False, "tv_bot_status": "bot drawing (auto-approved)",
+                "tv_bot_note": "bot drawing in the app, approved by default (policy 2026-10-23)"}
     if found:  # partial user drawings: no rectangle / no Long Position / short only / values pending
         status, note = str(rec.get("drawing_status") or ""), str(rec.get("drawing_note") or "")
     if rec and not found and rec.get("lines_only"):

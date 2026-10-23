@@ -218,12 +218,19 @@ select id, ticker, text, created_at from public.commands where status = 'pending
 -- mark one handled (reply is shown under the command in the app)
 update public.commands set status = 'done', reply = '…', done_at = now() where id = 42;
 
--- bot proposal (always source='bot', status='review'; Eyal approves / rejects in the app)
-insert into public.drawings (ticker, kind, zone_top, zone_bottom, t_start, source, status, note)
-values ('OKE', 'zone', 70.5, 68.0, '2026-05-04', 'bot', 'review', 'BOT - review needed');
+-- bot drawing (source='bot', status='active' = approved by default since 2026-10-23); use srs_app.bot_drawings --emit-sql
+insert into public.drawings (ticker, kind, zone_top, zone_bottom, t_start, source, status, note, meta)
+values ('OKE', 'zone', 70.5, 68.0, '2026-05-04', 'bot', 'active', 'BOT v3d', '{"rule_version":"v3d-2026-10-23","why":{}}'::jsonb);
 ```
 
-Rule mirror of TradingView: bot drawings in `review` do not count toward PASS until approved.
+### Bot drawings + feedback (policy 2026-10-23)
+
+**Bot drawings approved by default + feedback loop (policy 2026-10-23, Eyal: "everything is approved unless I say otherwise; I want you to be independent").**
+- **Approved by default:** bot drawings (`source='bot'`, `status='active'`) count toward `f_rr` / PASS exactly like his own drawings (`srs_app/app_drawings._counts`: any `active` / `approved` row counts; report `tv_source = bot-approved`, `tv_bot_status = bot drawing (auto-approved)`; app card badge `בוט`, status `פעיל (מאושר אוטומטית)`). The 20 tickers' TV-imported bot rows that were in `review` (ALSN, CNO, COP, DXCM, EHC, ELV, ESS, EW, MA, MSI, OKE, OXY, PKG, PM, PR, RS, TRV, UNM, VLTO, VRSN) were converted to `source='bot', status='active'` (meta `rule_version = tv-bot-2026-10-04`). Supersedes "bot drawings stay at review until approved".
+- **Drawing:** `python -m srs_app.bot_drawings` (nightly step; `--print-read-sql` → run the 3 reads with `execute_sql`, save the JSON → `--drawings-json D --labels-json L --feedback-json F --emit-sql` → run the printed SQL). Rules v3d (`RULE_VERSION = v3d-2026-10-23`, params frozen from the 54-drawing fit). Candidates: `f_dollar_vol AND f_history AND f_no_earnings_14d AND f_technical`, no live user/tv row, not `not_interesting`, not `tv_source = user-lines`, no `structure` feedback in the last 8 weeks, no live bot row (a live bot row whose long SL was traded through since it was drawn → `obsolete` + redrawn), not rejected under the current `RULE_VERSION`. Long Position time-anchored (`t_start` = week after the last candle, `t_end` = +20 weekly bars). Every row stores `meta = {rule_version, why: {rule, branch, pivot_date, breakout_date, clarity, wick_confirmations, sl_src, sl_wick_low, atr, atr_w, risk_atr_w, pullback_low, recent_high, fib382, n_valid_levels, price_below_zone, dist_price_to_zone_top_atr, entry_rule, tp_rule, data_date}}`.
+- **Feedback (app, on bot cards):** `מבנה לא מתאים לשיטה` (structure → all of the ticker's bot rows), `אזור לא נכון` (zone row), `פוזיציה לא נכונה` (long row), optional `מאושר` (status `approved`), plus an optional note. Negative feedback sets the rows to `rejected` immediately (never counts; not redrawn until `RULE_VERSION` changes); `structure` also excludes the ticker from bot drawing for 8 weeks. Each submission inserts `public.commands` (`kind='feedback'`, `text='[feedback] <category>: <note or Hebrew label>'`, `payload={ticker, drawing_ids, category, category_he, note, before{zone|long: levels}, after{…}|null, rule_version, why}`) so the INSERT webhook fires, and a `public.drawing_feedback` row (owner-only RLS) linked by `command_id`. The bot's reply on that command shows under the drawing.
+- **His edits win:** the first drag / edit of a bot row makes it his (`source='user'`), keeping the bot's levels in `meta.bot_before` (+ `edited_at`); feedback on it sends before/after.
+- **Regression:** `tests/test_bot_drawings.py` reproduces the 55 stored v3d drawings (`tests/data/bot_drawings_golden.json`) and the candidate rules — run it before shipping any rule change (bump `RULE_VERSION`).
 
 ### Nightly routine additions (TradingView retirement)
 

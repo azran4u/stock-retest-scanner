@@ -16,6 +16,8 @@ export interface Drawing {
   status: DStatus;
   note: string | null;
   tv_key?: string | null;
+  /** bot rows: {rule_version, why{...}}; bot rows he edited: + bot_before{levels}, edited_at */
+  meta?: Record<string, any> | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -40,6 +42,22 @@ export interface Command {
   reply: string | null;
   created_at: string;
   done_at: string | null;
+  /** 'command' (free text) | 'feedback' (bot drawing feedback, payload = FeedbackPayload) */
+  kind?: string | null;
+  payload?: Record<string, any> | null;
+}
+
+export type FeedbackCategory = 'structure' | 'zone' | 'position' | 'approved';
+export interface Feedback {
+  ticker: string;
+  drawing_ids: string[];
+  category: FeedbackCategory;
+  note: string | null;
+  before: Record<string, any> | null;
+  after: Record<string, any> | null;
+  rule_version: string | null;
+  why: Record<string, any> | null;
+  command_id?: number | null;
 }
 
 export interface TvDrawing {

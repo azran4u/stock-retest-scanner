@@ -1,6 +1,6 @@
 // Data layer: Supabase (real) or in-memory (demo mode, ?demo=1, for screenshots / offline tests).
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
-import type { Command, Drawing, Label, TvDrawing, Watch } from './types';
+import type { Command, Drawing, Feedback, Label, TvDrawing, Watch } from './types';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
@@ -23,7 +23,8 @@ export interface Api {
   loadLabels(): Promise<Label[]>;
   upsertLabel(l: Label): Promise<void>;
   loadCommands(): Promise<Command[]>;
-  addCommand(ticker: string, text: string): Promise<Command>;
+  addCommand(ticker: string, text: string, kind?: string, payload?: Record<string, any> | null): Promise<Command>;
+  addFeedback(f: Feedback): Promise<void>;
   loadWatch(): Promise<Watch[]>;
   addWatch(ticker: string): Promise<void>;
   removeWatch(ticker: string): Promise<void>;
@@ -78,9 +79,10 @@ class SupaApi implements Api {
   async loadCommands() {
     return check(await this.sb.from('commands').select('*').order('created_at', { ascending: false }).limit(500)) as Command[];
   }
-  async addCommand(ticker: string, text: string) {
-    return check(await this.sb.from('commands').insert({ ticker, text }).select().single()) as Command;
+  async addCommand(ticker: string, text: string, kind = 'command', payload: Record<string, any> | null = null) {
+    return check(await this.sb.from('commands').insert({ ticker, text, kind, payload }).select().single()) as Command;
   }
+  async addFeedback(f: Feedback) { check(await this.sb.from('drawing_feedback').insert(f)); }
   async loadWatch() { return check(await this.sb.from('watchlist').select('*').order('added_at')) as Watch[]; }
   async addWatch(ticker: string) { check(await this.sb.from('watchlist').upsert({ ticker }, { onConflict: 'ticker' })); }
   async removeWatch(ticker: string) { check(await this.sb.from('watchlist').delete().eq('ticker', ticker)); }
@@ -146,8 +148,10 @@ class MemApi implements Api {
     const row = { ...l, created_at: new Date().toISOString() }; this.labels.push(row); this.emit('labels', 'INSERT', row, null);
   }
   async loadCommands() { return [...this.commands]; }
-  async addCommand(ticker: string, text: string) {
-    const c: Command = { id: this.seq++, ticker, text, status: 'pending', reply: null, created_at: new Date().toISOString(), done_at: null };
+  feedback: Feedback[] = [];
+  async addFeedback(f: Feedback) { this.feedback.push({ ...f }); }
+  async addCommand(ticker: string, text: string, kind = 'command', payload: Record<string, any> | null = null) {
+    const c: Command = { id: this.seq++, ticker, text, status: 'pending', reply: null, created_at: new Date().toISOString(), done_at: null, kind, payload };
     this.commands.unshift(c); this.emit('commands', 'INSERT', c, null); return c;
   }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }

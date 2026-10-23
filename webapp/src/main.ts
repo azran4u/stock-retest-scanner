@@ -2,7 +2,7 @@ import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
 import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
-import type { Bar, Command, Drawing, Label, Row, Watch } from './types';
+import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
 const app = document.getElementById('app')!;
@@ -335,7 +335,8 @@ function shell() {
     onSelect: (id) => { S.selected = id; syncChart(); renderPanel(); },
     onDragMove: (d) => updateCardValues(d),
     onDragEnd: async (id, patch) => {
-      const d = S.drawings.get(id); if (d) Object.assign(d, patch);
+      const d = S.drawings.get(id);
+      if (d) { Object.assign(patch, ownEdit(d)); Object.assign(d, patch); }
       renderPanel();
       await guard(api.updateDrawing(id, patch));
     },
@@ -450,6 +451,66 @@ async function onChartTap(price: number, date: string) {
   if (d) { S.drawings.set(d.id, d); S.selected = d.id; syncChart(); renderPanel(); }
 }
 
+// ---------------- bot drawings: edits + feedback ----------------
+const LEVELS = ['zone_top', 'zone_bottom', 'entry', 'stop', 'target', 't_start', 't_end'] as const;
+const levelsOf = (d: Drawing) => Object.fromEntries(LEVELS.map((k) => [k, d[k] ?? null]));
+const FB: [FeedbackCategory, string, string][] = [
+  ['structure', 'מבנה לא מתאים לשיטה', 'bad'], ['zone', 'אזור לא נכון', 'bad'], ['position', 'פוזיציה לא נכונה', 'bad'], ['approved', 'מאושר', 'ok'],
+];
+const botSnap = new Map<string, Record<string, any>>(); // levels of a bot row before his first edit
+/** First edit of a bot drawing: it becomes his (source user, counts as his drawing), the bot's levels are kept in meta.bot_before. */
+function ownEdit(d: Drawing): Partial<Drawing> {
+  if (d.source !== 'bot') return {};
+  const before = botSnap.get(d.id) ?? levelsOf(d);
+  return { source: 'user', meta: { ...(d.meta || {}), bot_before: before, edited_at: new Date().toISOString() } };
+}
+const isBotOrigin = (d: Drawing) => d.source === 'bot' || !!d.meta?.bot_before;
+function fbCommands(d: Drawing) {
+  return S.commands.filter((c) => c.kind === 'feedback' && Array.isArray(c.payload?.drawing_ids) && c.payload!.drawing_ids.includes(d.id));
+}
+async function sendFeedback(d: Drawing, cat: FeedbackCategory, note: string) {
+  const t = d.ticker;
+  const bots = userDrawings(t).filter(isBotOrigin);
+  // which rows the feedback is about: structure = all of the ticker's bot rows, zone / position = that kind, approved = this row
+  const target = cat === 'structure' ? bots : cat === 'zone' ? bots.filter((x) => x.kind === 'zone')
+    : cat === 'position' ? bots.filter((x) => x.kind === 'long') : [d];
+  const rows = target.length ? target : [d];
+  const before: Record<string, any> = {}, after: Record<string, any> = {};
+  let edited = false;
+  for (const x of rows) {
+    before[x.kind] = x.meta?.bot_before ?? levelsOf(x);
+    if (x.meta?.bot_before) { after[x.kind] = levelsOf(x); edited = true; }
+  }
+  const label = FB.find((f) => f[0] === cat)![1];
+  const payload = {
+    ticker: t, drawing_ids: rows.map((x) => x.id), category: cat, category_he: label, note: note || null,
+    before, after: edited ? after : null, rule_version: d.meta?.rule_version ?? null, why: d.meta?.why ?? null,
+  };
+  // negative feedback: stops counting toward PASS now (rejected) until the bot redraws under a fixed rule
+  const status = cat === 'approved' ? 'approved' : 'rejected';
+  for (const x of rows) { if (x.source === 'bot') x.status = status; }
+  syncChart(); renderPanel();
+  for (const x of rows) if (x.source === 'bot') await guard(api.updateDrawing(x.id, { status }));
+  const c = await guard(api.addCommand(t, `[feedback] ${cat}: ${note || label}`, 'feedback', payload), 'המשוב נשלח לבוט');
+  if (c) {
+    if (!S.commands.some((x) => x.id === c.id)) S.commands.unshift(c);
+    await guard(api.addFeedback({ ticker: t, drawing_ids: payload.drawing_ids, category: cat, note: note || null, before,
+      after: payload.after, rule_version: payload.rule_version, why: payload.why, command_id: c.id }));
+    renderPanel();
+  }
+}
+function feedbackHtml(d: Drawing) {
+  if (!isBotOrigin(d)) return '';
+  const cs = fbCommands(d);
+  const hist = cs.slice(0, 3).map((c) => `<li><span class="badge ${c.status === 'done' ? 'b-pass' : c.status === 'error' ? 'b-obs' : 'b-review'}">${{ pending: 'ממתין', done: 'בוצע', error: 'שגיאה' }[c.status]}</span> ${esc(c.payload?.category_he || c.payload?.category || '')}${c.payload?.note ? ': ' + esc(c.payload.note) : ''}${c.reply ? `<div class="reply">🤖 ${esc(c.reply)}</div>` : ''}</li>`).join('');
+  return `<div class="fb">
+    ${d.meta?.rule_version ? `<div class="muted small" dir="ltr">${esc(d.meta.rule_version)}${d.meta?.why?.branch ? ' · ' + esc(d.meta.why.branch) + ' ' + esc(d.meta.why.pivot_date || '') : ''}${d.meta?.bot_before ? ' · edited' : ''}</div>` : ''}
+    <div class="fbbtns">${FB.map(([k, l, cls]) => `<button class="${cls} fbb" data-fb="${k}">${l}</button>`).join('')}</div>
+    <textarea class="fbnote" rows="1" placeholder="הערה למשוב (לא חובה)"></textarea>
+    ${hist ? `<ul class="cmds fbh">${hist}</ul>` : ''}
+  </div>`;
+}
+
 // ---------------- panel ----------------
 function numInput(d: Drawing, f: keyof Drawing, label: string, ro: boolean) {
   return `<label class="ni"><span>${label}</span><input dir="ltr" type="number" inputmode="decimal" step="0.01" data-f="${f}" value="${d[f] ?? ''}" ${ro ? 'disabled' : ''}/></label>`;
@@ -464,7 +525,7 @@ function rrText(d: Pick<Drawing, 'entry' | 'stop' | 'target'>) {
 function cardHtml(d: Drawing) {
   const bot = d.source === 'bot';
   const ro = false;
-  const st = { active: 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
+  const st = { active: bot ? 'פעיל (מאושר אוטומטית)' : 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
   const kind = { zone: 'אזור', long: 'לונג', line: 'קו', note: 'הערה' }[d.kind];
   let body = '';
   if (d.kind === 'zone') body = numInput(d, 'zone_top', 'עליון', ro) + numInput(d, 'zone_bottom', 'תחתון', ro) + dateInput(d, 't_start', 'מתאריך', ro);
@@ -472,11 +533,12 @@ function cardHtml(d: Drawing) {
   else if (d.kind === 'line') body = numInput(d, 'entry', 'מחיר', ro);
   const risk = d.kind === 'long' && d.entry != null && d.stop != null ? `<span class="muted small" dir="ltr">risk ${fmt(+d.entry - +d.stop)}</span>` : '';
   return `<div class="card ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
-    <div class="ch1"><b>${kind}</b> <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : 'שלי'}</span> <span class="badge">${st}</span>
+    <div class="ch1"><b>${kind}</b> <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : d.meta?.bot_before ? 'שלי (מבוט)' : 'שלי'}</span> <span class="badge">${st}</span>
       ${d.kind === 'long' ? `<b class="rr" dir="ltr">${rrText(d)}</b> ${risk}` : ''}
       <button class="ghost small selbtn">${d.id === S.selected ? 'בטל בחירה' : 'בחר / גרור'}</button></div>
     <div class="grid">${body}</div>
     ${d.note ? `<div class="muted small">${esc(d.note)}</div>` : ''}
+    ${feedbackHtml(d)}
     <div class="acts">
       ${d.status === 'review' ? '<button class="ok act" data-act="approve">אשר</button><button class="bad act" data-act="reject">דחה</button>' : ''}
       ${d.status === 'rejected' ? '<button class="act" data-act="reopen">החזר לבדיקה</button>' : ''}
@@ -537,19 +599,26 @@ function renderPanel() {
     c.querySelectorAll<HTMLInputElement>('input[data-f]').forEach((i) => {
       i.addEventListener('input', () => {
         const d = S.drawings.get(id); if (!d) return;
+        if (d.source === 'bot' && !botSnap.has(id)) botSnap.set(id, levelsOf(d));
         const f = i.dataset.f!; (d as any)[f] = i.type === 'date' ? (i.value || null) : (i.value === '' ? null : +i.value);
         syncChart(); const rrEl = $('.rr', c); if (rrEl) rrEl.textContent = rrText(d);
       });
       i.addEventListener('change', async () => {
         const d = S.drawings.get(id); if (!d) return;
         const f = i.dataset.f as keyof Drawing;
-        const patch = { [f]: d[f] } as Partial<Drawing>;
+        const patch = { [f]: d[f], ...ownEdit(d) } as Partial<Drawing>;
+        Object.assign(d, patch);
         // first edit of a long without a time anchor: store the anchor it is drawn at
         if (d.kind === 'long' && cv && (!d.t_start || !d.t_end)) { Object.assign(d, cv.longAnchor(d)); patch.t_start = d.t_start; patch.t_end = d.t_end; }
         await guard(api.updateDrawing(id, patch), 'נשמר');
       });
       i.addEventListener('blur', () => setTimeout(() => { if (panelDirty) renderPanel(); }, 0));
     });
+    c.querySelectorAll<HTMLButtonElement>('.fbb').forEach((b) => (b.onclick = () => {
+      const d = S.drawings.get(id); if (!d) return;
+      const note = (c.querySelector('.fbnote') as HTMLTextAreaElement | null)?.value.trim() || '';
+      sendFeedback(d, b.dataset.fb as FeedbackCategory, note);
+    }));
     c.querySelectorAll<HTMLButtonElement>('.act').forEach((b) => (b.onclick = async () => {
       const a = b.dataset.act!;
       if (a === 'delete') {
