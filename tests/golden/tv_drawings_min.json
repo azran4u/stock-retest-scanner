@@ -1,0 +1,17 @@
+{
+ "LNG": {
+  "found": true,
+  "zone_top": 273.85,
+  "zone_bottom": 268.55,
+  "entry": 270.56,
+  "sl": 255.95,
+  "tp": 296.96,
+  "rr": 1.807,
+  "read_at": "2026-10-08T00:15:06+03:00",
+  "read_date": "2026-10-08",
+  "source": "user",
+  "screenshot": "charts/latest/LNG.webp",
+  "screenshot_at": "2026-10-08T00:15:06+03:00",
+  "screenshot_date": "2026-10-08"
+ }
+}

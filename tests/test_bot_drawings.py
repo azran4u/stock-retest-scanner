@@ -7,14 +7,41 @@ import pytest
 from srs_app import bot_drawings as B
 from srs_app.sync import sql_insert_bot_drawing
 
-GOLD = json.loads((Path(__file__).parent / "data" / "bot_drawings_golden.json").read_text())["rows"]
-HAVE_RULES = (B.LEARN_DIR / "infer_v3d.py").exists() and Path("/workspace/hist_cache.pkl").exists()
+GOLDEN = Path(__file__).parent / "golden"
+GOLD = json.loads((GOLDEN / "bot_drawings_golden.json").read_text())["rows"]
 
 
-@pytest.mark.skipif(not HAVE_RULES, reason="needs /workspace/drawing-learn + hist_cache.pkl")
+@pytest.fixture(scope="module")
+def rules_on_fixture(tmp_path_factory):
+    """Run the vendored v3d rules (srs_app/v3d) on the committed price fixture: never skips, never reads /workspace."""
+    import os
+    import sys
+    import pandas as pd
+    df = pd.read_csv(GOLDEN / "hist_golden.csv.gz", parse_dates=["date"])
+    H = {t: g.drop(columns="ticker").set_index("date") for t, g in df.groupby("ticker")}
+    pk = tmp_path_factory.mktemp("hist") / "hist.pkl"
+    pd.to_pickle(H, pk)
+    saved = {k: os.environ.get(k) for k in ("SRS_HIST_CACHE", "SRS_TV_DRAWINGS")}
+    os.environ.update(SRS_HIST_CACHE=str(pk), SRS_TV_DRAWINGS=str(GOLDEN / "tv_drawings_min.json"))
+    mods = {m: sys.modules.pop(m) for m in ("infer", "infer_v2", "infer_v3", "infer_v3d") if m in sys.modules}
+    old_dir, old_r = B.LEARN_DIR, dict(B._R)
+    B.LEARN_DIR = Path(B.__file__).resolve().parent / "v3d"
+    B._R.clear()
+    yield B
+    B._R.clear(); B._R.update(old_r); B.LEARN_DIR = old_dir
+    for m in ("infer", "infer_v2", "infer_v3", "infer_v3d"):
+        sys.modules.pop(m, None)
+    sys.modules.update(mods)
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+
+
 @pytest.mark.parametrize("g", GOLD, ids=[g["ticker"] for g in GOLD])
-def test_v3d_golden(g):
-    r = B.compute(g["ticker"], g["data_date"])
+def test_v3d_golden(g, rules_on_fixture):
+    r = rules_on_fixture.compute(g["ticker"], g["data_date"])
     assert r["has_level"]
     for a, b in (("zone_bottom", "zone_bottom"), ("zone_top", "zone_top"), ("entry", "entry"), ("stop", "sl"), ("target", "tp")):
         assert abs(r[a] - g[b]) < 0.02, (a, r[a], g[b])

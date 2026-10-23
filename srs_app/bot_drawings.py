@@ -1,6 +1,7 @@
 """Bot drawings for app candidates that need one (policy 2026-10-23: bot drawings are approved by default).
 
-Rules = v3d (fitted on Eyal's 54 TradingView drawings, /workspace/drawing-learn/infer_v3d.py, params frozen below):
+Rules = v3d (fitted on Eyal's 54 TradingView drawings; research in /workspace/drawing-learn, rule code vendored in
+srs_app/v3d/ so production and the golden test never depend on the box; params frozen below):
   zone  = clearest valid weekly level below price: RETEST of a broken pivot high (body top -> wick high) or
           BACK-TO-SUPPORT pivot low (wick low -> body bottom), clarity >= 3, body pivot, wick edge capped at 0.5 ATR;
           a level is broken (skipped) if ANY price traded below its SL since the pivot (grace 3 weeks for closes);
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 RULE_VERSION = "v3d-2026-10-23"
-LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", "/workspace/drawing-learn"))
+LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
 STRUCTURE_EXCLUDE_WEEKS = 8
@@ -54,7 +55,7 @@ _R: Dict[str, Any] = {}
 def _rules():
     """Lazy import of the v3d research modules (they load hist_cache.pkl on import)."""
     if not _R:
-        for p in (str(LEARN_DIR), "/workspace"):
+        for p in (str(LEARN_DIR),):
             if p not in sys.path:
                 sys.path.insert(0, p)
         import infer as V1  # noqa
