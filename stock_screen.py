@@ -47,6 +47,10 @@ OUT_VERIFY_CSV = Path("/workspace/stock_screen_verify.csv")
 OUT_VERIFY_HTML = Path("/workspace/stock_screen_verify.html")
 TICKERS_JSON = Path("/workspace/screener_tickers.json")
 HIST_CACHE = Path("/workspace/hist_cache.pkl")
+# Daily bars are re-downloaded over this rolling window every run (Yahoo finalizes volume after the
+# session; partial / preliminary bars must not stay frozen in the cache). See refresh_hist_map.
+REFRESH_OVERLAP_DAYS = 14
+SESSION_DONE_ET = (16, 30)  # (hour, minute) New York time after which today's session counts as complete
 UNIVERSE_JSON = Path("/workspace/stock_screen_universe.json")  # all-ticker short float / earnings
 # User's TradingView drawings (read-only daily reads): source of zone / entry / SL / TP / R:R.
 # status' R:R gate = latest stored reading found AND its TradingView R:R >= RR_MIN.
@@ -1448,16 +1452,24 @@ def format_line(res: Dict[str, Any]) -> str:
 
 
 def last_us_session_date(now=None) -> "pd.Timestamp":
-    """Latest completed US cash-session calendar date (weekends -> Friday)."""
+    """Latest COMPLETED US cash-session calendar date (weekends -> Friday).
+
+    A weekday only counts once the session is over (>= SESSION_DONE_ET New York time); before that
+    the previous weekday is used, so a run during US hours never stores today's partial bar.
+    `now` may be a datetime (naive = New York time) or a date (treated as after the close)."""
     import datetime as _dt
-    try:
-        from zoneinfo import ZoneInfo
-        now = now or _dt.datetime.now(ZoneInfo("America/New_York"))
-    except Exception:
-        now = now or _dt.datetime.utcnow()
-    d = now.date() if hasattr(now, "date") else now
-    # Before ~10:00 ET Monday data for prior Friday may still be fine; for simplicity
-    # use calendar weekday walk-back only.
+    if now is None:
+        try:
+            from zoneinfo import ZoneInfo
+            now = _dt.datetime.now(ZoneInfo("America/New_York"))
+        except Exception:
+            now = _dt.datetime.utcnow() - _dt.timedelta(hours=4)
+    if isinstance(now, _dt.datetime):
+        d = now.date()
+        if (now.hour, now.minute) < SESSION_DONE_ET:
+            d -= _dt.timedelta(days=1)
+    else:
+        d = now
     while d.weekday() >= 5:  # Sat/Sun
         d -= _dt.timedelta(days=1)
     return pd.Timestamp(d)
@@ -1532,54 +1544,68 @@ def _normalize_ohlcv_index(df: pd.DataFrame) -> pd.DataFrame:
     return d
 
 
-def refresh_hist_map(hist_map: Dict[str, pd.DataFrame], tickers: List[str]) -> Dict[str, pd.DataFrame]:
-    """Fill missing tickers fully; for cached tickers, append bars after last date through latest US session."""
+def refresh_hist_map(hist_map: Dict[str, pd.DataFrame], tickers: List[str],
+                     overlap_days: Optional[int] = None) -> Dict[str, pd.DataFrame]:
+    """Fill missing tickers fully; for cached tickers re-download the last `overlap_days` calendar days
+    (REFRESH_OVERLAP_DAYS) through the latest completed US session and OVERWRITE them.
+
+    Why the overlap (BNY, 2026-10-23): Yahoo's daily bar for the latest session(s) carries a preliminary
+    volume (often ~65-70% of the final consolidated volume) and, if fetched during US hours, a partial bar
+    (e.g. BNY 2026-10-09 vol 123,901 vs final 2,884,200). The old append-only refresh froze those values
+    forever, so weekly volume bars were too low vs TradingView. Re-fetching a rolling window lets the
+    finalized numbers replace them on the next runs. Bars dated after the target session are dropped."""
     target = last_us_session_date()
+    overlap = REFRESH_OVERLAP_DAYS if overlap_days is None else overlap_days
+    win_start = target - pd.Timedelta(days=overlap)
     missing: List[str] = []
-    stale: List[Tuple[str, pd.Timestamp]] = []
+    refresh: List[Tuple[str, pd.Timestamp]] = []
     for t in tickers:
         df = hist_map.get(t)
         if df is None or getattr(df, "empty", True):
             missing.append(t)
             continue
         df = _normalize_ohlcv_index(df)
+        df = df[df.index.normalize() <= target]  # drop any partial bar of a session not yet completed
         hist_map[t] = df
         last = pd.Timestamp(df.index.max()).normalize()
-        if last.date() < target.date():
-            stale.append((t, last))
+        refresh.append((t, min(last + pd.Timedelta(days=1), win_start)))
 
     if missing:
         print(f"Re-downloading {len(missing)} missing tickers (full history)...")
         extra = download_batch(missing, chunk=50)
         for t, df in extra.items():
-            hist_map[t] = _normalize_ohlcv_index(df)
+            df = _normalize_ohlcv_index(df)
+            hist_map[t] = df[df.index.normalize() <= target]
 
-    if stale:
-        print(f"Refreshing {len(stale)} stale tickers through {target.date()} (append missing days)...")
-        # Group by start date to batch where possible
+    if refresh:
+        print(f"Refreshing {len(refresh)} tickers through {target.date()} (re-fetch last {overlap}d + missing days)...")
         by_start: Dict[str, List[str]] = {}
-        start_for: Dict[str, pd.Timestamp] = {}
-        for t, last in stale:
-            start = (last + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-            by_start.setdefault(start, []).append(t)
-            start_for[t] = last
-        end = (target + pd.Timedelta(days=1)).strftime("%Y-%m-%d")  # yfinance end exclusive-ish
+        for t, start in refresh:
+            by_start.setdefault(start.strftime("%Y-%m-%d"), []).append(t)
+        end = (target + pd.Timedelta(days=1)).strftime("%Y-%m-%d")  # yfinance end is exclusive
         for start, group in by_start.items():
             print(f"  [{start} -> {end}] {len(group)} tickers")
             extra = download_batch(group, chunk=50, start=start, end=end)
             for t, new_df in extra.items():
-                new_df = _normalize_ohlcv_index(new_df)
-                if new_df is None or new_df.empty:
-                    continue
-                old = hist_map.get(t)
-                if old is None or old.empty:
-                    hist_map[t] = new_df
-                else:
-                    combined = pd.concat([old, new_df])
-                    hist_map[t] = _normalize_ohlcv_index(combined)
-    else:
-        print(f"Cache fresh through {target.date()} for all present tickers")
+                hist_map[t] = merge_refresh(hist_map.get(t), new_df, target)
     return hist_map
+
+
+def merge_refresh(old: Optional[pd.DataFrame], new_df: Optional[pd.DataFrame],
+                  target: pd.Timestamp) -> Optional[pd.DataFrame]:
+    """Cached history + re-downloaded window: downloaded rows overwrite cached rows of the same day
+    (finalized volume / corrected prices); nothing after `target` (an unfinished session) is kept."""
+    new_df = _normalize_ohlcv_index(new_df) if new_df is not None else None
+    if new_df is not None and not new_df.empty:
+        new_df = new_df.dropna(subset=[c for c in ("Open", "High", "Low", "Close") if c in new_df.columns], how="all")
+    if new_df is None or new_df.empty:
+        return old
+    if old is None or old.empty:
+        out = new_df
+    else:
+        old = _normalize_ohlcv_index(old)
+        out = _normalize_ohlcv_index(pd.concat([old, new_df]))  # keep='last' -> downloaded rows win
+    return out[out.index.normalize() <= target]
 
 
 def write_universe_data(tickers: List[str], eligible: Optional[set] = None) -> Dict[str, Dict[str, Any]]:
