@@ -104,6 +104,12 @@ CONFIG: Dict[str, Any] = {
     "tech_structure_min": 0.5,       # (HH rate + HL rate) / 2 >= 0.5
     "tech_ema_span": 30,             # 30w EMA rising vs 26 weeks ago
     "tech_min_weekly_bars": 130,     # fewer bars -> f_technical empty (not enough history)
+    # v2.1 (2026-10-23, Eyal's 'structure not suitable' feedback on CRGY): a multi-year sideways range is not a
+    # clear uptrend even when the last 26w ran back to the range top. Rejected when a log-linear fit of the weekly
+    # closes explains < tech_flat_r2_max of the variance over BOTH the last 104 and the last 156 weeks (no 2y and
+    # no 3y direction). CRGY 0.019 / 0.007; lowest of his golden 'up' charts: CPAY 0.009 / 0.389, SJM 0.097 / 0.001.
+    "tech_flat_r2_max": 0.05,
+    "tech_flat_windows": (104, 156),
     # bot drawings (review needed): levels within max(0.011, 0.15% of the level) = same drawing
     "bot_match_rel": 0.0015,
     "bot_match_abs": 0.011,
@@ -714,6 +720,16 @@ def _swing_pivots(a: np.ndarray, k: int, kind: str) -> List[int]:
             or (kind == "lo" and a[i] < min(np.r_[a[i - k:i], a[i + 1:i + k + 1]]))]
 
 
+def _trend_r2(closes: np.ndarray) -> float:
+    """R^2 of a straight-line fit to log(close): ~0 = no direction (sideways range), ~1 = steady trend."""
+    y = np.log(np.asarray(closes, dtype=float))
+    if len(y) < 3 or not np.isfinite(y).all() or y.std() == 0:
+        return 0.0
+    x = np.arange(len(y))
+    yh = np.polyval(np.polyfit(x, y, 1), x)
+    return float(1 - ((y - yh) ** 2).sum() / ((y - y.mean()) ** 2).sum())
+
+
 def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
     """'Technical' = CLEAR weekly uptrend, v2 (2026-10-09, tuned on the user's calls). Both, on W-FRI
     weekly bars from the cached daily history cut at the report date (current week may be partial):
@@ -723,7 +739,9 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
     The current pullback is not judged (price may be below the EMA / the last swing low).
     HH/HL structure (strength-3 swings over 78 weeks) is still reported (tech_hh / tech_hl /
     tech_structure) but no longer required (tech_use_structure = False). v1 needed new high >= +1 ATR,
-    structure >= 0.5 and EMA slope > 0. Fewer than tech_min_weekly_bars weekly bars -> every column
+    structure >= 0.5 and EMA slope > 0.
+      3. v2.1 (2026-10-23, CRGY feedback): NOT A MULTI-YEAR SIDEWAYS RANGE: R^2 of a log-linear fit of the
+         weekly closes must be >= tech_flat_r2_max (0.05) over the last 104 OR the last 156 weeks. Fewer than tech_min_weekly_bars weekly bars -> every column
     empty. A user override (user_overrides.json) is applied afterwards (apply_user_overrides).
     """
     C = CONFIG
@@ -753,13 +771,15 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
         struct = (hh / nh + hl / nl) / 2
         ema = pd.Series(c).ewm(span=int(C["tech_ema_span"]), adjust=False).mean().values
         slope = (ema[-1] / ema[-27] - 1) * 100
+        r2s = [_trend_r2(c[-min(win, n):]) for win in C.get("tech_flat_windows", ())]
     except Exception as e:  # pragma: no cover
         out["tech_detail"] = f"technical error: {e}"
         return out
     ok1 = newhi >= float(C["tech_newhi_atr"])
     ok2 = struct >= float(C["tech_structure_min"]) or not bool(C.get("tech_use_structure", False))
     ok3 = slope >= float(C.get("tech_ema_min_pct", 0.0))
-    tech = bool(ok1 and ok2 and ok3)
+    ok4 = not (r2s and all(r < float(C.get("tech_flat_r2_max", 0.0)) for r in r2s))
+    tech = bool(ok1 and ok2 and ok3 and ok4)
     if tech:
         why = [f"clear uptrend: recent high {newhi:+.1f} ATR vs prior 2.5y high, 30w EMA {slope:+.1f}% in 26w "
                f"({hh}/{nh} HH, {hl}/{nl} HL)"]
@@ -773,6 +793,11 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
         if not ok3:
             why.append(f"sideways / not rising enough: 30w EMA {slope:+.1f}% in 26w "
                        f"(needs >= +{float(C.get('tech_ema_min_pct', 0.0)):g}%)")
+        if not ok4:
+            why.append("multi-year sideways range: log-trend R2 "
+                       + " / ".join(f"{r:.3f}" for r in r2s) + " over "
+                       + " / ".join(f"{w_}w" for w_ in C.get("tech_flat_windows", ()))
+                       + f" (needs >= {float(C['tech_flat_r2_max']):g} in at least one)")
     out.update({"f_technical": tech, "tech_new_high_atr": round(newhi, 2), "tech_hh": f"{hh}/{nh}",
                 "tech_hl": f"{hl}/{nl}", "tech_structure": round(struct, 2),
                 "tech_ema30_slope_pct": round(slope, 1), "tech_ema_rising": bool(ok3),
