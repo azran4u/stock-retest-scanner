@@ -55,8 +55,8 @@ The screen (`stock_screen.py`) still applies these cheap-first for its `reason` 
 
 ### 2.4 Earnings blackout
 - Runs for **every** FinViz ticker (not only survivors of other rules) — `stock_screen.write_universe_data` → `get_next_earnings`.
-- Source: TradingView symbol page HTML (`earnings_release_next_date_fq`, retry/backoff on 429/503) primary; Yahoo/yfinance fallback.
-- **Earnings cache `cache/earn_{TICKER}.json` stores the absolute next earnings DATE** (YYYY-MM-DD, never days). It is **reused until that date has passed**; a past or missing date is refetched. A “no date found” result is cached as a miss and retried after `EARN_MISS_TTL_HOURS` (20h); TradingView rate-limit failures are not cached.
+- Sources (since 2026-10-23, CXW): **all three asked on every fetch** — TradingView symbol page HTML (`earnings_release_next_date_fq`, retry/backoff on 429/503), Yahoo/yfinance (`get_earnings_dates` → `calendar` → `earnings_dates`) and Nasdaq.com (`api.nasdaq.com/api/analyst/T/earnings-date`, Zacks). **Pick** (`stock_screen.pick_earnings_date`): plausible = today ≤ d ≤ today + 190 days (`EARN_MAX_AHEAD_DAYS`); a **company-confirmed** date wins (Nasdaq text “is expected\* to report … after/before market close”, not “estimated … derived from an algorithm”); otherwise the **earliest** plausible date (conservative for the 14-day gate). Each source's answer is stored in the cache (`sources`).
+- **Earnings cache `cache/earn_{TICKER}.json` stores the absolute next earnings DATE** (YYYY-MM-DD, never days) + `source`, `sources`, `fetched_at`. **No longer kept until the date passes** (CXW 2026-10-23: TradingView's projected 2026-11-09 was cached on 09-29 and kept, while CoreCivic confirmed 2026-11-04 on 10-05 → app showed 18 days instead of 12): a cached future date is **re-fetched every `EARN_REFRESH_DAYS` (4) days, and daily (`EARN_NEAR_REFRESH_HOURS` 20h) once it is within `EARN_NEAR_DAYS` (30) days**; if every source fails on a re-check the old date is kept. A past or missing date is refetched. A “no date found” result is cached as a miss and retried after `EARN_MISS_TTL_HOURS` (20h); TradingView rate-limit failures are not cached.
 - `days_to_earnings` in the CSV is as of the report date (drives `status`); the Pages dashboard **recomputes** days-left, `earnings_blackout` and the **no earnings ≤14d** checkbox live from `earnings_date` (Asia/Jerusalem); a date already passed counts as unknown.
 - If known and `0 <= days_to_earnings < 14`, set `earnings_blackout=true` and **fail/skip — it must **not** get `status=PASS` (no drawing or `Grok` watchlist entry).
 - Unknown earnings data remains blank/NaN and must be called out with `earnings_known=false`; do not treat unknown as confirmed earnings-safe.  
@@ -411,7 +411,7 @@ SL clamp constants (`stock_screen.SL_ATR_MIN=0.5`, `SL_ATR_MAX=1.0`) are part of
 - **Ownership** (inst own, short float): bulk from the screener's v=131 view every run (`cache/fv_ownership.json`); yfinance fallback `cache/yfown_{T}.json` (7 days, nulls cached).
 - **Quote page** (`cache/fv_{TICKER}.json`): now used for the exchange only; TTL **30 days** (`FV_TTL_DAYS`). Missing short/inst no longer forces a refetch.
 - **Python env**: routines must start with `/workspace/ensure_env.sh` (recreates `/workspace/srs_pyenv` + the `/workspace/.venv` symlink if a box restart dropped them).
-- **Earnings**: `cache/earn_{TICKER}.json` = `{earnings_date, source, fetched_at}`; the date is reused until it has passed, then refetched (TradingView → Yahoo). Misses retried after 20h (`EARN_MISS_TTL_HOURS`).
+- **Earnings**: `cache/earn_{TICKER}.json` = `{earnings_date, source, sources, fetched_at}`; re-fetched every 4 days (daily within 30 days of the date) from TradingView + Yahoo + Nasdaq; confirmed date wins, else the earliest (see §2.4). Misses retried after 20h (`EARN_MISS_TTL_HOURS`).
 
 ## 15. Fundamentals analysis for graded tickers (2026-10-09)
 

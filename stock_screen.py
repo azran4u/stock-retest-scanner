@@ -8,7 +8,7 @@ import re
 import time
 import json
 import warnings
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Optional, List, Dict, Any, Tuple
@@ -39,7 +39,14 @@ NEAR_ZONE_ATR = 1.0          # soft-score only (not a hard filter)
 MAX_EXT_ABOVE_ATR = 1.0      # legacy soft-score constant; not a hard filter
 PULLBACK_TOUCH_ATR = 0.5     # post-breakout must tag zone (within 0.5 ATR)
 FV_TTL_DAYS = 30             # FinViz quote cache TTL (exchange only; ownership comes from the bulk v=131 screener)
-EARN_MISS_TTL_HOURS = 20     # earnings "no date found" is retried after this (dates: cached until past)
+EARN_MISS_TTL_HOURS = 20     # earnings "no date found" is retried after this
+# Cached future earnings dates are RE-FETCHED (CXW 2026-10-23: TradingView's projected 2026-11-09 was cached on
+# 09-29 and kept until it passed, while the company confirmed 2026-11-04 on 10-05):
+EARN_REFRESH_DAYS = 4        # any cached future date is re-checked at least this often
+EARN_NEAR_DAYS = 30          # ... and daily (EARN_NEAR_REFRESH_HOURS) when it is within this many days
+EARN_NEAR_REFRESH_HOURS = 20
+EARN_MAX_AHEAD_DAYS = 190    # a source date further out than this is not a plausible "next" earnings date
+                             # (190: semiannual reporters still get a date)
 CACHE_DIR = Path("/workspace/cache")
 OUT_CSV = Path("/workspace/stock_screen_results.csv")
 OUT_TXT = Path("/workspace/stock_screen_results.txt")
@@ -969,11 +976,25 @@ def _load_earn_cache(ticker: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def earn_cache_lookup(ticker: str, today: Optional[date] = None) -> Tuple[str, Optional[date]]:
-    """Cache-until-past semantics for the stored absolute next-earnings DATE.
+def _earn_cache_age_hours(data: Dict[str, Any], now: Optional[datetime] = None) -> Optional[float]:
+    fetched_at = data.get("fetched_at") or data.get("earnings_fetched_at")
+    try:
+        ts = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ZoneInfo("UTC"))
+        return ((now or datetime.now(ts.tzinfo)) - ts).total_seconds() / 3600.0
+    except Exception:
+        return None
+
+
+def earn_cache_lookup(ticker: str, today: Optional[date] = None,
+                      now: Optional[datetime] = None) -> Tuple[str, Optional[date]]:
+    """Freshness of the stored absolute next-earnings DATE (since 2026-10-23 no longer cached until past).
 
     Returns (state, date):
-      ("hit", d)    cached earnings_date d >= today  -> reuse, no network
+      ("hit", d)    cached date d >= today AND fetched recently: < EARN_REFRESH_DAYS ago, or
+                    < EARN_NEAR_REFRESH_HOURS ago when d is within EARN_NEAR_DAYS -> reuse, no network
+      ("stale", d)  cached future date due for a re-check (d is the fallback if every source fails)
       ("recent_miss", None)  last fetch found no date < EARN_MISS_TTL_HOURS ago
       ("fetch", None)        missing file, missing date, or cached date < today
     """
@@ -981,34 +1002,81 @@ def earn_cache_lookup(ticker: str, today: Optional[date] = None) -> Tuple[str, O
     data = _load_earn_cache(ticker)
     if not data:
         return "fetch", None
+    age_h = _earn_cache_age_hours(data, now)
     ed = data.get("earnings_date")
     if ed:
         try:
             d = date.fromisoformat(str(ed)[:10])
         except Exception:
             return "fetch", None
-        return ("hit", d) if d >= today else ("fetch", None)
-    fetched_at = data.get("fetched_at") or data.get("earnings_fetched_at")
-    try:
-        ts = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=ZoneInfo("UTC"))
-        age_h = (datetime.now(ts.tzinfo) - ts).total_seconds() / 3600.0
-        if age_h < EARN_MISS_TTL_HOURS:
-            return "recent_miss", None
-    except Exception:
-        pass
+        if d < today:
+            return "fetch", None
+        ttl_h = EARN_NEAR_REFRESH_HOURS if (d - today).days <= EARN_NEAR_DAYS else EARN_REFRESH_DAYS * 24
+        return ("hit", d) if (age_h is not None and 0 <= age_h < ttl_h) else ("stale", d)
+    if age_h is not None and age_h < EARN_MISS_TTL_HOURS:
+        return "recent_miss", None
     return "fetch", None
 
 
+def pick_earnings_date(candidates: Dict[str, Optional[date]], today: date,
+                       confirmed: Optional[set] = None) -> Tuple[Optional[date], str]:
+    """Sources may disagree (a provider's projected date vs the company's confirmed one).
+    Plausible = today <= d <= today + EARN_MAX_AHEAD_DAYS. A CONFIRMED date (source in `confirmed`, e.g. Nasdaq
+    'expected* ... after market close' = company-announced) wins; otherwise the EARLIEST plausible date
+    (conservative for the 14-day gate). Returns (date, source) or (None, "unknown")."""
+    ok = [(d, src) for src, d in candidates.items()
+          if d is not None and today <= d <= today + timedelta(days=EARN_MAX_AHEAD_DAYS)]
+    conf = [x for x in ok if x[1] in (confirmed or set())]
+    pool = conf or ok
+    if not pool:
+        return None, "unknown"
+    d = min(x[0] for x in pool)
+    srcs = sorted(src for x, src in ok if x == d)
+    return d, "+".join(srcs) + (" (confirmed)" if conf else "")
+
+
+_NASDAQ_EARN_URL = "https://api.nasdaq.com/api/analyst/{t}/earnings-date"
+_NASDAQ_DATE_RE = re.compile(r"for\s+[A-Z.\-]+:\s*([A-Z][a-z]{2} \d{1,2}, \d{4})")
+
+
+def nasdaq_earnings_date(ticker: str) -> Tuple[Optional[date], bool]:
+    """Nasdaq.com earnings date (Zacks): (date, confirmed). confirmed = the text says 'is expected* to report'
+    (company-announced, with timing) rather than 'is estimated to report ... derived from an algorithm'."""
+    try:
+        resp = session.get(_NASDAQ_EARN_URL.format(t=ticker.strip().upper().replace("-", ".")),
+                           headers={"User-Agent": UA, "Accept": "application/json", "Origin": "https://www.nasdaq.com",
+                                    "Referer": "https://www.nasdaq.com/"}, timeout=20)
+        if resp.status_code != 200:
+            return None, False
+        d = (resp.json() or {}).get("data") or {}
+    except Exception:
+        return None, False
+    return parse_nasdaq_earnings(d)
+
+
+def parse_nasdaq_earnings(d: Dict[str, Any]) -> Tuple[Optional[date], bool]:
+    m = _NASDAQ_DATE_RE.search(str(d.get("announcement") or ""))
+    if not m:
+        return None, False
+    try:
+        ed = datetime.strptime(m.group(1), "%b %d, %Y").date()
+    except Exception:
+        return None, False
+    text = str(d.get("reportText") or "").lower()
+    return ed, ("expected*" in text or "is expected to report" in text) and "algorithm" not in text
+
+
 def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str,
-                     error: Optional[str] = None) -> None:
-    """Store the absolute next earnings DATE (YYYY-MM-DD) — never days-to-earnings."""
+                     error: Optional[str] = None, sources: Optional[Dict[str, Optional[str]]] = None) -> None:
+    """Store the absolute next earnings DATE (YYYY-MM-DD) — never days-to-earnings.
+    sources = every provider's answer of this fetch ({"tradingview": "2026-11-04", "get_earnings_dates": ...})."""
     payload = {
         "earnings_date": earnings_date,
         "source": source,
         "fetched_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+    if sources:
+        payload["sources"] = sources
     if error:
         payload["error"] = error[:300]
     try:
@@ -1151,12 +1219,13 @@ def _yahoo_next_earnings(
 
 
 def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = False) -> Dict[str, Any]:
-    """Next earnings date: TradingView symbol page primary, Yahoo/yfinance fallback.
+    """Next earnings date from TradingView's symbol page AND Yahoo/yfinance (both asked on every fetch);
+    when they disagree the EARLIEST plausible upcoming date wins (pick_earnings_date).
 
-    Cache: earn_{TICKER}.json stores the absolute next earnings DATE and is reused
-    until that date has passed (earn_cache_lookup); a past or missing date is
-    refetched. A "no date found" result is cached as a miss and retried after
-    EARN_MISS_TTL_HOURS. Both TradingView and Yahoo results are cached.
+    Cache: earn_{TICKER}.json stores the absolute next earnings DATE + each source's answer. A cached future
+    date is reused only while fresh (earn_cache_lookup: re-fetched every EARN_REFRESH_DAYS, daily within
+    EARN_NEAR_DAYS of the date); if every source fails on a re-check the stale cached date is kept.
+    A "no date found" result is cached as a miss and retried after EARN_MISS_TTL_HOURS.
 
     Always returns absolute `earnings_date` (YYYY-MM-DD) when known; `days_to_earnings`
     is derived at fetch time for blackout checks. Reports should persist earnings_date
@@ -1166,10 +1235,11 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     today = today or _local_today()
     errors: List[str] = []
 
-    def _ok(next_date: date, source: str, cached: bool = False) -> Dict[str, Any]:
+    def _ok(next_date: date, source: str, cached: bool = False,
+            sources: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
         days = int((next_date - today).days)
         if not cached:
-            _save_earn_cache(ticker, next_date.isoformat(), source)
+            _save_earn_cache(ticker, next_date.isoformat(), source, sources=sources)
         return {
             "earnings_date": next_date.isoformat(),
             "days_to_earnings": days,
@@ -1179,9 +1249,9 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
             "earnings_cache": "hit" if cached else "fetched",
         }
 
-    # Cache-until-past: a stored future (or today's) date is reused with no network.
+    # A fresh stored future (or today's) date is reused with no network (see earn_cache_lookup).
     state, cached_date = earn_cache_lookup(ticker, today)
-    if state == "hit" and cached_date is not None:
+    if state == "hit" and cached_date is not None and not force:
         src = (_load_earn_cache(ticker) or {}).get("source") or "cache"
         return _ok(cached_date, src, cached=True)
     if state == "recent_miss" and not force:
@@ -1199,23 +1269,43 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     except Exception as exc:
         exchange = None
         errors.append(f"resolve_exchange: {exc}")
+    cands: Dict[str, Optional[date]] = {}
     try:
         tv_date = scrape_tradingview_earnings_date(ticker, exchange=exchange)
-        if tv_date is not None and tv_date >= today:
-            return _ok(tv_date, "tradingview")
+        cands["tradingview"] = tv_date
         if tv_date is not None and tv_date < today:
             errors.append(f"tradingview stale date {tv_date.isoformat()}")
     except Exception as exc:
         errors.append(f"tradingview: {exc}")
 
-    # Fallback: Yahoo / yfinance
+    # Yahoo / yfinance: always asked too (a provider's projected date can be later than the confirmed one)
     try:
         yf_date, yf_source, yf_errors = _yahoo_next_earnings(ticker, today)
         errors.extend(yf_errors)
-        if yf_date is not None:
-            return _ok(yf_date, yf_source)
+        cands[yf_source if yf_date is not None else "yahoo"] = yf_date
     except Exception as exc:
         errors.append(f"yfinance: {exc}")
+
+    confirmed: set = set()
+    try:  # Nasdaq (Zacks): tells company-confirmed dates apart from algorithmic estimates
+        nd, nconf = nasdaq_earnings_date(ticker)
+        cands["nasdaq"] = nd
+        if nd is not None and nconf:
+            confirmed.add("nasdaq")
+    except Exception as exc:
+        errors.append(f"nasdaq: {exc}")
+
+    best, best_src = pick_earnings_date(cands, today, confirmed)
+    if best is not None:
+        srcmap: Dict[str, Optional[str]] = {k: (v.isoformat() if v else None) for k, v in cands.items()}
+        if confirmed:
+            srcmap["confirmed"] = ",".join(sorted(confirmed))
+        return _ok(best, best_src, sources=srcmap)
+    if state == "stale" and cached_date is not None:  # every source failed on a re-check: keep the old date
+        src = (_load_earn_cache(ticker) or {}).get("source") or "cache"
+        out = _ok(cached_date, src, cached=True)
+        out["earnings_cache"] = "stale"
+        return out
 
     err = "; ".join(errors[-3:])
     if getattr(_TV_STATE, "rate_limited", False):
