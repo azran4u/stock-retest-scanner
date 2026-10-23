@@ -14,6 +14,14 @@ export async function loadTv(): Promise<Record<string, TvDrawing>> {
   return r.ok ? r.json() : {};
 }
 
+/** List mini charts: last ~156 weekly closes per ticker, quantized 0..999 between lo and hi (export_data.spark_series). */
+export interface Spark { w0: string; lo: number; hi: number; c: number[] }
+let sparkP: Promise<Record<string, Spark>> | null = null;
+export function loadSpark(): Promise<Record<string, Spark>> {
+  sparkP ??= fetch(BASE + 'spark.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return sparkP;
+}
+
 export function loadDaily(t: string): Promise<Bar[]> {
   let p = candleCache.get(t);
   if (!p) {

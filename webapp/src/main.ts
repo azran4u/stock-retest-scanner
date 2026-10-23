@@ -1,7 +1,7 @@
 import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
-import { atr, loadDaily, loadIndex, loadTv, rr, toWeekly } from './data';
+import { atr, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import type { Bar, Command, Drawing, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -206,7 +206,65 @@ function listInner(rows: Row[]) {
     ? `<li class="addrow"><button class="primary" id="addWatch" data-t="${esc(q)}">★ הוסף ${esc(q)} למעקב</button><div class="muted small">לא ברשימת המועמדים. נרות יתווספו בריצה הלילית.</div></li>` : '';
   return add + (rows.map(rowHtml).join('') || (add ? '' : '<li class="muted center">אין תוצאות</li>'));
 }
+// ---------------- list mini charts (3y weekly closes, drawn lazily when a row scrolls into view) ----------------
+let sparks: Record<string, Spark> | null = null;
+let sparkIO: IntersectionObserver | null = null;
+function drawSpark(cv: HTMLCanvasElement) {
+  if (!sparks) return;
+  const t = cv.dataset.spark!, sp = sparks[t];
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!sp || !W || !H) { cv.classList.toggle('empty', !sp); return; }
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+  cv.dataset.drawn = '1';
+  const px = sp.c.map((q) => sp.lo + (q / 999) * (sp.hi - sp.lo));
+  // zone band + entry line of the ticker's drawings (zone / long), scale stretched to include them
+  const ds = userDrawings(t).filter((d) => d.status !== 'rejected');
+  const zone = ds.find((d) => d.kind === 'zone' && d.zone_top != null && d.zone_bottom != null);
+  const long = ds.find((d) => d.kind === 'long' && d.entry != null);
+  const lv = [sp.lo, sp.hi];
+  if (zone) lv.push(+zone.zone_top!, +zone.zone_bottom!);
+  if (long) lv.push(+long.entry!);
+  let lo = Math.min(...lv), hi = Math.max(...lv);
+  const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
+  const padL = 2, padR = 2, top = 2, bot = H - 2;
+  const X = (i: number) => padL + (i / Math.max(1, px.length - 1)) * (W - padL - padR);
+  const Y = (p: number) => bot - ((p - lo) / (hi - lo)) * (bot - top);
+  if (zone) {
+    const y1 = Y(+zone.zone_top!), y2 = Y(+zone.zone_bottom!);
+    g.fillStyle = zone.source === 'bot' ? 'rgba(255,152,0,.28)' : 'rgba(41,98,255,.34)';
+    g.fillRect(0, Math.min(y1, y2), W, Math.max(1.5, Math.abs(y2 - y1)));
+  }
+  const up = px[px.length - 1] >= px[0];
+  const col = up ? '38,166,154' : '239,83,80';
+  g.beginPath(); px.forEach((p, i) => (i ? g.lineTo(X(i), Y(p)) : g.moveTo(X(i), Y(p))));
+  g.strokeStyle = `rgb(${col})`; g.lineWidth = 1.3; g.lineJoin = 'round'; g.stroke();
+  g.lineTo(X(px.length - 1), bot); g.lineTo(X(0), bot); g.closePath();
+  const grad = g.createLinearGradient(0, top, 0, bot); grad.addColorStop(0, `rgba(${col},.28)`); grad.addColorStop(1, `rgba(${col},0)`);
+  g.fillStyle = grad; g.fill();
+  if (long) {
+    const y = Y(+long.entry!); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(209,212,220,.75)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.setLineDash([]);
+  }
+  // min / max labels (3y weekly-close range)
+  const f = (x: number) => (x >= 100 ? x.toFixed(0) : x.toFixed(2));
+  g.direction = 'ltr'; g.textAlign = 'left'; g.font = '9px -apple-system, Arial, sans-serif'; g.textBaseline = 'top'; g.fillStyle = 'rgba(178,181,190,.85)';
+  g.fillText(f(sp.hi), 3, 1); g.textBaseline = 'bottom'; g.fillText(f(sp.lo), 3, H - 1);
+}
+function observeSparks() {
+  const els = app.querySelectorAll<HTMLCanvasElement>('canvas.spark');
+  if (!els.length) return;
+  if (!sparks) { loadSpark().then((s) => { sparks = s; observeSparks(); }); return; }
+  sparkIO?.disconnect();
+  sparkIO = new IntersectionObserver((ents) => ents.forEach((e) => {
+    if (e.isIntersecting) { drawSpark(e.target as HTMLCanvasElement); sparkIO?.unobserve(e.target); }
+  }), { rootMargin: '300px 0px' });
+  els.forEach((c) => sparkIO!.observe(c));
+}
+
 function bindRows() {
+  observeSparks();
   const aw = $('#addWatch') as HTMLButtonElement | null;
   if (aw) aw.onclick = async () => { const t = aw.dataset.t!; await toggleWatch(t); S.ui.q = ''; saveUi(); location.hash = '#/t/' + t; };
   app.querySelectorAll<HTMLButtonElement>('.row .star').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleWatch(b.dataset.star!); }));
@@ -228,6 +286,7 @@ function rowHtml(r: Row) {
   return `<li class="row" data-t="${esc(r.ticker)}">
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
+    <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     <div class="r3 muted small" dir="ltr">${r.tv_rr != null ? `R:R ${fmt(r.tv_rr)}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
   </li>`;
 }

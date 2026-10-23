@@ -117,3 +117,7 @@ header.ch { position: static; padding: calc(4px + var(--safe-t)) 4px 4px; }
   background: #131722; color: #b2b5be; font: 9px/1.05 -apple-system, Arial, sans-serif; text-align: center; overflow: hidden; border-top: 1px solid #2a2e39; border-left: 1px solid #2a2e39; }
 .atrw span { color: #787b86; font-size: 8.5px; }
 .atrw b { color: #f7c948; font-weight: 600; font-size: 10.5px; }
+
+/* list mini chart: 3y weekly closes */
+canvas.spark { display: block; width: 100%; height: 64px; margin: 4px 0 2px; border-radius: 6px; background: rgba(30,34,45,.55); }
+canvas.spark.empty { height: 0; margin: 0; }

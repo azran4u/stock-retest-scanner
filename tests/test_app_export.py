@@ -47,3 +47,14 @@ def test_other_inclusion_reasons_unchanged(tmp_path):
 def test_hammer_ok_string_flags():
     assert hammer_ok({"f_last_week_reversal": "True", "f_dollar_vol": "True", "f_history": "True", "f_no_earnings_14d": "True"})
     assert not hammer_ok({"f_last_week_reversal": "True", "f_dollar_vol": "True", "f_history": "True", "f_no_earnings_14d": float("nan")})
+
+
+def test_spark_series_weekly_quantized():
+    from srs_app.export_data import spark_series, SPARK_Q
+    idx = pd.bdate_range("2022-01-03", periods=900)
+    d = pd.DataFrame({"Close": [10 + i * 0.01 for i in range(900)]}, index=idx)
+    sp = spark_series(d, weeks=156)
+    assert len(sp["c"]) == 156
+    assert sp["c"][-1] == SPARK_Q and min(sp["c"]) == 0 and sp["c"] == sorted(sp["c"])
+    assert sp["hi"] == round(10 + 899 * 0.01, 2)
+    assert spark_series(d.iloc[:3]) is None

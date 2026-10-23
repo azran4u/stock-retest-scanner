@@ -4,6 +4,7 @@ Writes, relative to the repo root:
   app/data/index.json          candidate list (badges + key levels) from historical-reports/latest.csv
   app/data/tv_drawings.json    read-only TradingView drawings (source 'tv') from /workspace/stock-screener/tv_drawings.json
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
+  app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) closes per exported ticker, quantized
 
 Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
              ∪ any TradingView drawing found ∪ open positions.
@@ -28,6 +29,8 @@ import pandas as pd
 HIST_CACHE = Path(os.environ.get("SRS_HIST_CACHE", "/workspace/hist_cache.pkl"))
 TV_DRAWINGS = Path(os.environ.get("SRS_TV_DRAWINGS", "/workspace/stock-screener/tv_drawings.json"))
 YEARS = 5
+SPARK_WEEKS = 156  # ~3 years of weekly closes for the list mini chart
+SPARK_Q = 999      # closes quantized to 0..SPARK_Q between lo and hi (keeps spark.json small)
 
 INDEX_COLS = [
     "ticker", "status", "current_price", "dollar_vol_30d", "days_to_earnings", "earnings_date",
@@ -153,6 +156,20 @@ def _download_missing(tickers: List[str]) -> Dict[str, pd.DataFrame]:
     return out
 
 
+def spark_series(daily: pd.DataFrame, weeks: int = SPARK_WEEKS) -> Optional[Dict[str, Any]]:
+    """Weekly (W-FRI) closes of the last `weeks` weeks: {w0: first week end, lo, hi, c: [0..SPARK_Q]}."""
+    if daily is None or daily.empty or "Close" not in daily:
+        return None
+    wk = daily["Close"].dropna().resample("W-FRI").last().dropna().iloc[-weeks:]
+    if len(wk) < 2:
+        return None
+    lo, hi = float(wk.min()), float(wk.max())
+    dec = 2 if lo >= 1 else 4
+    span = (hi - lo) or 1.0
+    return {"w0": wk.index[0].strftime("%Y-%m-%d"), "lo": round(lo, dec), "hi": round(hi, dec),
+            "c": [int(round((float(v) - lo) / span * SPARK_Q)) for v in wk.values]}
+
+
 def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None) -> int:
     hist = dict(pd.read_pickle(HIST_CACHE))
     miss = [t for t in (fetch_missing or []) if hist.get(t) is None or getattr(hist.get(t), "empty", True)]
@@ -162,6 +179,7 @@ def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[s
     cutoff = pd.Timestamp(datetime.now() - timedelta(days=int(365.25 * YEARS)))
     n = 0
     wanted = set(tickers)
+    spark: Dict[str, Any] = {}
     for t in tickers:
         df = hist.get(t)
         if df is None or getattr(df, "empty", True):
@@ -180,7 +198,11 @@ def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[s
             bars.append([ts.strftime("%Y-%m-%d"), *[round(x, dec) for x in px],
                          int(r["Volume"]) if not pd.isna(r["Volume"]) else 0])
         (cdir / f"{t}.json").write_text(json.dumps({"t": t, "d": bars}, separators=(",", ":")))
+        sp = spark_series(d)
+        if sp:
+            spark[t] = sp
         n += 1
+    (out / "spark.json").write_text(json.dumps(spark, separators=(",", ":")))
     # drop files for tickers no longer exported
     for f in cdir.glob("*.json"):
         if f.stem not in wanted:
