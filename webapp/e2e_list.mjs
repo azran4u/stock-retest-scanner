@@ -21,7 +21,7 @@ const total = await page.locator('canvas.spark').count();
 const first = await drawn();
 ok(total > 50 && first.length > 0 && first.length < total, `lazy: ${first.length} of ${total} mini charts drawn on first screen`);
 const cw = await page.locator('canvas.spark').first().boundingBox();
-ok(cw.width > 340 && cw.height >= 60 && cw.height <= 80, `mini chart size ${cw.width.toFixed(0)}x${cw.height.toFixed(0)}`);
+ok(cw.width > 340 && cw.height >= 110 && cw.height <= 140, `mini chart size ${cw.width.toFixed(0)}x${cw.height.toFixed(0)}`);
 // pixels actually painted
 const painted = await page.evaluate(() => { const c = document.querySelector('canvas.spark'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
 ok(painted > 500, `mini chart painted (${painted} px)`);
@@ -43,6 +43,7 @@ await page.locator('.row canvas.spark').first().tap();
 await page.waitForSelector('#chart canvas');
 ok((await page.locator('#tk').textContent()) === t, `tapping the mini chart opens ${t}`);
 await page.click('#back'); await page.waitForSelector('.row');
+await page.waitForFunction(() => [...document.querySelectorAll('canvas.spark')].some((c) => c.dataset.drawn), null, { timeout: 5000 }).catch(() => {});
 ok((await drawn()).length > 0, 'mini charts drawn again after returning');
 ok(errors.length === 0, 'no console errors ' + JSON.stringify(errors));
 await browser.close();

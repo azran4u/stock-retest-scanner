@@ -49,12 +49,17 @@ def test_hammer_ok_string_flags():
     assert not hammer_ok({"f_last_week_reversal": "True", "f_dollar_vol": "True", "f_history": "True", "f_no_earnings_14d": float("nan")})
 
 
-def test_spark_series_weekly_quantized():
+def test_spark_series_weekly_ohlc():
+    import base64
     from srs_app.export_data import spark_series, SPARK_Q
     idx = pd.bdate_range("2022-01-03", periods=900)
-    d = pd.DataFrame({"Close": [10 + i * 0.01 for i in range(900)]}, index=idx)
+    c = pd.Series([10 + i * 0.01 for i in range(900)], index=idx)
+    d = pd.DataFrame({"Open": c - 0.005, "High": c + 0.02, "Low": c - 0.02, "Close": c})
     sp = spark_series(d, weeks=156)
-    assert len(sp["c"]) == 156
-    assert sp["c"][-1] == SPARK_Q and min(sp["c"]) == 0 and sp["c"] == sorted(sp["c"])
-    assert sp["hi"] == round(10 + 899 * 0.01, 2)
+    q = base64.b64decode(sp["q"])
+    assert sp["n"] == 156 and len(q) == 156 * 4
+    o, h, l, cl = q[0::4], q[1::4], q[2::4], q[3::4]
+    assert min(l) == 0 and max(h) == SPARK_Q
+    assert all(h[i] >= max(o[i], cl[i]) and l[i] <= min(o[i], cl[i]) for i in range(156))
+    assert list(cl) == sorted(cl)
     assert spark_series(d.iloc[:3]) is None

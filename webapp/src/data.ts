@@ -14,8 +14,19 @@ export async function loadTv(): Promise<Record<string, TvDrawing>> {
   return r.ok ? r.json() : {};
 }
 
-/** List mini charts: last ~156 weekly closes per ticker, quantized 0..999 between lo and hi (export_data.spark_series). */
-export interface Spark { w0: string; lo: number; hi: number; c: number[] }
+/** List mini charts: last ~156 weekly OHLC candles per ticker (export_data.spark_series).
+ *  q = base64 of n*4 bytes (o,h,l,c per week), each quantized 0..255 between lo and hi. */
+export interface Spark { w0: string; lo: number; hi: number; n: number; q: string }
+export interface SparkBars { lo: number; hi: number; o: number[]; h: number[]; l: number[]; c: number[] }
+export function decodeSpark(sp: Spark): SparkBars {
+  const b = atob(sp.q), k = (sp.hi - sp.lo) / 255;
+  const o: number[] = [], h: number[] = [], l: number[] = [], c: number[] = [];
+  for (let i = 0; i + 3 < b.length; i += 4) {
+    o.push(sp.lo + b.charCodeAt(i) * k); h.push(sp.lo + b.charCodeAt(i + 1) * k);
+    l.push(sp.lo + b.charCodeAt(i + 2) * k); c.push(sp.lo + b.charCodeAt(i + 3) * k);
+  }
+  return { lo: sp.lo, hi: sp.hi, o, h, l, c };
+}
 let sparkP: Promise<Record<string, Spark>> | null = null;
 export function loadSpark(): Promise<Record<string, Spark>> {
   sparkP ??= fetch(BASE + 'spark.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));

@@ -1,7 +1,7 @@
 import './styles.css';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
-import { atr, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import type { Bar, Command, Drawing, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -218,39 +218,44 @@ function drawSpark(cv: HTMLCanvasElement) {
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   const g = cv.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   cv.dataset.drawn = '1';
-  const px = sp.c.map((q) => sp.lo + (q / 999) * (sp.hi - sp.lo));
+  const B = decodeSpark(sp), n = B.c.length;
   // zone band + entry line of the ticker's drawings (zone / long), scale stretched to include them
   const ds = userDrawings(t).filter((d) => d.status !== 'rejected');
   const zone = ds.find((d) => d.kind === 'zone' && d.zone_top != null && d.zone_bottom != null);
   const long = ds.find((d) => d.kind === 'long' && d.entry != null);
-  const lv = [sp.lo, sp.hi];
+  const lv = [B.lo, B.hi];
   if (zone) lv.push(+zone.zone_top!, +zone.zone_bottom!);
   if (long) lv.push(+long.entry!);
   let lo = Math.min(...lv), hi = Math.max(...lv);
-  const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
-  const padL = 2, padR = 2, top = 2, bot = H - 2;
-  const X = (i: number) => padL + (i / Math.max(1, px.length - 1)) * (W - padL - padR);
+  const pad = (hi - lo) * 0.04 || 1; lo -= pad; hi += pad;
+  const top = 2, bot = H - 2, padL = 1, padR = 1;
+  const step = (W - padL - padR) / n;             // ~2.3px per week at 390px
+  const bw = Math.max(1, step - 0.5);              // body width, ~0.5px gap
   const Y = (p: number) => bot - ((p - lo) / (hi - lo)) * (bot - top);
   if (zone) {
     const y1 = Y(+zone.zone_top!), y2 = Y(+zone.zone_bottom!);
-    g.fillStyle = zone.source === 'bot' ? 'rgba(255,152,0,.28)' : 'rgba(41,98,255,.34)';
+    g.fillStyle = zone.source === 'bot' ? 'rgba(255,152,0,.22)' : 'rgba(41,98,255,.26)';
     g.fillRect(0, Math.min(y1, y2), W, Math.max(1.5, Math.abs(y2 - y1)));
   }
-  const up = px[px.length - 1] >= px[0];
-  const col = up ? '38,166,154' : '239,83,80';
-  g.beginPath(); px.forEach((p, i) => (i ? g.lineTo(X(i), Y(p)) : g.moveTo(X(i), Y(p))));
-  g.strokeStyle = `rgb(${col})`; g.lineWidth = 1.3; g.lineJoin = 'round'; g.stroke();
-  g.lineTo(X(px.length - 1), bot); g.lineTo(X(0), bot); g.closePath();
-  const grad = g.createLinearGradient(0, top, 0, bot); grad.addColorStop(0, `rgba(${col},.28)`); grad.addColorStop(1, `rgba(${col},0)`);
-  g.fillStyle = grad; g.fill();
+  for (let i = 0; i < n; i++) {
+    const up = B.c[i] >= B.o[i];
+    g.fillStyle = up ? '#26a69a' : '#ef5350';
+    const x = padL + i * step, cx = Math.round((x + bw / 2) * 2) / 2;
+    const yh = Y(B.h[i]), yl = Y(B.l[i]);
+    g.fillRect(cx - 0.25, yh, 0.5, Math.max(0.5, yl - yh));                 // wick
+    const yo = Y(B.o[i]), yc = Y(B.c[i]);
+    g.fillRect(x, Math.min(yo, yc), bw, Math.max(0.8, Math.abs(yc - yo)));  // body
+  }
   if (long) {
-    const y = Y(+long.entry!); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(209,212,220,.75)'; g.lineWidth = 1;
+    const y = Y(+long.entry!); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(209,212,220,.8)'; g.lineWidth = 1;
     g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.setLineDash([]);
   }
-  // min / max labels (3y weekly-close range)
+  // min / max labels (3y weekly range)
   const f = (x: number) => (x >= 100 ? x.toFixed(0) : x.toFixed(2));
-  g.direction = 'ltr'; g.textAlign = 'left'; g.font = '9px -apple-system, Arial, sans-serif'; g.textBaseline = 'top'; g.fillStyle = 'rgba(178,181,190,.85)';
-  g.fillText(f(sp.hi), 3, 1); g.textBaseline = 'bottom'; g.fillText(f(sp.lo), 3, H - 1);
+  g.direction = 'ltr'; g.textAlign = 'left'; g.font = '9px -apple-system, Arial, sans-serif';
+  g.fillStyle = 'rgba(19,23,34,.7)'; g.fillRect(1, 1, f(B.hi).length * 5.4 + 4, 11); g.fillRect(1, H - 12, f(B.lo).length * 5.4 + 4, 11);
+  g.fillStyle = 'rgba(178,181,190,.9)'; g.textBaseline = 'top'; g.fillText(f(B.hi), 3, 2);
+  g.textBaseline = 'bottom'; g.fillText(f(B.lo), 3, H - 2);
 }
 function observeSparks() {
   const els = app.querySelectorAll<HTMLCanvasElement>('canvas.spark');

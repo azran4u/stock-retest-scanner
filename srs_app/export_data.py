@@ -4,7 +4,7 @@ Writes, relative to the repo root:
   app/data/index.json          candidate list (badges + key levels) from historical-reports/latest.csv
   app/data/tv_drawings.json    read-only TradingView drawings (source 'tv') from /workspace/stock-screener/tv_drawings.json
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
-  app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) closes per exported ticker, quantized
+  app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) OHLC candles per exported ticker, 1 byte/value
 
 Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
              ∪ any TradingView drawing found ∪ open positions.
@@ -30,7 +30,7 @@ HIST_CACHE = Path(os.environ.get("SRS_HIST_CACHE", "/workspace/hist_cache.pkl"))
 TV_DRAWINGS = Path(os.environ.get("SRS_TV_DRAWINGS", "/workspace/stock-screener/tv_drawings.json"))
 YEARS = 5
 SPARK_WEEKS = 156  # ~3 years of weekly closes for the list mini chart
-SPARK_Q = 999      # closes quantized to 0..SPARK_Q between lo and hi (keeps spark.json small)
+SPARK_Q = 255      # OHLC quantized to one byte between lo and hi (keeps spark.json small)
 
 INDEX_COLS = [
     "ticker", "status", "current_price", "dollar_vol_30d", "days_to_earnings", "earnings_date",
@@ -157,17 +157,24 @@ def _download_missing(tickers: List[str]) -> Dict[str, pd.DataFrame]:
 
 
 def spark_series(daily: pd.DataFrame, weeks: int = SPARK_WEEKS) -> Optional[Dict[str, Any]]:
-    """Weekly (W-FRI) closes of the last `weeks` weeks: {w0: first week end, lo, hi, c: [0..SPARK_Q]}."""
-    if daily is None or daily.empty or "Close" not in daily:
+    """Weekly (W-FRI) OHLC of the last `weeks` weeks for the list mini candlestick chart:
+    {w0: first week end, lo, hi, n, q: base64 of n*4 bytes (o,h,l,c per week, each quantized 0..255 between lo and hi)}."""
+    import base64
+    need = {"Open", "High", "Low", "Close"}
+    if daily is None or daily.empty or not need.issubset(daily.columns):
         return None
-    wk = daily["Close"].dropna().resample("W-FRI").last().dropna().iloc[-weeks:]
+    d = daily[list(need)].dropna()
+    wk = d.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last"}).dropna().iloc[-weeks:]
     if len(wk) < 2:
         return None
-    lo, hi = float(wk.min()), float(wk.max())
+    lo, hi = float(wk["Low"].min()), float(wk["High"].max())
     dec = 2 if lo >= 1 else 4
     span = (hi - lo) or 1.0
-    return {"w0": wk.index[0].strftime("%Y-%m-%d"), "lo": round(lo, dec), "hi": round(hi, dec),
-            "c": [int(round((float(v) - lo) / span * SPARK_Q)) for v in wk.values]}
+    q = bytearray()
+    for o, h, l, c in wk[["Open", "High", "Low", "Close"]].itertuples(index=False):
+        q += bytes(max(0, min(SPARK_Q, int(round((float(v) - lo) / span * SPARK_Q)))) for v in (o, h, l, c))
+    return {"w0": wk.index[0].strftime("%Y-%m-%d"), "lo": round(lo, dec), "hi": round(hi, dec), "n": len(wk),
+            "q": base64.b64encode(bytes(q)).decode()}
 
 
 def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None) -> int:
