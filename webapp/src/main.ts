@@ -50,11 +50,11 @@ async function guard<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 const BADGES: Record<string, [string, string]> = {
   pass: ['PASS', 'b-pass'], waiting: ['ממתינה לסגירה', 'b-wait'], needs_drawing: ['צריך שרטוט', 'b-need'], review: ['לבדיקה', 'b-review'],
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
-  watch: ['מעקב', 'b-watch'], ni: ['לא מעניינת', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
+  watch: ['מעקב', 'b-watch'], ni: ['לא מתאימה לשיטה', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
 const CHIPS: [string, string][] = [
   ['all', 'הכל'], ['pass', 'PASS'], ['waiting', 'ממתינה לסגירה'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
-  ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מעניינות'],
+  ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מתאימות לשיטה'],
 ];
 /** WAIT (Eyal 2026-10-23 / 2026-10-24): last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH) -> wait for the next weekly close */
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
@@ -178,13 +178,47 @@ async function toggleWatch(t: string) {
   if (isWatched(t)) { S.watch.delete(t); refreshViews(); await guard(api.removeWatch(t), 'הוסר מהמעקב'); }
   else { S.watch.set(t, { ticker: t, note: null }); refreshViews(); await guard(api.addWatch(t), 'נוסף למעקב ★'); }
 }
-async function setNi(t: string, weeks: number | null, on: boolean) {
-  let until: string | null = null;
-  if (on && weeks) { const d = new Date(today() + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + weeks * 7); until = d.toISOString().slice(0, 10); }
-  const l: Label = { ticker: t, label: 'not_interesting', value: on ? 'yes' : 'no', note: null, asof: today(), until, created_at: new Date().toISOString() };
+/** 'לא מתאימה לשיטה' (Eyal 2026-10-24: merges 'לא מעניינת' + 'לא טכנית'). Stored as the existing label
+ *  `not_interesting` (value yes, until = return date) so the nightly exclusions keep working; note = 'unfit' or
+ *  'unfit: <reason>' marks the merged kind (sync.unfit_marks reads it as a "doesn't fit / not technical" verdict too). */
+const UNFIT_WEEKS = [4, 8, 12, 26];
+const addDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+async function setNi(t: string, weeks: number | null, on: boolean, untilDate?: string | null, reason?: string) {
+  const until = on ? (untilDate || addDays(today(), 7 * (weeks || 8))) : null;
+  const note = on ? (reason?.trim() ? `unfit: ${reason.trim()}` : 'unfit') : null;
+  const l: Label = { ticker: t, label: 'not_interesting', value: on ? 'yes' : 'no', note, asof: today(), until, created_at: new Date().toISOString() };
   S.labels = S.labels.filter((x) => !(x.ticker === t && x.label === l.label && x.asof === l.asof)); S.labels.push(l);
+  unfitOpen = false;
   refreshViews();
-  await guard(api.upsertLabel(l), on ? 'סומן לא מעניינת' : 'בוטל סימון');
+  await guard(api.upsertLabel(l), on ? `לא מתאימה לשיטה · חוזרת ב-${ddmm(until)}` : 'חזרה לרשימה');
+}
+let unfitOpen = false;
+/** status line + undo when marked; else duration picks (default 8 weeks) + custom date + optional reason */
+function unfitHtml(t: string): string {
+  const l = latestLabel(t, 'not_interesting');
+  if (isNi(t)) {
+    const days = l?.until ? Math.round((Date.parse(l.until) - Date.parse(today())) / 864e5) : null;
+    const why = l?.note && l.note.startsWith('unfit: ') ? l.note.slice(7) : '';
+    return `<div class="unfit on"><span class="badge b-ni" id="unfitState">לא מתאימה לשיטה${l?.until ? ` · חוזרת ב-${ddmm(l.until)}${days != null ? ` (עוד ${days} ימים)` : ''}` : ' · ללא תאריך חזרה'}</span>
+      ${why ? `<span class="muted small">${esc(why)}</span>` : ''}<button id="niOff" class="ok small">החזר עכשיו</button></div>`;
+  }
+  const w = UNFIT_WEEKS.includes(S.ui.niWeeks) ? S.ui.niWeeks : 8;
+  return `<div class="unfit"><div class="row2 wk">${UNFIT_WEEKS.map((n) => `<button class="wkb ${n === w ? 'on' : ''}" data-w="${n}">${n} ש׳</button>`).join('')}
+      <label class="small muted">או עד <input id="unfitDate" type="date" dir="ltr" min="${addDays(today(), 1)}"/></label></div>
+    <div class="row2"><input id="unfitWhy" class="grow" placeholder="סיבה (לא חובה)"/><button id="niOn" class="bad">לא מתאימה לשיטה</button></div>
+    <div class="muted small" id="unfitWhen">תחזור לרשימה ב-${ddmm(addDays(today(), 7 * w))}</div></div>`;
+}
+function bindUnfit(root: ParentNode, t: string) {
+  const sel = () => +(($('.wkb.on', root) as HTMLElement | null)?.dataset.w || 8);
+  const when = () => { const d = ($('#unfitDate', root) as HTMLInputElement | null)?.value; const e = $('#unfitWhen', root); if (e) e.textContent = `תחזור לרשימה ב-${ddmm(d || addDays(today(), 7 * sel()))}`; };
+  root.querySelectorAll<HTMLButtonElement>('.wkb').forEach((b) => (b.onclick = () => {
+    root.querySelectorAll('.wkb').forEach((x) => x.classList.toggle('on', x === b));
+    const di = $('#unfitDate', root) as HTMLInputElement | null; if (di) di.value = '';
+    S.ui.niWeeks = +b.dataset.w!; saveUi(); when();
+  }));
+  const di = $('#unfitDate', root) as HTMLInputElement | null; if (di) di.onchange = when;
+  const on = $('#niOn', root); if (on) on.onclick = () => setNi(t, sel(), true, di?.value || null, ($('#unfitWhy', root) as HTMLInputElement | null)?.value);
+  const off = $('#niOff', root); if (off) off.onclick = () => setNi(t, null, false);
 }
 function refreshViews() {
   if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
@@ -477,6 +511,7 @@ function rowHtml(r: Row) {
     mine.length ? `<span class="badge b-mine">✎ ${mine.length}</span>` : '',
     tech ? `<span class="badge ${tech.value === 'yes' ? 'b-pass' : 'b-obs'}">${tech.value === 'yes' ? 'טכנית' : 'לא טכנית'}</span>` : '',
     pend ? `<span class="badge b-review">⌛ ${pend}</span>` : '',
+    isNi(r.ticker) && latestLabel(r.ticker, 'not_interesting')?.until ? `<span class="muted small">חוזרת ב-${ddmm(latestLabel(r.ticker, 'not_interesting')!.until)}</span>` : '',
   ].join('');
   return `<li class="row" data-t="${esc(r.ticker)}">
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
@@ -517,6 +552,7 @@ function shell() {
       <button id="prev" class="ghost icon" aria-label="הקודם">‹</button>
       <button id="next" class="ghost icon" aria-label="הבא">›</button>
     </header>
+    <div id="unfitPop" class="unfitpop" hidden></div>
     <div id="chart" class="chartwrap" dir="ltr"><div id="nodata" class="nodata" hidden>אין עדיין נתוני נרות למניה הזו.<br/>הם יתווספו בריצה הלילית הבאה.</div></div>
     <div class="tools" id="tools">
       <div class="seg"><button data-tf="W">שבועי</button><button data-tf="D">יומי</button></div>
@@ -550,7 +586,7 @@ function shell() {
   });
   $('#back')!.onclick = () => { location.hash = '#/'; };
   $('#star')!.onclick = () => S.ticker && toggleWatch(S.ticker);
-  $('#niBtn')!.onclick = () => { if (!S.ticker) return; isNi(S.ticker) ? setNi(S.ticker, null, false) : setNi(S.ticker, S.ui.niWeeks ?? 8, true); };
+  $('#niBtn')!.onclick = () => { if (!S.ticker) return; unfitOpen = !unfitOpen; renderUnfitPop(); };
   $('#prev')!.onclick = () => go(-1);
   $('#next')!.onclick = () => go(1);
   app.querySelectorAll<HTMLButtonElement>('[data-tf]').forEach((b) => (b.onclick = () => { S.ui.tf = b.dataset.tf as 'W' | 'D'; saveUi(); applyBars(); }));
@@ -707,6 +743,14 @@ async function openTicker(t: string) {
   for (const d of [1, -1] as const) { const n = neighbor(d); if (n) loadDaily(n).catch(() => {}); }
 }
 
+function renderUnfitPop() {
+  const p = $('#unfitPop'); if (!p) return;
+  p.hidden = !unfitOpen || !S.ticker;
+  if (p.hidden) return;
+  p.innerHTML = `<div class="row2"><b>לא מתאימה לשיטה</b><button id="unfitClose" class="ghost small" aria-label="סגור">✕</button></div>${unfitHtml(S.ticker!)}`;
+  bindUnfit(p, S.ticker!);
+  $('#unfitClose', p)!.onclick = () => { unfitOpen = false; renderUnfitPop(); };
+}
 function renderHeader() {
   const t = S.ticker; if (!t) return;
   const r = S.byT.get(t) || allRows().find((x) => x.ticker === t) || { ticker: t, status: '', badges: [] };
@@ -715,6 +759,7 @@ function renderHeader() {
   $('#tkb')!.innerHTML = badgesOf(r as Row).filter((b) => b !== 'watch').map(badgeHtml).join('');
   const st = $('#star')!; st.textContent = isWatched(t) ? '★' : '☆'; st.classList.toggle('on', isWatched(t));
   $('#niBtn')!.classList.toggle('on', isNi(t));
+  renderUnfitPop();
 }
 
 function applyBars() {
@@ -880,44 +925,48 @@ function refreshLive() {
 }
 
 // ---------------- panel ----------------
-function numInput(d: Drawing, f: keyof Drawing, label: string, ro: boolean) {
-  return `<label class="ni"><span>${label}</span><input dir="ltr" type="number" inputmode="decimal" step="0.01" data-f="${f}" value="${d[f] ?? ''}" ${ro ? 'disabled' : ''}/></label>`;
-}
-function dateInput(d: Drawing, f: 't_start' | 't_end', label: string, ro: boolean) {
-  return `<label class="ni"><span>${label}</span><input dir="ltr" type="date" data-f="${f}" value="${d[f] ?? ''}" ${ro ? 'disabled' : ''}/></label>`;
-}
 function rrText(d: Pick<Drawing, 'entry' | 'stop' | 'target'>) {
   const q = rr(d.entry, d.stop, d.target);
   return q == null ? 'R:R —' : `R:R ${q.toFixed(2)}`;
 }
+/** Eyal 2026-10-24: "you can remove the zone and Long section, I edit them from the chart" - no level / date inputs any
+ *  more; each drawing is one compact read-only line (tap = select it on the chart for dragging) + its remaining actions
+ *  (approve / reject / reopen, delete, bot feedback behind 'משוב'). */
+function levelsText(d: Drawing): string {
+  if (d.kind === 'zone') return `${fmt(d.zone_bottom)}–${fmt(d.zone_top)}`;
+  if (d.kind === 'long') return `E ${fmt(d.entry)} · SL ${fmt(d.stop)} · TP ${fmt(d.target)}`;
+  return fmt(d.entry);
+}
 function cardHtml(d: Drawing) {
   const bot = d.source === 'bot';
-  const ro = false;
   const st = { active: bot ? 'פעיל (מאושר אוטומטית)' : 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
   const kind = { zone: 'אזור', long: 'לונג', line: 'קו', note: 'הערה' }[d.kind];
-  let body = '';
-  if (d.kind === 'zone') body = numInput(d, 'zone_top', 'עליון', ro) + numInput(d, 'zone_bottom', 'תחתון', ro) + dateInput(d, 't_start', 'מתאריך', ro);
-  else if (d.kind === 'long') body = numInput(d, 'entry', 'כניסה', ro) + numInput(d, 'stop', 'סטופ', ro) + numInput(d, 'target', 'יעד', ro) + dateInput(d, 't_start', 'מתאריך', ro) + dateInput(d, 't_end', 'עד תאריך', ro);
-  else if (d.kind === 'line') body = numInput(d, 'entry', 'מחיר', ro);
-  const risk = d.kind === 'long' && d.entry != null && d.stop != null ? `<span class="muted small" dir="ltr">risk ${fmt(+d.entry - +d.stop)}</span>` : '';
-  return `<div class="card ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
-    <div class="ch1"><b>${kind}</b> <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : d.meta?.bot_before ? 'שלי (מבוט)' : 'שלי'}</span> <span class="badge">${st}</span>
-      ${d.kind === 'long' ? `<b class="rr" dir="ltr">${rrText(d)}</b> ${risk}` : ''}
-      <button class="ghost small selbtn">${d.id === S.selected ? 'בטל בחירה' : 'בחר / גרור'}</button></div>
-    <div class="grid">${body}</div>
+  const fb = feedbackHtml(d);
+  return `<div class="card dline ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
+    <div class="ch1">
+      <button class="ghost selbtn dsum" title="${d.id === S.selected ? 'בטל בחירה' : 'בחר על הגרף לגרירה'}"><b>${kind}</b> <bdi class="lv" dir="ltr">${levelsText(d)}</bdi>${d.kind === 'long' ? ` <b class="rr" dir="ltr">${rrText(d)}</b>` : ''}</button>
+      <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : d.meta?.bot_before ? 'שלי (מבוט)' : 'שלי'}</span> <span class="badge">${st}</span>
+      <span class="acts">
+        ${d.status === 'review' ? '<button class="ok small act" data-act="approve">אשר</button><button class="bad small act" data-act="reject">דחה</button>' : ''}
+        ${d.status === 'rejected' ? '<button class="small act" data-act="reopen">החזר לבדיקה</button>' : ''}
+        ${fb ? '<button class="ghost small fbtog">משוב</button>' : ''}
+        ${!bot ? '<button class="ghost small act del" data-act="delete" aria-label="מחק" title="מחק">🗑</button>' : ''}
+      </span></div>
     ${d.note ? `<div class="muted small">${esc(d.note)}</div>` : ''}
-    ${feedbackHtml(d)}
-    <div class="acts">
-      ${d.status === 'review' ? '<button class="ok act" data-act="approve">אשר</button><button class="bad act" data-act="reject">דחה</button>' : ''}
-      ${d.status === 'rejected' ? '<button class="act" data-act="reopen">החזר לבדיקה</button>' : ''}
-      ${!bot ? '<button class="bad act" data-act="delete">מחק</button>' : ''}
-    </div>
+    ${fb ? `<div class="fbwrap" ${fbOpen.has(d.id) ? '' : 'hidden'}>${fb}</div>` : ''}
   </div>`;
 }
+const fbOpen = new Set<string>();
 function updateCardValues(d: Drawing) {
   const c = $(`.card[data-id="${d.id}"]`); if (!c) return;
-  c.querySelectorAll<HTMLInputElement>('input[data-f]').forEach((i) => { const v = (d as any)[i.dataset.f!]; i.value = v ?? ''; });
+  const lv = $('.lv', c); if (lv) lv.textContent = levelsText(d);
   const r = $('.rr', c); if (r) r.textContent = rrText(d);
+  const t = S.ticker && S.byT.get(S.ticker); const sz = $('#statusLine'); if (t && sz) sz.outerHTML = statusLineHtml(t);
+}
+/** Compact read-only status line (was only in the zone / Long cards): live status + reason, R:R and sizing. */
+function statusLineHtml(r: Row): string {
+  const l = liveOf(r), st = l?.status ?? r.status;
+  return `<div id="statusLine" class="statusline small"><span class="badge ${st === 'PASS' ? 'b-pass' : st === 'WAIT' ? 'b-review' : 'b-obs'}">${esc(st || '—')}</span>${l?.why ? ` <bdi>${esc(l.why)}</bdi>` : ''}${sizingHtml(r)}</div>`;
 }
 
 let panelDirty = false;
@@ -926,30 +975,24 @@ function renderPanel() {
   if (p.contains(document.activeElement) && (document.activeElement as HTMLElement).matches('input,textarea')) { panelDirty = true; return; }
   panelDirty = false;
   const t = S.ticker, r = S.byT.get(t);
-  const ni = latestLabel(t, 'not_interesting'), niOn = isNi(t);
   const ds = userDrawings(t);
-  const tech = latestLabel(t, 'technical'), note = latestLabel(t, 'note');
+  const note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
     ${r ? liveBoxHtml(r) : ''}
     ${r && waitLong(r) ? `<section class="wait-box"><h3>ממתינה לסגירה שבועית</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
-    <section>
-      <h3>שרטוטים</h3>
+    <section class="drawsec">
+      ${r ? statusLineHtml(r) : ''}
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
+      ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
     ${fibPanelHtml(r)}
-    <section>
-      <h3>לא מעניינת</h3>
-      <div class="row2 ni">${niOn
-        ? `<span class="badge b-ni">לא מעניינת ${ni?.until ? 'עד ' + esc(ni.until) : 'לתמיד'}</span><button id="niOff" class="ok">בטל סימון</button>`
-        : `<select id="niWeeks">${[[4, '4 שבועות'], [8, '8 שבועות'], [12, '12 שבועות'], [0, 'לתמיד']].map(([v, l]) => `<option value="${v}" ${(S.ui.niWeeks ?? 8) === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="niOn" class="bad">סמן לא מעניינת</button>`}</div>
+    <section class="unfitsec">
+      <h3>לא מתאימה לשיטה</h3>
+      ${unfitHtml(t)}
     </section>
     <section>
-      <h3>תיוג</h3>
-      <div class="row2"><span>טכנית?</span>
-        <button class="lab ${tech?.value === 'yes' ? 'ok on' : ''}" data-v="yes">כן</button>
-        <button class="lab ${tech?.value === 'no' ? 'bad on' : ''}" data-v="no">לא</button>
-        ${tech ? `<span class="muted small">${esc(tech.asof)}</span>` : ''}</div>
+      <h3>הערה</h3>
       <textarea id="note" rows="2" placeholder="הערה חופשית">${esc(note?.value || '')}</textarea>
     </section>
     <section>
@@ -968,27 +1011,7 @@ function renderPanel() {
   p.querySelectorAll<HTMLElement>('.card[data-id]').forEach((c) => {
     const id = c.dataset.id!;
     $('.selbtn', c)?.addEventListener('click', () => { S.selected = S.selected === id ? null : id; syncChart(); renderPanel(); });
-    c.querySelectorAll<HTMLInputElement>('input[data-f]').forEach((i) => {
-      i.addEventListener('input', () => {
-        const d = S.drawings.get(id); if (!d) return;
-        if (d.source === 'bot' && !botSnap.has(id)) botSnap.set(id, levelsOf(d));
-        const f = i.dataset.f!; (d as any)[f] = i.type === 'date' ? (i.value || null) : (i.value === '' ? null : +i.value);
-        syncChart(); const rrEl = $('.rr', c); if (rrEl) rrEl.textContent = rrText(d);
-      });
-      i.addEventListener('change', async () => {
-        const d = S.drawings.get(id); if (!d) return;
-        const f = i.dataset.f as keyof Drawing;
-        const patch = { [f]: d[f], ...ownEdit(d) } as Partial<Drawing>;
-        Object.assign(d, patch);
-        // first edit of a long without a time anchor: store the anchor it is drawn at
-        if (d.kind === 'long' && cv && (!d.t_start || !d.t_end)) { Object.assign(d, cv.longAnchor(d)); patch.t_start = d.t_start; patch.t_end = d.t_end; }
-        d.updated_at = new Date().toISOString();
-        renderHeader();
-        await guard(api.updateDrawing(id, patch), 'נשמר');
-        if (d.kind === 'zone' && (f === 'zone_top' || f === 'zone_bottom')) await followZone(d);
-      });
-      i.addEventListener('blur', () => setTimeout(() => { if (panelDirty) renderPanel(); }, 0));
-    });
+    $('.fbtog', c)?.addEventListener('click', () => { fbOpen.has(id) ? fbOpen.delete(id) : fbOpen.add(id); const w = $('.fbwrap', c); if (w) w.hidden = !fbOpen.has(id); });
     c.querySelectorAll<HTMLButtonElement>('.fbb').forEach((b) => (b.onclick = () => {
       const d = S.drawings.get(id); if (!d) return;
       const note = (c.querySelector('.fbnote') as HTMLTextAreaElement | null)?.value.trim() || '';
@@ -1007,15 +1030,7 @@ function renderPanel() {
       }
     }));
   });
-  p.querySelectorAll<HTMLButtonElement>('.lab').forEach((b) => (b.onclick = async () => {
-    const l: Label = { ticker: t, label: 'technical', value: b.dataset.v!, note: null, asof: today(), created_at: new Date().toISOString() };
-    S.labels = S.labels.filter((x) => !(x.ticker === t && x.label === 'technical' && x.asof === l.asof)); S.labels.push(l); renderPanel();
-    await guard(api.upsertLabel(l), 'נשמר');
-  }));
-  const niW = $('#niWeeks') as HTMLSelectElement | null;
-  if (niW) niW.onchange = () => { S.ui.niWeeks = +niW.value; saveUi(); };
-  const niOnB = $('#niOn'); if (niOnB) niOnB.onclick = () => setNi(t, niW && +niW.value ? +niW.value : null, true);
-  const niOffB = $('#niOff'); if (niOffB) niOffB.onclick = () => setNi(t, null, false);
+  bindUnfit($('.unfitsec', p)!, t);
   const noteEl = $('#note') as HTMLTextAreaElement;
   noteEl.addEventListener('change', async () => {
     const l: Label = { ticker: t, label: 'note', value: noteEl.value, note: null, asof: today(), created_at: new Date().toISOString() };

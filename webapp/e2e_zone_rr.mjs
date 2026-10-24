@@ -39,15 +39,24 @@ await page.waitForTimeout(500);
 const hdr = () => page.locator('#tkb').textContent();
 ok(/PASS|ממתינה/.test(await hdr()), `header before: ${await hdr()}`);
 
+// zone / Long are edited on the chart only (2026-10-24): select the zone, drag its edges to the wanted prices
 const setZone = async (top, bottom) => {
-  const c = page.locator(`.card[data-id="${setup.zid}"]`);
+  await page.evaluate((id) => { const { S } = window.__srs; S.selected = id; }, setup.zid);
+  await page.locator(`.card[data-id="${setup.zid}"] .selbtn`).click(); await page.waitForTimeout(200);
+  if (!(await page.locator('g.h[data-key="zone_top"]').count())) { await page.locator(`.card[data-id="${setup.zid}"] .selbtn`).click(); await page.waitForTimeout(200); }
   for (const [f, v] of top >= setup.zt ? [['zone_top', top], ['zone_bottom', bottom]] : [['zone_bottom', bottom], ['zone_top', top]]) {
-    const i = c.locator(`input[data-f="${f}"]`);
-    await i.fill(String(v)); await i.dispatchEvent('change');
-    await page.waitForTimeout(250);
+    for (let k = 0; k < 4; k++) {      // the price scale may refit after a drop: re-measure and correct
+      const cur = await page.evaluate(({ id, f }) => +window.__srs.S.drawings.get(id)[f], { id: setup.zid, f });
+      if (Math.abs(cur - v) <= 0.05 * setup.atrw) break;
+      const hb = await page.locator(`g.h[data-id="${setup.zid}"][data-key="${f}"] circle`).nth(1).boundingBox();
+      const y = await page.evaluate((v) => document.querySelector('#chart').getBoundingClientRect().top + window.__srs.cv.candles.priceToCoordinate(v), v);
+      await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2); await page.mouse.down();
+      await page.mouse.move(hb.x + hb.width / 2, y, { steps: 8 }); await page.mouse.up();
+      await page.waitForTimeout(400);
+    }
   }
-  await page.locator('#tk').click(); // blur -> panel re-render
-  await page.waitForTimeout(400);
+  const z = await page.evaluate((id) => window.__srs.S.drawings.get(id), setup.zid);
+  console.log(`     zone dragged on the chart to ${z.zone_bottom}-${z.zone_top} (wanted ${bottom}-${top})`);
 };
 // move the zone up close to TP: the bot Long follows, R:R drops below 2
 const up = Math.round((setup.tp - 1.4 * setup.atrw) * 100) / 100;

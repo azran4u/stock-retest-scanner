@@ -230,6 +230,24 @@ def not_interesting_active(rows: Iterable[Dict[str, Any]], asof: Optional[str] =
     return out
 
 
+def unfit_marks(rows: Iterable[Dict[str, Any]], asof: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """'לא מתאימה לשיטה' (Eyal 2026-10-24) = the app's merged 'not interesting' + 'not technical' mark, stored as label
+    not_interesting (value yes, until = return date, note 'unfit' / 'unfit: <reason>'). Every active mark counts as BOTH:
+    excluded from targets / needs-drawing / bot drawings (not_interesting_active) AND a "doesn't fit the method / not
+    technical" verdict for the technical-feedback learning (tests/test_technical_feedback.py). Rows from
+    SQL_NOT_INTERESTING_ACTIVE -> {ticker: {until, reason, merged, asof}}; old marks without the 'unfit' note -> merged False."""
+    act = not_interesting_active(rows, asof)
+    out: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        t = str(r["ticker"]).upper()
+        if t not in act or str(r.get("value", "yes")).lower() != "yes":
+            continue
+        n = str(r.get("note") or "")
+        out[t] = {"until": act[t], "reason": n[7:] if n.startswith("unfit: ") else None,
+                  "merged": n == "unfit" or n.startswith("unfit: "), "asof": str(r.get("asof") or "")[:10] or None}
+    return out
+
+
 def write_app_state(watch_rows: Iterable[Dict[str, Any]], ni_rows: Iterable[Dict[str, Any]], path: str = APP_STATE,
                     fib_rows: Optional[Iterable[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Save what the routine read via SQL (SQL_WATCHLIST, SQL_NOT_INTERESTING_ACTIVE) for the offline scripts:

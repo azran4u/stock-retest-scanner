@@ -38,7 +38,7 @@ const box = await page.locator('#chart').boundingBox();
 const X = box.x + box.width * 0.55;
 // TradingView drawings arrive as normal editable rows (source tv)
 const tvCards = page.locator('.card[data-id]');
-ok((await tvCards.count()) === 2 && (await page.locator('.card .b-tv').count()) === 2, 'TV zone + long shown as editable cards');
+ok((await tvCards.count()) === 2 && (await page.locator('.card .b-tv').count()) === 2, 'TV zone + long shown as compact drawing lines');
 await page.locator('.card[data-id]').first().locator('.selbtn').tap();
 await page.waitForSelector('g.h[data-key="zone_top"]');
 const zh = await page.locator('g.h[data-key="zone_top"] circle').nth(1).boundingBox();
@@ -85,8 +85,7 @@ ok(true, 'realtime insert rendered');
 await page.locator('.card.bot .act[data-act="approve"]').tap();
 ok(await page.evaluate(() => [...window.__srs.S.drawings.values()].some((d) => d.source === 'bot' && d.status === 'approved')), 'approve bot drawing');
 // labels + command
-await page.locator('.lab[data-v="yes"]').tap();
-ok(await page.evaluate(() => window.__srs.S.labels.some((l) => l.label === 'technical' && l.value === 'yes')), 'technical=yes label');
+ok(await page.locator('.lab[data-v]').count() === 0 && await page.locator('.card input[data-f]').count() === 0, 'no technical yes/no buttons, no level inputs (zone / Long edited on the chart)');
 await page.fill('#cmd', 'תבדוק את האזור'); await page.tap('#sendCmd');
 await page.waitForSelector('.cmds li');
 ok(true, 'command sent');
@@ -120,7 +119,7 @@ ok(t2 !== t1, `swipe ${t1} -> ${t2}`);
 await page.evaluate(() => { location.hash = '#/t/CSCO'; }); await page.waitForFunction(() => document.getElementById('tk')?.textContent === 'CSCO'); await page.waitForTimeout(300);
 await page.tap('#star');
 ok(await page.evaluate(() => window.__srs.S.watch.has('CSCO')), 'star adds CSCO to watchlist');
-// not interesting (8 weeks default)
+// 'לא מתאימה לשיטה' (8 weeks default)
 await page.locator('#niOn').tap();
 ok(await page.evaluate(() => window.__srs.S.labels.some((l) => l.label === 'not_interesting' && l.value === 'yes' && l.until)), 'not_interesting label with until');
 await page.screenshot({ path: `${OUT}/10_not_interesting_panel.png` });
@@ -129,7 +128,7 @@ await page.evaluate(() => { window.__srs.S.ui.q = ''; });
 await page.tap('.chip[data-chip="all"]');
 ok((await page.locator('.row[data-t="CSCO"]').count()) === 0, 'not-interesting hidden from main list');
 await page.tap('.chip[data-chip="ni"]');
-ok((await page.locator('.row[data-t="CSCO"] .b-ni').count()) === 1, "shown with badge under 'לא מעניינות'");
+ok((await page.locator('.row[data-t="CSCO"] .b-ni').count()) === 1, "shown with badge under 'לא מתאימות לשיטה'");
 await page.tap('.chip[data-chip="all"]');
 await page.fill('#q', 'ZZZQ'); await page.waitForSelector('#addWatch');
 await page.screenshot({ path: `${OUT}/11_add_watch.png` });

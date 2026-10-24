@@ -26,19 +26,23 @@ await page.waitForFunction(() => document.querySelectorAll('.card[data-id]').len
 ok((await page.locator('.card .fbb').count()) === 8, 'feedback buttons on both bot cards (4 each)');
 ok((await page.locator('.card').first().textContent()).includes('מאושר אוטומטית'), 'bot drawing shown as active (auto-approved)');
 
-// edit the bot long via the panel -> becomes his (source user) with bot_before
+// edit the bot long ON THE CHART (no level inputs since 2026-10-24) -> becomes his (source user) with bot_before
 const longCard = page.locator('.card[data-id]').nth(1);
 const lid = await longCard.getAttribute('data-id');
-await longCard.locator('input[data-f="target"]').fill('120');
-await longCard.locator('input[data-f="target"]').dispatchEvent('change');
-await page.locator('#cmd').focus(); await page.waitForTimeout(200);
+await longCard.locator('.selbtn').click(); await page.waitForSelector('g.h[data-key="target"]');
+const th = await page.locator('g.h[data-key="target"] circle').nth(1).boundingBox();
+await page.mouse.move(th.x + th.width / 2, th.y + th.height / 2); await page.mouse.down();
+await page.mouse.move(th.x + th.width / 2, th.y - 20, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(400);
 const ed = await page.evaluate((id) => window.__demoApi.drawings.find((d) => d.id === id), lid);
-ok(ed.source === 'user' && ed.meta.bot_before.target === 118 && ed.target === 120 && ed.meta.rule_version === 'v3d-2026-10-23',
-  `edited bot long -> source user, bot_before.target ${ed.meta.bot_before?.target}, now ${ed.target}`);
+ok(ed.source === 'user' && ed.meta.bot_before.target === 118 && ed.target > 118 && ed.meta.rule_version === 'v3d-2026-10-23',
+  `edited bot long on the chart -> source user, bot_before.target ${ed.meta.bot_before?.target}, now ${ed.target}`);
+ok((await longCard.locator('.rr').textContent()).includes((( ed.target - ed.entry) / (ed.entry - ed.stop)).toFixed(2)), 'compact line shows the new R:R ' + await longCard.locator('.rr').textContent());
 
 // negative feedback on the zone with a note
 const zoneCard = page.locator('.card[data-id]').first();
 const zid = await zoneCard.getAttribute('data-id');
+ok(await zoneCard.locator('.fbwrap').isHidden(), 'feedback folded behind "משוב"');
+await zoneCard.locator('.fbtog').click(); await page.waitForTimeout(100);
 await zoneCard.locator('.fbnote').fill('האזור גבוה מדי');
 await zoneCard.locator('.fbb[data-fb="zone"]').tap();
 await page.waitForTimeout(300);
@@ -53,10 +57,11 @@ ok(st.c.kind === 'feedback' && st.c.text === '[feedback] zone: האזור גבו
 ok(st.f && st.f.category === 'zone' && st.f.command_id === st.c.id, 'drawing_feedback row linked to the command');
 
 // position feedback includes before/after of his edited long
+await page.locator(`.card[data-id="${lid}"] .fbtog`).click();
 await page.locator(`.card[data-id="${lid}"] .fbb[data-fb="position"]`).tap();
 await page.waitForTimeout(300);
 const c2 = await page.evaluate(() => window.__demoApi.commands[0]);
-ok(c2.payload.category === 'position' && c2.payload.before.long.target === 118 && c2.payload.after.long.target === 120,
+ok(c2.payload.category === 'position' && c2.payload.before.long.target === 118 && c2.payload.after.long.target === ed.target,
   'position feedback carries bot levels before + his edited levels after');
 
 // the bot answers -> reply shown on the drawing card

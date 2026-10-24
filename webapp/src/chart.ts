@@ -528,9 +528,19 @@ export class ChartView {
       window.addEventListener('pointercancel', up);
       return;
     }
-    const h = t.closest('g.h') as SVGGElement | null;
+    let h = t.closest('g.h') as SVGGElement | null;
     if (h) {
       e.preventDefault(); e.stopPropagation();
+      // overlapping hit areas (thin zone: the 44px targets of top and bottom overlap) -> the handle whose visible
+      // centre is nearest to the pointer wins, not simply the one painted last (2026-10-24: chart is the only editor)
+      let best = Infinity;
+      this.svg.querySelectorAll<SVGGElement>('g.h').forEach((g) => {
+        const vis = g.lastElementChild as SVGGraphicsElement | null; if (!vis) return;
+        const b = vis.getBoundingClientRect();
+        if (Math.abs(e.clientX - (b.left + b.width / 2)) > 26 || Math.abs(e.clientY - (b.top + b.height / 2)) > 30) return;
+        const dd = Math.hypot(e.clientX - (b.left + b.width / 2), e.clientY - (b.top + b.height / 2));
+        if (dd < best) { best = dd; h = g; }
+      });
       const id = h.dataset.id!, key = h.dataset.key as HandleKey;
       this.dragging = { id, key };
       this.chart.applyOptions({ handleScroll: false, handleScale: false });

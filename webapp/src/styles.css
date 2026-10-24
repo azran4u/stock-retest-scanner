@@ -208,3 +208,26 @@ body.has-pb .cv { height: calc(100dvh - var(--pb, 0px)); }
   .pb-src { order: 5; flex-basis: 100%; font-size: 10px; padding: 0 6px 2px; white-space: normal; }
   .pb-row { justify-content: stretch; }
 }
+
+/* ---- stock page: compact read-only drawing lines (2026-10-24: zone / Long are edited on the chart only) ---- */
+.drawsec { display: flex; flex-direction: column; gap: 6px; }
+.statusline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.statusline .r5 { display: contents; }
+.card.dline { padding: 6px 8px; margin-bottom: 0; }
+.card.dline .ch1 { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.card.dline .dsum { padding: 2px 4px; color: var(--fg); font-size: 14px; text-align: start; }
+.card.dline .dsum .rr { margin-inline-start: 4px; }
+.card.dline .acts { margin-inline-start: auto; display: flex; gap: 4px; margin-top: 0; }
+.card.dline .acts button { padding: 2px 8px; }
+.card.dline .fbwrap { margin-top: 6px; }
+
+/* ---- 'לא מתאימה לשיטה' (2026-10-24: merged not-interesting + not-technical) ---- */
+.unfitpop { background: var(--bg2); border-bottom: 1px solid var(--bg3); padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.unfitpop > .row2 { justify-content: space-between; }
+.unfit { display: flex; flex-direction: column; gap: 6px; }
+.unfit.on { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.unfit .wk { flex-wrap: wrap; gap: 6px; }
+.unfit .wkb { padding: 4px 10px; border-radius: 14px; }
+.unfit .wkb.on { background: var(--blue); color: #fff; }
+.unfit .grow { flex: 1; min-width: 0; }
+.unfit input[type=date] { width: auto; }
