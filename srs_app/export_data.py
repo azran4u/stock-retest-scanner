@@ -49,6 +49,7 @@ INDEX_COLS = [
     "f_dollar_vol", "f_history", "f_no_earnings_14d",
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
     "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
+    "f_no_inv_hammer", "inv_hammer_week_date", "inv_hammer_detail",
 ]
 
 

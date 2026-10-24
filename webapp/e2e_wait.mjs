@@ -18,7 +18,7 @@ const n = await page.locator('.row').count();
 ok(n > 0, `waiting chip: ${n} rows`);
 ok(await page.locator('.row .b-wait').count() >= n, 'every row has the ממתינה לסגירה badge');
 const why = await page.locator('.row .wait-why').first().textContent();
-ok(/נר אדום .*מחזור .*× ממוצע 30 יום/.test(why || ''), `reason line: ${why}`);
+ok(/נר אדום .*מחזור .*× ממוצע 30 יום|פטיש הפוך/.test(why || ''), `reason line: ${why}`);
 ok(await page.locator('.row .b-pass').count() === 0, 'no PASS badge on waiting rows');
 await page.screenshot({ path: `${OUT}/20_waiting_list.png` });
 await page.locator('.row').first().click();

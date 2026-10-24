@@ -108,3 +108,11 @@ One entry per app feedback item on a bot drawing: what he said, the diagnosis ag
 - **Bot rule v4-2026-10-24 (`FROM_ABOVE`):** candidate levels the price came back to from below are skipped; a live bot drawing in that state is retired as `from below` and redrawn.
 - **Validation:** 192 pytest pass. Golden: 55 of 56 bot cases unchanged; PR (bot-only golden, 2026-10-02) moved from 21.79–22.34 to 21.21–21.81 (weekly close 21.37 on 2026-09-25 under the old zone, then back in from below). Without the trailing-dip skip and tolerance 12 golden cases broke (incl. QCOM), so both were kept. TS mirror agrees with Python (unit cases + e2e).
 - **Effect on the 2026-10-23 report:** PASS 31 → 30 (USB FAIL `from_above`), WAIT 4 unchanged. Live bot drawings: RLAY (17.71–18.44, outside the candidate list) retired as `from below`; no other live bot drawing changed, no new drawing.
+
+## 2026-10-24 · BFH · app command 9 (rule, not feedback on a bot drawing)
+
+- **His words:** "השבוע האחרון נסגר עם נר פטיש הפוך. זה סימן שלילי שמעיד על ירידה צפויה ולא עלייה צפויה. במצב כזה, לא נגדיר את המניה כ pass ונחכה לסגירה של שבוע הבא".
+- **BFH (bot drawing, PASS on the 2026-10-23 report):** week 2026-10-23 O 102.20 H 109.43 L 98.68 C 99.89 — upper shadow 67%, body 21%, lower shadow 11% of the range. Nothing in the screen looked at a bearish last-week candle.
+- **Rule `f_no_inv_hammer` (core, WAIT like `f_no_red_vol_week`):** classic inverted hammer on the last completed week, any colour: upper shadow ≥ 2× body, body in the lower third, lower shadow ≤ 15% of the range (the hammer mirror uses 10%; widened so his BFH example counts), tiny-doji exclusion. Next completed week decides again.
+- **Validation:** 206 pytest pass (new `test_inv_hammer.py` with the BFH fixture); e2e `e2e_inv_hammer`, `e2e_wait`, `e2e_from_above`, `e2e` pass. Bot drawing rules unchanged (status gate only), so no golden case moved and nothing was redrawn.
+- **Effect on the 2026-10-23 report:** PASS 30 → 27, WAIT 4 → 7 (BFH, EGP, ZM: inverted-hammer week 2026-10-23).

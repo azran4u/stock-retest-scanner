@@ -127,16 +127,24 @@ CONFIG: Dict[str, Any] = {
     # most recent completed weekly close OUTSIDE the zone (looking back from the last completed week, up to
     # from_above_lookback_w weeks): below the zone bottom (or the latest close itself under the zone) -> False.
     "from_above_lookback_w": 52,
+    # f_no_inv_hammer (Eyal 2026-10-24, app command 9, BFH): the last COMPLETED weekly candle is an INVERTED HAMMER
+    # (any colour) -> a bearish sign, not PASS yet: status WAIT until the next weekly close. Classic shape (mirror
+    # of the hammer): upper shadow >= 2 x body, body in the lower third of the range, small lower shadow
+    # (<= inv_hammer_lower_max x range; 0.15 = calibrated on his BFH week 2026-10-23, lower shadow 11% of range).
+    "inv_hammer_upper_min": 2.0,
+    "inv_hammer_lower_max": 0.15,
     "from_above_tol_atr": 0.25,  # a close less than this x weekly ATR under the bottom is not 'under the zone'
                                  # (same tolerance as the bot's touch count; OXY 2026-09-25 0.07 ATR under its zone)
 }
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
     "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_no_red_vol_week", "f_from_above",
+    "f_no_inv_hammer",
 ]
 # filters that only make a stock WAIT (status WAIT = 'waiting for the weekly close') when they are the
 # only failing core filters (Eyal 2026-10-23)
-WAIT_FILTERS = ["f_no_red_vol_week"]
+WAIT_FILTERS = ["f_no_red_vol_week", "f_no_inv_hammer"]
+INV_HAMMER_COLS = ["inv_hammer_week_date", "inv_hammer_detail"]
 RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
 FROM_ABOVE_COLS = ["from_above_side", "from_above_date", "from_above_detail"]
 # ownership data (informational filters; None = data missing, never silently False)
@@ -183,6 +191,7 @@ REPORT_COLS = [
     "f_last_week_reversal", "last_week_reversal_kind", "last_week_date",
     *HAMMER_COLS,
     *RED_VOL_COLS,
+    *INV_HAMMER_COLS,
     *FROM_ABOVE_COLS,
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout",
@@ -446,6 +455,7 @@ def compute_row(
         r[f] = False
     r["f_no_red_vol_week"] = True  # blocks only on evidence (compute_red_vol_week)
     r["f_from_above"] = True  # blocks only on evidence (compute_from_above)
+    r["f_no_inv_hammer"] = True  # blocks only on evidence (compute_inv_hammer_week)
     r["f_rr_computed"] = False
     r["smooth_pullback"] = False
     r["weekly_reversal_kind"] = r["daily_reversal_kind"] = ""
@@ -570,6 +580,11 @@ def compute_row(
         r["f_no_red_vol_week"] = True
         notes.append(f"red-vol-week error: {e}")
     try:
+        r.update(compute_inv_hammer_week(daily, report_date))
+    except Exception as e:  # pragma: no cover
+        r["f_no_inv_hammer"] = True
+        notes.append(f"inv-hammer error: {e}")
+    try:
         r.update(compute_from_above(daily, report_date, r))
     except Exception as e:  # pragma: no cover
         r["f_from_above"] = True
@@ -681,6 +696,50 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
     if healthy and loud:
         out["f_no_red_vol_week"] = False
         out["red_vol_detail"] = "WAIT weekly close - healthy red " + out["red_vol_detail"]
+    return out
+
+
+def is_inverted_hammer(o: float, h: float, l: float, c: float, atr: Optional[float] = None) -> bool:
+    """Classic INVERTED HAMMER shape, any colour (mirror of the classic hammer, Eyal 2026-10-15 / 2026-10-24):
+    range > 0; upper shadow >= inv_hammer_upper_min (2) x real body; real body in the lower third of the range
+    (max(open, close) <= low + range / 3); small lower shadow (<= inv_hammer_lower_max (0.15) x range).
+    Tiny-doji exclusion as for the hammer (range < 0.2 weekly ATR and body < 0.05 ATR)."""
+    rng = h - l
+    if not rng > 0:
+        return False
+    body = abs(c - o)
+    if atr is not None and atr == atr and atr > 0 and rng < 0.2 * atr and body < 0.05 * atr:
+        return False
+    uw, lw = h - max(o, c), min(o, c) - l
+    return bool(uw >= float(CONFIG["inv_hammer_upper_min"]) * body
+                and max(o, c) <= l + rng / 3.0 + 1e-9
+                and lw <= float(CONFIG["inv_hammer_lower_max"]) * rng + 1e-9)
+
+
+def compute_inv_hammer_week(daily: Optional[pd.DataFrame], report_date: date,
+                            now_et: Optional[pd.Timestamp] = None) -> Dict[str, Any]:
+    """f_no_inv_hammer (Eyal 2026-10-24, app command 9, BFH: 'the last week closed with an inverted hammer - a
+    negative sign of an expected decline; then the stock is not PASS and we wait for next week's close').
+    Last COMPLETED W-FRI week (complete after Friday 16:30 New York) is an inverted hammer -> False (status WAIT;
+    the next completed week decides again). No data -> True."""
+    out: Dict[str, Any] = {"f_no_inv_hammer": True, "inv_hammer_week_date": None, "inv_hammer_detail": ""}
+    wk = completed_weekly(daily, report_date, now_et)
+    if wk is None or wk.empty:
+        out["inv_hammer_detail"] = "no completed week"
+        return out
+    o, h, l, c = (float(wk[k].iloc[-1]) for k in ("Open", "High", "Low", "Close"))
+    atr = None
+    if len(wk) >= 2:
+        a = ss.atr_series(wk, 14)
+        atr = float(a.iloc[-1]) if pd.notna(a.iloc[-1]) else None
+    wend = pd.Timestamp(wk.index[-1]).date().isoformat()
+    out["inv_hammer_week_date"] = wend
+    rng = h - l
+    if is_inverted_hammer(o, h, l, c, atr):
+        out["f_no_inv_hammer"] = False
+        out["inv_hammer_detail"] = (f"WAIT weekly close - inverted hammer week {wend}: upper shadow "
+                                    f"{(h - max(o, c)) / rng * 100:.0f}% / body {abs(c - o) / rng * 100:.0f}% / "
+                                    f"lower shadow {(min(o, c) - l) / rng * 100:.0f}% of the range")
     return out
 
 
@@ -1376,7 +1435,7 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
-    # WAIT = everything passes except the red-volume week -> wait for the next weekly close
+    # WAIT = everything passes except the red-volume week / inverted-hammer week -> wait for the next weekly close
     r["status"] = "PASS" if not failed else ("WAIT" if all(f in WAIT_FILTERS for f in failed) else "FAIL")
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
@@ -1418,6 +1477,8 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
             f = f"rr ({rec_note})"
         elif f == "from_above":
             f = f"from_above ({r.get('from_above_detail') or 'came back to the zone from below'})"
+        elif f == "no_inv_hammer":
+            f = f"no_inv_hammer ({r.get('inv_hammer_detail') or 'last week an inverted hammer'})"
         elif f == "no_red_vol_week":
             f = f"no_red_vol_week ({r.get('red_vol_detail') or 'healthy red week on above-average volume'})"
         fails.append(f)

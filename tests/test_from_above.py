@@ -59,7 +59,7 @@ def test_no_zone_never_blocks():
 
 
 def test_status_fails_from_below():
-    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_no_red_vol_week": True}
+    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_no_red_vol_week": True, "f_no_inv_hammer": True}
     assert rf.finalize_status({**base, "f_from_above": True})["status"] == "PASS"
     assert rf.finalize_status({**base, "f_from_above": False})["status"] == "FAIL"
     assert rf.finalize_status({**base, "f_from_above": False, "f_no_red_vol_week": False})["status"] == "FAIL"

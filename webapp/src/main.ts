@@ -53,15 +53,21 @@ const CHIPS: [string, string][] = [
   ['all', 'הכל'], ['pass', 'PASS'], ['waiting', 'ממתינה לסגירה'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
   ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מעניינות'],
 ];
-/** WAIT (Eyal 2026-10-23): last completed weekly candle = healthy red bar on above-average volume -> wait for the next weekly close */
+/** WAIT (Eyal 2026-10-23 / 2026-10-24): last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH) -> wait for the next weekly close */
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
   if (!badgesOf(r).includes('waiting')) return '';
-  return `נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`;
+  const parts: string[] = [];
+  if (r.f_no_inv_hammer === false) parts.push(`פטיש הפוך ${ddmm(r.inv_hammer_week_date)}`);
+  if (r.f_no_red_vol_week === false) parts.push(`נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`);
+  return parts.join(' · ');
 }
 function waitLong(r: Row): string {
   if (!badgesOf(r).includes('waiting')) return '';
-  return `נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. המניה תחזור ל-PASS אם הנר השבועי הבא ייסגר בלי לשבור את האזור.`;
+  const parts: string[] = [];
+  if (r.f_no_inv_hammer === false) parts.push(`הנר השבועי של השבוע שהסתיים ב-${ddmm(r.inv_hammer_week_date)} הוא פטיש הפוך — סימן שלילי לירידה צפויה. ממתינים לסגירת השבוע הבא.`);
+  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. המניה תחזור ל-PASS אם הנר השבועי הבא ייסגר בלי לשבור את האזור.`);
+  return parts.join(' ');
 }
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>`
   : b.startsWith('rrfail:') ? `<span class="badge b-obs" dir="rtl">FAIL · ${esc(b.slice(7))}</span>` : '');
@@ -109,7 +115,7 @@ function liveOf(r: Row): Live | null {
   const q = lg ? rr(lg.entry, lg.stop, lg.target) : null;
   const rrOk = q != null && q >= RR_MIN;
   const fromBelow = fromBelowOf(r);
-  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : r.f_no_red_vol_week === false ? 'WAIT' : 'PASS';
+  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : r.f_no_red_vol_week === false || r.f_no_inv_hammer === false ? 'WAIT' : 'PASS';
   const why = fromBelow ? 'חזרה לאזור מלמטה'
     : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
   return { status, rr: q, gatesOk, why, fromBelow };
