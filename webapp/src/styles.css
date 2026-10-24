@@ -43,6 +43,9 @@ header.top .title { flex: 1; font-weight: 700; font-size: 20px; }
 .chip.on { background: var(--blue); color: #fff; outline: 0; }
 .sortrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sortrow select { width: auto; padding: 6px 10px; font-size: 14px; }
+.sortlab { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--mut); }
+.r6 { margin: 1px 0; }
+.r6 b { color: var(--fg); font-weight: 600; }
 .list { list-style: none; margin: 0; padding: 0 0 calc(30px + var(--safe-b)); }
 .row { padding: 10px 14px; border-bottom: 1px solid var(--bg2); cursor: pointer; }
 .row:active { background: var(--bg2); }

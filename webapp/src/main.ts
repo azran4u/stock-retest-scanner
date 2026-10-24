@@ -166,6 +166,29 @@ function latestLabel(t: string, label: string): Label | undefined {
   return best;
 }
 
+// ---------------- distance to the zone (Eyal 2026-10-24: sort by proximity instead of a near-zone PASS gate) ----------------
+// Live zone = the zone that counts now (countedOf, same pick as the stock page); no app zone -> exported TV zone.
+// dist = 0 inside [bottom, top], else |price - nearest edge| / weekly ATR (= report_filters.compute_near_zone).
+interface ZoneDist { atr: number; side: 'inside' | 'above' | 'below' }
+function zoneDistOf(r: Row): ZoneDist | null {
+  const z = countedOf(r.ticker, 'zone');
+  const n = (x: unknown) => (x == null || x === '' || !Number.isFinite(+x) ? null : +x);
+  let top = z ? n(z.zone_top) : n(r.tv_zone_top), bot = z ? n(z.zone_bottom) : n(r.tv_zone_bottom);
+  const px = n(r.current_price), a = n(r.weekly_atr);
+  if (top == null || bot == null || px == null) return null;
+  if (bot > top) [top, bot] = [bot, top];
+  const side = px > top ? 'above' : px < bot ? 'below' : 'inside';
+  const d = side === 'inside' ? 0 : side === 'above' ? px - top : bot - px;
+  if (!a || a <= 0) return !z && r.tv_zone_dist_atr != null ? { atr: +r.tv_zone_dist_atr, side } : null;
+  return { atr: d / a, side };
+}
+function zoneDistHtml(r: Row): string {
+  const z = zoneDistOf(r);
+  if (!z) return `<div class="r6 small muted" data-zdist="">מרחק מהאזור: אין אזור</div>`;
+  const where = z.side === 'inside' ? ' (בתוך האזור)' : z.side === 'below' ? ' (מתחת לאזור)' : '';
+  return `<div class="r6 small" data-zdist="${z.atr.toFixed(4)}">מרחק מהאזור: <b dir="ltr">${z.atr.toFixed(1)} ATR</b>${where}</div>`;
+}
+
 function filtered(): Row[] {
   const q = S.ui.q.trim().toUpperCase();
   let rows = allRows().filter((r) => {
@@ -183,7 +206,11 @@ function filtered(): Row[] {
   const s = S.ui.sort;
   if (s === 'ticker') rows = [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
   else if (s === 'rr') rows = [...rows].sort((a, b) => num(liveRR(b)) - num(liveRR(a)));
-  else if (s === 'zone') rows = [...rows].sort((a, b) => (a.tv_zone_dist_atr == null ? 1e9 : +a.tv_zone_dist_atr) - (b.tv_zone_dist_atr == null ? 1e9 : +b.tv_zone_dist_atr));
+  else if (s === 'zone') {
+    const zd = new Map(rows.map((r) => [r.ticker, zoneDistOf(r)?.atr ?? Infinity]));
+    const pz = new Map(rows.map((r) => [r.ticker, badgesOf(r).includes('pass') ? 0 : 1]));
+    rows = [...rows].sort((a, b) => zd.get(a.ticker)! - zd.get(b.ticker)! || pz.get(a.ticker)! - pz.get(b.ticker)! || a.ticker.localeCompare(b.ticker)); // no zone -> last; ties: PASS first
+  }
   else if (s === 'hammer') {
     // only gated hammers (badge from export_data.hammer_ok) rank by hammer score
     const hs = (r: Row) => num(r.badges.includes('hammer') ? r.hammer_score : null);
@@ -254,9 +281,9 @@ function renderList() {
     <input id="q" type="search" dir="ltr" placeholder="חיפוש טיקר" value="${esc(S.ui.q)}" autocapitalize="characters" />
     <div class="chips">${chips}</div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span>
-      <select id="sort">
-        ${[['default', 'סדר: עדיפות'], ['rr', 'R:R TV'], ['zone', 'קרבה לאזור'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
-      </select></div>
+      <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
+        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select></label></div>
   </div>
   <ul class="list">${listInner(rows)}</ul>`;
   const q = $('#q') as HTMLInputElement;
@@ -367,14 +394,14 @@ function rowHtml(r: Row) {
     tech ? `<span class="badge ${tech.value === 'yes' ? 'b-pass' : 'b-obs'}">${tech.value === 'yes' ? 'טכנית' : 'לא טכנית'}</span>` : '',
     pend ? `<span class="badge b-review">⌛ ${pend}</span>` : '',
   ].join('');
-  const dist = r.tv_zone_dist_atr != null ? `${fmt(r.tv_zone_dist_atr, 1)} ATR` : '';
   return `<li class="row" data-t="${esc(r.ticker)}">
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     ${secHtml(r)}
     ${sizingHtml(r)}
-    <div class="r3 muted small" dir="ltr">${[dist, r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', r.days_to_earnings != null ? `earn ${r.days_to_earnings}d` : ''].filter(Boolean).join(' · ')}</div>
+    ${zoneDistHtml(r)}
+    <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', r.days_to_earnings != null ? `earn ${r.days_to_earnings}d` : ''].filter(Boolean).join(' · ')}</div>
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
@@ -835,4 +862,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
