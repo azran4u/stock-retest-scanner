@@ -535,7 +535,15 @@ function shell() {
       if (d?.kind === 'zone') await followZone(d);
     },
     onTap: (price, date) => onChartTap(price, date),
-    onFibDrop: (which, time) => onFibPick(which, time, true),
+    onFibDrop: (which, time) => onFibPick(which, time),
+    onFibMove: (which, time) => {           // lines follow the handle while dragging (saved on release)
+      const p = snapWick(time, which), f = fibOfCur(); if (!p || !f || !cv) return;
+      const lo = which === 'low' ? { d: p.date, v: p.price } : { d: f.low_date, v: f.low };
+      const hi = which === 'high' ? { d: p.date, v: p.price } : { d: f.high_date, v: f.high };
+      if (hi.d <= lo.d || hi.v <= lo.v) return;
+      const tm = (d: string) => (S.ui.tf === 'W' ? mondayOfIso(d) : d);
+      cv.setFib({ low: lo.v, high: hi.v, lowTime: tm(lo.d), highTime: tm(hi.d) }, false);
+    },
   });
   $('#back')!.onclick = () => { location.hash = '#/'; };
   $('#star')!.onclick = () => S.ticker && toggleWatch(S.ticker);
@@ -568,7 +576,7 @@ function bindIndChips() {
     saveUi(); bindIndChips(); applyIndicators();
   }));
   const fb = bar.querySelector<HTMLButtonElement>('[data-fib]');
-  if (fb) fb.onclick = () => { S.ui.fib = !S.ui.fib; if (!S.ui.fib) fibEditS = null; saveUi(); bindIndChips(); applyIndicators(); renderPanel(); renderHint(); };
+  if (fb) fb.onclick = () => { S.ui.fib = !S.ui.fib; saveUi(); bindIndChips(); applyIndicators(); renderPanel(); };
 }
 let curFib: { t: string; f: Fib | null } | null = null;
 function fibAuto(): Fib | null {
@@ -581,8 +589,6 @@ function fibOfCur(): (Fib & { manual: boolean }) | null {
   const auto = fibAuto(), t = S.ticker; if (!t) return null;
   const m = fibManual(t), atrW = auto?.atr_w ?? numOrNull(S.byT.get(t)?.fib_atr) ?? numOrNull(S.byT.get(t)?.weekly_atr);
   const base = m ? { ...m, atr_w: atrW, manual: true } : auto ? { ...auto, manual: false } : null;
-  const dr = fibEditS?.t === t ? fibEditS.draftLow : null;
-  if (dr && base && base.high_date > dr.date && base.high > dr.price) return { ...base, low: dr.price, low_date: dr.date, manual: true };
   return base;
 }
 
@@ -610,7 +616,6 @@ async function saveFibManual(t: string, a: Omit<FibAnchor, 'at'> | null) {
   refreshFib();
   await guard(api.upsertLabel(l), a ? 'פיבונאצי ידני נשמר' : 'פיבונאצי חזר לאוטומטי');
 }
-let fibEditS: { t: string; step: 'low' | 'high' | 'drag'; draftLow: { date: string; price: number } | null } | null = null;
 /** The candle at bar time `time` of the current timeframe, snapped to its wick: low -> its low, high -> its high, with the
  *  daily date of that extreme (a weekly candle -> the day inside the week where the low / high was made). */
 function snapWick(time: string, which: 'low' | 'high'): { date: string; price: number } | null {
@@ -621,34 +626,20 @@ function snapWick(time: string, which: 'low' | 'high'): { date: string; price: n
   for (const b of days) if (which === 'low' ? b.low < best.low : b.high > best.high) best = b;
   return { date: best.time, price: which === 'low' ? best.low : best.high };
 }
-function startFibEdit() {
-  if (!S.ticker) return;
-  S.tap = null; S.ui.fib = true; saveUi();
-  fibEditS = { t: S.ticker, step: 'low', draftLow: null };
-  bindIndChips(); refreshFib(); renderHint();
-}
-function endFibEdit() { fibEditS = null; refreshFib(); renderHint(); }
 function refreshFib() {
   applyIndicators(); renderPanel();
 }
-async function onFibPick(which: 'low' | 'high', barTime: string, drag = false) {
-  const t = S.ticker; if (!t || !fibEditS) return;
+/** A Fib end was dragged (line or dot) and dropped on the candle at bar time `barTime`; the chart already picked the
+ *  candle whose wick is nearest to the drop point. Low end -> that candle's low, high end -> its high (wick), then save. */
+async function onFibPick(which: 'low' | 'high', barTime: string) {
+  const t = S.ticker; if (!t) return;
   const p = snapWick(barTime, which);
   if (!p) { toast('אין נר בנקודה הזו', true); refreshFib(); return; }
   const cur = fibOfCur();
-  const low = which === 'low' ? p : fibEditS.draftLow ?? (cur ? { date: cur.low_date, price: cur.low } : null);
+  const low = which === 'low' ? p : cur ? { date: cur.low_date, price: cur.low } : null;
   const high = which === 'high' ? p : cur ? { date: cur.high_date, price: cur.high } : null;
-  if (which === 'low' && !drag && fibEditS.step !== 'drag') {          // tap 1 of 2: the low; now the high
-    fibEditS.draftLow = p; fibEditS.step = 'high'; refreshFib(); renderHint(); return;
-  }
   if (!low || !high) { refreshFib(); return; }
-  if (high.date <= low.date || high.price <= low.price) {
-    toast('השיא חייב להיות אחרי השפל וגבוה ממנו', true);
-    if (which === 'high' && fibEditS.step === 'high') { renderHint(); }
-    refreshFib(); return;
-  }
-  fibEditS.draftLow = null; fibEditS.step = 'drag';
-  renderHint();
+  if (high.date <= low.date || high.price <= low.price) { toast('השיא חייב להיות אחרי השפל וגבוה ממנו', true); refreshFib(); return; }
   await saveFibManual(t, { low: low.price, low_date: low.date, high: high.price, high_date: high.date });
 }
 const mondayOfIso = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
@@ -662,18 +653,15 @@ function applyIndicators() {
   const f = S.ui.fib ? fibOfCur() : null;
   const tm = (d: string) => (weekly ? mondayOfIso(d) : d);
   cv.setFib(f ? { low: f.low, high: f.high, lowTime: tm(f.low_date), highTime: tm(f.high_date) } : null);
-  const ed = fibEditS?.t === S.ticker ? fibEditS : null;
-  cv.setFibEdit(!ed ? null : {
-    low: ed.draftLow ? { time: tm(ed.draftLow.date), price: ed.draftLow.price } : f ? { time: tm(f.low_date), price: f.low } : null,
-    high: ed.step === 'high' ? null : f ? { time: tm(f.high_date), price: f.high } : null,
-  });
+  // Eyal 2026-10-24: no edit button - whenever the Fib is shown its two end lines (and end dots) are grabbed directly
+  cv.setFibEdit(f ? { low: { time: tm(f.low_date), price: f.low }, high: { time: tm(f.high_date), price: f.high } } : null);
 }
 function fibPanelHtml(r: Row | undefined): string {
   const t = S.ticker; if (!t) return '';
   const m = fibManual(t);
   const f = fibOfCur() ?? (m ? { ...m, atr_w: numOrNull(r?.fib_atr), manual: true }
     : r && rowFib(r) ? { ...rowFib(r)!, low_date: String(r.fib_low_date || ''), high_date: String(r.fib_high_date || ''), atr_w: numOrNull(r.fib_atr), manual: false } : null);
-  const btns = `<div class="acts fibacts"><button id="fibEdit" class="${fibEditS ? 'on' : ''}">${fibEditS ? 'סיום עריכה' : 'ערוך פיבונאצי'}</button>${m ? '<button id="fibAuto" class="ghost">אפס לאוטומטי</button>' : ''}</div>`;
+  const btns = `<div class="muted small fibhow">${S.ui.fib ? 'למיקום: גרור על הגרף את הקו העליון או התחתון של הפיבונאצי (גם מהצד, ליד המחיר) או את הנקודות. בשחרור הוא נצמד לפתיל הקרוב.' : ''}</div>${m ? '<div class="acts fibacts"><button id="fibAuto" class="ghost">אפס לאוטומטי</button></div>' : ''}`;
   if (!f) return `<section class="fibbox"><h3>פיבונאצי</h3><div class="muted small">אין עדיין שפל ושיא ברורים בגרף השבועי. אפשר למקם ידנית.</div>${btns}</section>`;
   const px = curBars ? curBars.daily[curBars.daily.length - 1]?.close : numOrNull(r?.current_price);
   const txt = fibText(f, f.atr_w, px, liveZoneOf(t, r));
@@ -697,7 +685,7 @@ function swipe(el: HTMLElement) {
 async function openTicker(t: string) {
   const first = !cv;
   if (first) shell();
-  if (S.ticker !== t) { S.selected = null; S.tap = null; fibEditS = null; }
+  if (S.ticker !== t) { S.selected = null; S.tap = null; }
   S.ticker = t;
   renderHeader(); renderHint(); renderPanel();
   ($('#nodata') as HTMLElement).hidden = true;
@@ -755,17 +743,6 @@ function renderHint() {
   const h = $('#hint'); if (!h) return;
   const t = S.tap;
   ['addZone', 'addLong'].forEach((id) => $('#' + id)?.classList.toggle('on', !!t && (id === 'addZone') === (t.kind === 'zone')));
-  if (!t && fibEditS && fibEditS.t === S.ticker) {
-    h.hidden = false; h.classList.add('fibhint');
-    const msg = fibEditS.step === 'low' ? 'פיבונאצי: הקש על הנר של תחילת גל העליות (נלקח השפל של הפתיל), או גרור נקודה קיימת'
-      : fibEditS.step === 'high' ? 'עכשיו הקש על הנר של השיא (נלקח הגבוה של הפתיל)'
-      : 'נשמר. גרור את נקודת השפל / השיא לנר אחר, או "שפל חדש" למיקום מחדש';
-    h.innerHTML = `<span id="fibMsg">${msg}</span><span>${fibEditS.step === 'drag' ? '<button id="fibRe" class="ghost small">שפל חדש</button>' : ''}<button id="fibDone" class="primary small">סיום</button></span>`;
-    $('#fibDone')!.onclick = () => endFibEdit();
-    const re = $('#fibRe'); if (re) re.onclick = () => { if (fibEditS) { fibEditS.step = 'low'; fibEditS.draftLow = null; renderHint(); refreshFib(); } };
-    return;
-  }
-  h.classList.remove('fibhint');
   if (!t) { h.hidden = true; return; }
   h.hidden = false;
   h.innerHTML = (t.kind === 'zone'
@@ -776,7 +753,6 @@ function renderHint() {
 }
 
 async function onChartTap(price: number, date: string) {
-  if (!S.tap && fibEditS && fibEditS.t === S.ticker && fibEditS.step !== 'drag') { await onFibPick(fibEditS.step, date); return; }
   const t = S.tap;
   if (!t || !S.ticker) { if (S.selected) { S.selected = null; syncChart(); renderPanel(); } return; }
   t.pts.push(price);
@@ -984,8 +960,7 @@ function renderPanel() {
       ${r.badges.includes('hammer') ? `${esc(r.last_week_reversal_kind)} E ${fmt(r.hammer_entry)} SL ${fmt(r.hammer_sl)} TP ${fmt(r.hammer_tp)} R:R ${fmt(r.hammer_rr)} calm ${r.hammer_calm_weeks ?? '?'}w` : ''}
       ${r.tradingview_url ? `<br/><a href="${esc(r.tradingview_url)}" target="_blank" rel="noopener">TradingView ↗</a>` : ''}</div></section>` : ''}
     <div class="spacer"></div>`;
-  const fe = $('#fibEdit', p); if (fe) fe.onclick = () => (fibEditS ? endFibEdit() : startFibEdit());
-  const fa = $('#fibAuto', p); if (fa) fa.onclick = () => { if (S.ticker) { fibEditS = null; renderHint(); saveFibManual(S.ticker, null); } };
+  const fa = $('#fibAuto', p); if (fa) fa.onclick = () => { if (S.ticker) saveFibManual(S.ticker, null); };
 
   p.querySelectorAll<HTMLElement>('.card[data-id]').forEach((c) => {
     const id = c.dataset.id!;
@@ -1098,7 +1073,28 @@ api.onAuth((e) => { if (e !== S.email || (e && !S.loaded)) onLogin(e); });
 api.session().then((s) => onLogin(s.email));
 
 if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
-  navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
+  navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
 (window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+
+// ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
+// index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh
+// index.html with the running one (on focus and every 5 min) and offer a reload.
+const myBundle = (document.querySelector('script[type="module"][src*="/assets/index-"]') as HTMLScriptElement | null)?.src.split('/').pop() || '';
+async function checkNewBuild() {
+  if (!myBundle || !import.meta.env.PROD) return;
+  try {
+    const html = await (await fetch(import.meta.env.BASE_URL + 'index.html?v=' + Date.now(), { cache: 'no-store' })).text();
+    const m = html.match(/assets\/(index-[\w-]+\.js)/);
+    if (m && m[1] !== myBundle && !document.getElementById('newBuild')) {
+      const b = document.createElement('button');
+      b.id = 'newBuild'; b.className = 'newbuild primary'; b.textContent = 'יש גרסה חדשה · רענן';
+      b.onclick = () => location.reload();
+      document.body.appendChild(b);
+    }
+  } catch { /* offline */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewBuild(); });
+setInterval(checkNewBuild, 5 * 60 * 1000);
+setTimeout(checkNewBuild, 4000);

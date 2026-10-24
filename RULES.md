@@ -445,9 +445,12 @@ the same idea as TradingView's Auto Fib Retracement:
   its pullback does not need to be confirmed). No confirmed low -> no Fib.
 - **Wicks, not bodies:** the low is the swing candle's LOW (bottom of the wick) and the high is the top candle's HIGH
   (top of the wick); the stored date is the day inside that week where the wick was made.
-- **Manual override (Eyal 2026-10-24):** on the stock page "ערוך פיבונאצי" lets him tap the candle where the up-wave starts and
-  then the top candle (or drag the two handles); each anchor snaps to that candle's wick (low / high; weekly or daily view).
-  The high must be after the low and above it, otherwise the edit is rejected. Saved per ticker as label `fib_anchor`
+- **Manual override (Eyal 2026-10-24, no edit button):** whenever the Fib is shown he grabs its low end line (Fib 1) or high
+  end line (Fib 0) anywhere along it - including from the side, on the price axis where the line's label is (hit strip 20px)
+  - or an end dot, and drags it; chart pan/zoom is off during the drag (cursor ns-resize on a line, grab on a dot; mouse and
+  touch). On release it snaps to the visible candle whose wick (LOW for the low end, HIGH for the high end) is nearest to the
+  drop point: score = |dy| + w*|dx| in screen px, w = 0.15 for a line (mostly vertical) and 1 for a dot.
+  Only candles keeping the high after and above the low are candidates. Saved per ticker as label `fib_anchor`
   (JSON {low, low_date, high, high_date, at}; "אפס לאוטומטי" writes `auto`) in Supabase, with a localStorage copy; newest wins.
   Manual anchors replace the automatic ones everywhere (chart, stock page "ידני" badge, list card line "(ידני)", mini chart)
   and in the nightly export (`sync.SQL_FIB_ANCHORS` -> `app_state.json` `fib_anchors` -> `fib_manual` = true).

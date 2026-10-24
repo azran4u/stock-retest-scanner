@@ -166,3 +166,12 @@ canvas.spark.empty { height: 0; margin: 0; }
 .overlay g.fh text { paint-order: stroke; stroke: #131722; stroke-width: 3px; }
 .fibhint { background: rgba(255,202,40,.16); }
 .badge.b-fibm { background: rgba(255,202,40,.25); color: #ffca28; }
+
+/* Fib endpoint handles: grabbable whenever the Fib is on (bug 2026-10-24) */
+.overlay g.fh { cursor: grab; }
+.overlay g.fh.fl { cursor: ns-resize; }
+.overlay g.fh.fl:hover .flh { stroke-opacity: .35; }
+.overlay g.fh:hover .fhdot { r: 10; filter: drop-shadow(0 0 4px rgba(255,255,255,.7)); }
+.fibdragging, .fibdragging * { cursor: grabbing !important; }
+.overlay g.fh.dragging .fhdot { filter: drop-shadow(0 0 6px rgba(255,255,255,.9)); }
+.newbuild { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + var(--safe-t)); z-index: 100; box-shadow: 0 4px 16px #0008; }
