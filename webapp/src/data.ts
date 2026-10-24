@@ -16,7 +16,7 @@ export async function loadTv(): Promise<Record<string, TvDrawing>> {
 
 /** List mini charts: last ~156 weekly OHLC candles per ticker (export_data.spark_series).
  *  q = base64 of n*4 bytes (o,h,l,c per week), each quantized 0..255 between lo and hi. */
-export interface Spark { w0: string; lo: number; hi: number; n: number; q: string }
+export interface Spark { w0: string; lo: number; hi: number; n: number; q: string; ma?: { lo: number; hi: number; q: string } }
 export interface SparkBars { lo: number; hi: number; o: number[]; h: number[]; l: number[]; c: number[] }
 export function decodeSpark(sp: Spark): SparkBars {
   const b = atob(sp.q), k = (sp.hi - sp.lo) / 255;

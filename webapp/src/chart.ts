@@ -1,7 +1,7 @@
 // lightweight-charts candles + volume, with an SVG overlay for zones / long positions and touch handles.
 import {
-  createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode,
-  type IChartApi, type ISeriesApi, type Time,
+  createChart, CandlestickSeries, HistogramSeries, LineSeries, CrosshairMode, LineStyle,
+  type IChartApi, type ISeriesApi, type IPriceLine, type Time,
 } from 'lightweight-charts';
 import type { Bar, Drawing } from './types';
 import { rr } from './data';
@@ -97,6 +97,48 @@ export class ChartView {
 
   destroy() { cancelAnimationFrame(this.raf); this.chart.remove(); }
 
+  // ---- indicators (Eyal 2026-10-24): daily SMA 50/100/150/200 + Fibonacci retracement ----
+  private maSeries = new Map<number, ISeriesApi<'Line'>>();
+  private fibLines: IPriceLine[] = [];
+  private fibAnchorS: ISeriesApi<'Line'> | null = null;
+  private legendEl: HTMLDivElement | null = null;
+  private extraLevels: number[] = [];
+  /** Moving averages to show: [{n, color, data}] (data already in the timeframe's bar times); [] hides all. */
+  setMAs(mas: { n: number; color: string; data: { time: string; value: number }[] }[]) {
+    const want = new Set(mas.map((m) => m.n));
+    for (const [n, se] of this.maSeries) if (!want.has(n)) { this.chart.removeSeries(se); this.maSeries.delete(n); }
+    for (const m of mas) {
+      let se = this.maSeries.get(m.n);
+      if (!se) {
+        se = this.chart.addSeries(LineSeries, { color: m.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, title: '' });
+        this.maSeries.set(m.n, se);
+      }
+      se.setData(m.data.map((x) => ({ time: x.time as Time, value: x.value })));
+    }
+    if (!this.legendEl) { this.legendEl = document.createElement('div'); this.legendEl.className = 'malegend'; this.host.appendChild(this.legendEl); }
+    this.legendEl.innerHTML = mas.map((m) => { const v = m.data[m.data.length - 1]?.value; return `<span style="color:${m.color}">MA${m.n}${v != null ? ' ' + v.toFixed(2) : ''}</span>`; }).join('');
+    this.legendEl.hidden = !mas.length;
+  }
+  /** Fibonacci retracement low -> high: 0 / 0.382 / 0.5 / 0.618 / 1 price lines (key levels bold) + dashed anchor line. */
+  setFib(f: { low: number; high: number; lowTime: string; highTime: string } | null) {
+    for (const pl of this.fibLines) this.candles.removePriceLine(pl);
+    this.fibLines = [];
+    if (this.fibAnchorS) { this.chart.removeSeries(this.fibAnchorS); this.fibAnchorS = null; }
+    this.extraLevels = [];
+    if (!f) { this.fitLevels(); return; }
+    const lv: [number, string, number, LineStyle][] = [
+      [0, 'rgba(178,181,190,.7)', 1, LineStyle.Dashed], [0.382, '#4dd0e1', 2, LineStyle.Solid], [0.5, '#ffca28', 2, LineStyle.Solid],
+      [0.618, '#ff7043', 2, LineStyle.Solid], [1, 'rgba(178,181,190,.7)', 1, LineStyle.Dashed]];
+    for (const [x, color, w, st] of lv) {
+      const price = f.high - x * (f.high - f.low);
+      this.extraLevels.push(price);
+      this.fibLines.push(this.candles.createPriceLine({ price, color, lineWidth: w as 1 | 2, lineStyle: st, axisLabelVisible: true, title: `Fib ${x}` }));
+    }
+    this.fibAnchorS = this.chart.addSeries(LineSeries, { color: 'rgba(178,181,190,.55)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+    if (f.lowTime < f.highTime) this.fibAnchorS.setData([{ time: f.lowTime as Time, value: f.low }, { time: f.highTime as Time, value: f.high }]);
+    this.fitLevels();
+  }
+
   /** Weekly ATR shown in the bottom-right corner (always weekly, whatever the timeframe). */
   setAtr(v: number | null) {
     this.atrVal = v;
@@ -134,6 +176,7 @@ export class ChartView {
   fitLevels() {
     const lv: number[] = [];
     for (const d of this.drawings) [d.zone_top, d.zone_bottom, d.entry, d.stop, d.target].forEach((x) => x != null && lv.push(+x));
+    lv.push(...this.extraLevels.filter((x) => Number.isFinite(x)));
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
         const r = orig();

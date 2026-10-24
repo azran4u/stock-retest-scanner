@@ -153,3 +153,13 @@ canvas.spark.empty { height: 0; margin: 0; }
 .fbbtns button { min-height: 38px; padding: 6px 8px; font-size: 14px; }
 .fbnote { font-size: 15px; padding: 8px 10px; }
 .fbh { margin: 0; }
+
+/* indicators (Eyal 2026-10-24): MA / Fib toggles under the chart tools, legend on the chart, fib info */
+.indbar { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--bg2); }
+.indbar::-webkit-scrollbar { display: none; }
+.chip.ind { min-height: 30px; padding: 3px 9px; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; }
+.chip.ind i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.malegend { position: absolute; left: 6px; top: 4px; z-index: 3; pointer-events: none; display: flex; gap: 8px; flex-wrap: wrap; font: 11px/1.2 -apple-system, Arial, sans-serif; background: rgba(19,23,34,.6); padding: 2px 5px; border-radius: 4px; direction: ltr; }
+.fibbox .fiblv { display: flex; gap: 14px; margin: 4px 0; }
+.fibline { color: #ffca28; }
+.fibconf b { color: #ffca28; }

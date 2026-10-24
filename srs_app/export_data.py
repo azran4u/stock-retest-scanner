@@ -26,6 +26,8 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from srs_app.fib import fib_anchor
+
 HIST_CACHE = Path(os.environ.get("SRS_HIST_CACHE", "/workspace/hist_cache.pkl"))
 TV_DRAWINGS = Path(os.environ.get("SRS_TV_DRAWINGS", "/workspace/stock-screener/tv_drawings.json"))
 # Sector / industry per ticker (list card, Eyal 2026-10-24). FinViz quote page first, yfinance fallback; cached because
@@ -253,7 +255,47 @@ def spark_series(daily: pd.DataFrame, weeks: int = SPARK_WEEKS) -> Optional[Dict
             "q": base64.b64encode(bytes(q)).decode()}
 
 
-def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None) -> int:
+def spark_ma(bars: List[list], weeks: int) -> Optional[Dict[str, Any]]:
+    """Daily SMA 50/100/150/200 sampled at each week's last trading day, for the last `weeks` weekly bars of the mini chart:
+    {lo, hi, q: base64 of weeks*4 bytes (sma50, sma100, sma150, sma200 per week; 0..254 between lo and hi, 255 = none)}."""
+    import base64
+    from srs_app.fib import sma_weekly, SMA_PERIODS
+    if not bars:
+        return None
+    sm = sma_weekly(bars)
+    rows = list(zip(*(sm[n] for n in SMA_PERIODS)))[-weeks:]
+    if len(rows) != weeks:
+        return None
+    vals = [v for r in rows for v in r if v is not None]
+    if not vals:
+        return None
+    lo, hi = min(vals), max(vals)
+    span = (hi - lo) or 1.0
+    q = bytes(255 if v is None else max(0, min(254, int(round((v - lo) / span * 254)))) for r in rows for v in r)
+    dec = 2 if lo >= 1 else 4
+    return {"lo": round(lo, dec), "hi": round(hi, dec), "q": base64.b64encode(q).decode()}
+
+
+def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]]) -> None:
+    """fib_* columns (informational, not a PASS gate): anchor low/high (+ daily dates), weekly ATR, and confluence of the
+    key levels 0.382 / 0.5 / 0.618 with the current price and with the exported zone (srs_app.fib)."""
+    from srs_app.fib import fib_confluence
+    for r in rows:
+        f = fib.get(r["ticker"])
+        for k in ("fib_low", "fib_low_date", "fib_high", "fib_high_date", "fib_atr", "fib_price_level", "fib_zone_levels", "fib_confluence"):
+            r[k] = None
+        if not f:
+            continue
+        r.update(fib_low=f["low"], fib_low_date=f["low_date"], fib_high=f["high"], fib_high_date=f["high_date"], fib_atr=f["atr_w"])
+        c = fib_confluence(f["low"], f["high"], f["atr_w"], r.get("current_price"), r.get("tv_zone_top"), r.get("tv_zone_bottom"))
+        r["fib_price_level"] = c["price_level"]
+        r["fib_zone_levels"] = c["zone_levels"] or None
+        parts = ([f"price@{c['price_level']}"] if c["price_level"] is not None else []) + [f"zone@{x}" for x in c["zone_levels"]]
+        r["fib_confluence"] = ", ".join(parts) or None
+
+
+def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None,
+                   fib_out: Optional[Dict[str, Dict[str, Any]]] = None) -> int:
     hist = dict(pd.read_pickle(HIST_CACHE))
     miss = [t for t in (fetch_missing or []) if hist.get(t) is None or getattr(hist.get(t), "empty", True)]
     hist.update(_download_missing(miss))
@@ -283,7 +325,18 @@ def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[s
         (cdir / f"{t}.json").write_text(json.dumps({"t": t, "d": bars}, separators=(",", ":")))
         sp = spark_series(d)
         if sp:
+            ma = spark_ma(bars, sp["n"])
+            if ma:
+                sp["ma"] = ma
             spark[t] = sp
+        if fib_out is not None:
+            try:
+                fa = fib_anchor(bars)
+            except Exception as e:  # never block the export
+                print(f"  [fib] {t}: {e}")
+                fa = None
+            if fa:
+                fib_out[t] = fa
         n += 1
     (out / "spark.json").write_text(json.dumps(spark, separators=(",", ":")))
     # drop files for tickers no longer exported
@@ -338,7 +391,9 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     nsec = attach_sectors(rows)
     if nsec:
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
-    n = export_candles(tickers, out, fetch_missing=watch)
+    fib: Dict[str, Dict[str, Any]] = {}
+    n = export_candles(tickers, out, fetch_missing=watch, fib_out=fib)
+    attach_fib(rows, fib)
     attach_week_closes(rows, asof_date=report_date)
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:

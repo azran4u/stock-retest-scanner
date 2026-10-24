@@ -4,6 +4,7 @@ import { ChartView, LONG_W_BARS } from './chart';
 import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
+import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -20,7 +21,7 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -192,9 +193,16 @@ function latestLabel(t: string, label: string): Label | undefined {
 // Live zone = the zone that counts now (countedOf, same pick as the stock page); no app zone -> exported TV zone.
 // dist = 0 inside [bottom, top], else |price - nearest edge| / weekly ATR (= report_filters.compute_near_zone).
 interface ZoneDist { atr: number; side: 'inside' | 'above' | 'below' }
+const numOrNull = (x: unknown) => (x == null || x === '' || !Number.isFinite(+x) ? null : +x);
+/** Zone that counts now for a ticker: newest active / approved app zone, else the exported TV zone. */
+function liveZoneOf(t: string, r?: Row): { top: number; bottom: number } | null {
+  const z = countedOf(t, 'zone');
+  const top = z ? numOrNull(z.zone_top) : numOrNull(r?.tv_zone_top), bot = z ? numOrNull(z.zone_bottom) : numOrNull(r?.tv_zone_bottom);
+  return top == null || bot == null ? null : { top: Math.max(top, bot), bottom: Math.min(top, bot) };
+}
 function zoneDistOf(r: Row): ZoneDist | null {
   const z = countedOf(r.ticker, 'zone');
-  const n = (x: unknown) => (x == null || x === '' || !Number.isFinite(+x) ? null : +x);
+  const n = numOrNull;
   let top = z ? n(z.zone_top) : n(r.tv_zone_top), bot = z ? n(z.zone_bottom) : n(r.tv_zone_bottom);
   const px = n(r.current_price), a = n(r.weekly_atr);
   if (top == null || bot == null || px == null) return null;
@@ -209,6 +217,26 @@ function zoneDistHtml(r: Row): string {
   if (!z) return `<div class="r6 small muted" data-zdist="">מרחק מהאזור: אין אזור</div>`;
   const where = z.side === 'inside' ? ' (בתוך האזור)' : z.side === 'below' ? ' (מתחת לאזור)' : '';
   return `<div class="r6 small" data-zdist="${z.atr.toFixed(4)}">מרחק מהאזור: <b dir="ltr">${z.atr.toFixed(1)} ATR</b>${where}</div>`;
+}
+
+// ---------------- Fibonacci confluence (Eyal 2026-10-24; informational, NOT a PASS gate) ----------------
+// Anchor = last confirmed weekly swing low -> highest high after it (indicators.ts = srs_app/fib.py, RULES.md §Fib).
+// Price near a key level: within 0.25 weekly ATR; zone coincides: key level inside the live zone ± 0.1 weekly ATR.
+function fibText(f: { low: number; high: number }, atrW: number | null | undefined, price: number | null | undefined, z: { top: number; bottom: number } | null): string {
+  const c = fibConfluence(f, atrW, price, z?.top, z?.bottom);
+  const parts: string[] = [];
+  if (c.priceLevel != null) parts.push(`המחיר ליד פיבו <b dir="ltr">${c.priceLevel}</b>`);
+  if (c.zoneLevels.length) parts.push(`האזור מתלכד עם פיבו <b dir="ltr">${c.zoneLevels.join(' / ')}</b>`);
+  return parts.join(' · ');
+}
+function rowFib(r: Row): { low: number; high: number } | null {
+  const lo = numOrNull(r.fib_low), hi = numOrNull(r.fib_high);
+  return lo == null || hi == null ? null : { low: lo, high: hi };
+}
+function fibRowHtml(r: Row): string {
+  const f = rowFib(r); if (!f) return '';
+  const txt = fibText(f, numOrNull(r.fib_atr) ?? numOrNull(r.weekly_atr), numOrNull(r.current_price), liveZoneOf(r.ticker, r));
+  return txt ? `<div class="r7 small fibline">פיבונאצי: ${txt}</div>` : '';
 }
 
 function filtered(): Row[] {
@@ -368,6 +396,30 @@ function drawSpark(cv: HTMLCanvasElement) {
     const yo = Y(B.o[i]), yc = Y(B.c[i]);
     g.fillRect(x, Math.min(yo, yc), bw, Math.max(0.8, Math.abs(yc - yo)));  // body
   }
+  // daily SMAs (sampled weekly, export_data.spark_ma) + Fib key levels, following the chart toggles
+  const mas: number[] = S.ui.ma || [];
+  if (mas.length && sp.ma) {
+    const q = atob(sp.ma.q), k = (sp.ma.hi - sp.ma.lo) / 254;
+    g.lineWidth = 1.2;
+    SMA_PERIODS.forEach((p, s) => {
+      if (!mas.includes(p)) return;
+      g.strokeStyle = SMA_COLORS[p]; g.beginPath(); let pen = false;
+      for (let i = 0; i < n; i++) {
+        const c = q.charCodeAt(i * 4 + s); if (c === 255 || Number.isNaN(c)) { pen = false; continue; }
+        const x = padL + i * step + bw / 2, y = Y(sp.ma!.lo + c * k);
+        if (pen) g.lineTo(x, y); else { g.moveTo(x, y); pen = true; }
+      }
+      g.stroke();
+    });
+  }
+  const rf = S.ui.fib && S.byT.get(t) ? rowFib(S.byT.get(t)!) : null;
+  if (rf) {
+    g.setLineDash([2, 2]); g.lineWidth = 1;
+    for (const [x, col] of [[0.382, '#4dd0e1'], [0.5, '#ffca28'], [0.618, '#ff7043']] as const) {
+      const y = Y(fibPrice(rf, x)); g.strokeStyle = col; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+    }
+    g.setLineDash([]);
+  }
   if (long) {
     const y = Y(+long.entry!); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(209,212,220,.8)'; g.lineWidth = 1;
     g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); g.setLineDash([]);
@@ -423,6 +475,7 @@ function rowHtml(r: Row) {
     ${secHtml(r)}
     ${sizingHtml(r)}
     ${zoneDistHtml(r)}
+    ${fibRowHtml(r)}
     <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', r.days_to_earnings != null ? `earn ${r.days_to_earnings}d` : ''].filter(Boolean).join(' · ')}</div>
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
@@ -460,6 +513,7 @@ function shell() {
       <button id="addZone">+ אזור</button>
       <button id="addLong">+ לונג</button>
     </div>
+    <div class="indbar" id="indbar">${indChipsHtml()}</div>
     <div id="hint" class="hint" hidden></div>
     <div class="panel" id="panel"></div>
   </div>`;
@@ -483,7 +537,60 @@ function shell() {
   app.querySelectorAll<HTMLButtonElement>('[data-tf]').forEach((b) => (b.onclick = () => { S.ui.tf = b.dataset.tf as 'W' | 'D'; saveUi(); applyBars(); }));
   $('#addZone')!.onclick = () => startTap('zone');
   $('#addLong')!.onclick = () => startTap('long');
+  bindIndChips();
   swipe($('#chhead')!); swipe($('#panel')!); swipe($('#tools')!);
+}
+
+// ---------------- indicators on the chart (Eyal 2026-10-24): daily SMA 50/100/150/200 + Fibonacci ----------------
+// Toggles under the chart tools, saved in localStorage (S.ui.ma, S.ui.fib); the list mini charts follow the same toggles.
+function indChipsHtml(): string {
+  const ma: number[] = S.ui.ma || [];
+  const all = SMA_PERIODS.every((n) => ma.includes(n));
+  return SMA_PERIODS.map((n) => `<button class="chip ind ${ma.includes(n) ? 'on' : ''}" data-ma="${n}"><i style="background:${SMA_COLORS[n]}"></i><span dir="ltr">MA${n}</span></button>`).join('')
+    + `<button class="chip ind ${all ? 'on' : ''}" data-ma="all">כל הממוצעים</button>`
+    + `<button class="chip ind fibchip ${S.ui.fib ? 'on' : ''}" data-fib="1">פיבונאצי</button>`;
+}
+function bindIndChips() {
+  const bar = $('#indbar'); if (!bar) return;
+  bar.innerHTML = indChipsHtml();
+  bar.querySelectorAll<HTMLButtonElement>('[data-ma]').forEach((b) => (b.onclick = () => {
+    const ma: number[] = [...(S.ui.ma || [])], k = b.dataset.ma!;
+    if (k === 'all') S.ui.ma = SMA_PERIODS.every((n) => ma.includes(n)) ? [] : [...SMA_PERIODS];
+    else { const n = +k; S.ui.ma = ma.includes(n) ? ma.filter((x) => x !== n) : [...ma, n].sort((a, c) => a - c); }
+    saveUi(); bindIndChips(); applyIndicators();
+  }));
+  const fb = bar.querySelector<HTMLButtonElement>('[data-fib]');
+  if (fb) fb.onclick = () => { S.ui.fib = !S.ui.fib; saveUi(); bindIndChips(); applyIndicators(); renderPanel(); };
+}
+let curFib: { t: string; f: Fib | null } | null = null;
+function fibOfCur(): Fib | null {
+  if (!curBars || !S.ticker) return null;
+  if (curFib?.t !== S.ticker) curFib = { t: S.ticker, f: fibAnchor(curBars.daily) };
+  return curFib.f;
+}
+const mondayOfIso = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
+function applyIndicators() {
+  if (!cv || !curBars) return;
+  const weekly = S.ui.tf === 'W', daily = curBars.daily;
+  cv.setMAs(((S.ui.ma || []) as number[]).filter((n) => SMA_PERIODS.includes(n as any)).map((n) => ({
+    n, color: SMA_COLORS[n],
+    data: weekly ? smaWeekly(daily, n) : smaDaily(daily, n).map((v, i) => (v == null ? null : { time: daily[i].time, value: v })).filter((x): x is { time: string; value: number } => !!x),
+  })));
+  const f = S.ui.fib ? fibOfCur() : null;
+  cv.setFib(f ? { low: f.low, high: f.high, lowTime: weekly ? mondayOfIso(f.low_date) : f.low_date, highTime: weekly ? mondayOfIso(f.high_date) : f.high_date } : null);
+}
+function fibPanelHtml(r: Row | undefined): string {
+  const t = S.ticker; if (!t) return '';
+  const f = fibOfCur() ?? (r && rowFib(r) ? { ...rowFib(r)!, low_date: String(r.fib_low_date || ''), high_date: String(r.fib_high_date || ''), atr_w: numOrNull(r.fib_atr) } : null);
+  if (!f) return `<section class="fibbox"><h3>פיבונאצי</h3><div class="muted small">אין עדיין שפל ושיא ברורים בגרף השבועי.</div></section>`;
+  const px = curBars ? curBars.daily[curBars.daily.length - 1]?.close : numOrNull(r?.current_price);
+  const txt = fibText(f, f.atr_w, px, liveZoneOf(t, r));
+  const lv = FIB_KEY.map((x) => `<span><b dir="ltr">${x}</b> <span dir="ltr">${fibPrice(f, x).toFixed(2)}</span></span>`).join('');
+  return `<section class="fibbox" data-fib-low="${f.low}" data-fib-high="${f.high}"><h3>פיבונאצי</h3>
+    <div class="small">מהשפל <bdi dir="ltr">${f.low.toFixed(2)}</bdi> (${ddmm(f.low_date)}/${f.low_date.slice(2, 4)}) לשיא <bdi dir="ltr">${f.high.toFixed(2)}</bdi> (${ddmm(f.high_date)}/${f.high_date.slice(2, 4)})</div>
+    <div class="fiblv small">${lv}</div>
+    <div class="small fibconf">${txt || '<span class="muted">המחיר והאזור לא מתלכדים עם 0.382 / 0.5 / 0.618.</span>'}</div>
+    <div class="muted small">מידע בלבד, לא תנאי ל-PASS.${S.ui.fib ? '' : ' להצגה על הגרף: כפתור "פיבונאצי" מתחת לגרף.'}</div></section>`;
 }
 
 function swipe(el: HTMLElement) {
@@ -508,6 +615,7 @@ async function openTicker(t: string) {
     if (seq !== loadSeq) return;
     curBars = { daily, weekly: toWeekly(daily) };
     applyBars();
+    renderPanel();
   } catch (e: any) {
     if (seq !== loadSeq) return;
     curBars = null; cv?.setBars([], 0); cv?.setAtr(null); ($('#nodata') as HTMLElement).hidden = false;
@@ -535,6 +643,7 @@ function applyBars() {
   // weekly ATR (Wilder 14) from the weekly candles, whatever timeframe is shown; scanner value as fallback
   const wAtr = atr(curBars.weekly) ?? (S.ticker ? S.byT.get(S.ticker)?.weekly_atr ?? null : null);
   cv.setAtr(wAtr == null ? null : +wAtr);
+  applyIndicators();
   cv.fitLevels();
 }
 
@@ -745,6 +854,7 @@ function renderPanel() {
       <h3>שרטוטים</h3>
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
     </section>
+    ${fibPanelHtml(r)}
     <section>
       <h3>לא מעניינת</h3>
       <div class="row2 ni">${niOn
@@ -885,4 +995,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };

@@ -110,3 +110,22 @@ def test_finviz_sector_parser_current_and_legacy_layout():
     assert parse_sector_industry(BeautifulSoup(cur, "lxml")) == ("Technology", "Communication Equipment")
     old = '<div class="quote-links"><a class="tab-link">Industrials</a><a class="tab-link">Tools &amp; Accessories</a></div>'
     assert parse_sector_industry(BeautifulSoup(old, "lxml")) == ("Industrials", "Tools & Accessories")
+
+
+def test_spark_ma_and_attach_fib():
+    import base64
+    from datetime import date, timedelta
+    from srs_app.export_data import attach_fib, spark_ma
+    bars = []
+    for i in range(700):
+        d = date(2023, 1, 2) + timedelta(days=i)
+        if d.weekday() < 5:
+            c = 100 + i * 0.05
+            bars.append([d.isoformat(), c, c + 1, c - 1, c, 1000])
+    ma = spark_ma(bars, 50)
+    q = base64.b64decode(ma["q"])
+    assert len(q) == 50 * 4 and q[-1] != 255 and max(q) <= 255
+    rows = [{"ticker": "A", "current_price": 125.0, "tv_zone_top": 126, "tv_zone_bottom": 124}, {"ticker": "B"}]
+    attach_fib(rows, {"A": {"low": 100, "low_date": "2026-01-05", "high": 150, "high_date": "2026-06-01", "atr_w": 4.0}})
+    assert rows[0]["fib_price_level"] == 0.5 and rows[0]["fib_zone_levels"] == [0.5] and rows[0]["fib_confluence"] == "price@0.5, zone@0.5"
+    assert rows[1]["fib_low"] is None and rows[1]["fib_confluence"] is None

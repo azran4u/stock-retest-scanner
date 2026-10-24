@@ -427,6 +427,31 @@ Eyal wants, for every stock with a grade **A/B/C/D**, a short fundamental read: 
   3. `python fundamentals.py merge analysis/drafts/T.json …` (validates: required fields, dated + linked news, 2–4 pros/cons, no unresolved placeholders) → commit + push.
 - Grade-independent: analyses stay in the file when a ticker loses its grade; the dashboard shows them wherever the ticker appears.
 
+## 16. Chart indicators: daily SMAs + Fibonacci retracement (Eyal 2026-10-24) — informational, NOT a PASS gate
+
+**Moving averages.** Daily SMA 50 / 100 / 150 / 200 of daily closes (the app's 5y daily candles). Daily view: one value per day.
+Weekly view and the list mini chart: the daily SMA sampled at each week's last trading day (weekly bar = Mon-Fri week).
+Colors: MA50 blue `#42a5f5`, MA100 magenta `#e040fb`, MA150 amber `#ffb300`, MA200 white `#eeeeee`. Toggles under the chart
+tools (each MA, "כל הממוצעים"), saved in the browser; the list mini charts follow the same toggles (`spark.json` `ma`, quantized).
+
+**Fibonacci anchor (swing low -> swing high).** ZigZag on weekly bars (Mon-Fri, current week may be partial), ATR threshold —
+the same idea as TradingView's Auto Fib Retracement:
+- ATR = Wilder ATR(14) of the weekly bars, value at each bar.
+- The swing direction flips when price moves against the running extreme by >= **3 x ATR**: in an up-leg (running extreme =
+  highest high) a low <= that high - 3 ATR confirms it as a swing HIGH; in a down-leg (extreme = lowest low) a high >= that
+  low + 3 ATR confirms it as a swing LOW. Ties = the first bar of an equal extreme.
+- **Fib low** = the most recent CONFIRMED swing low; **fib high** = the highest weekly high after it up to now (the leg's peak;
+  its pullback does not need to be confirmed). No confirmed low -> no Fib.
+- Levels as a TradingView retracement drawn low -> high: price(x) = high - x * (high - low), x = 0 (high), 0.382, 0.5, 0.618,
+  1 (low). 0.382 / 0.5 / 0.618 are the key levels (bold on the chart).
+
+**Confluence (key levels only).** Price near a level: |price - level| <= 0.25 weekly ATR ("המחיר ליד פיבו 0.5").
+Zone coincides: the level lies inside the live zone (the zone that counts in the app, else the exported TV zone) widened by
+0.1 weekly ATR ("האזור מתלכד עם פיבו 0.5"). Shown on the stock page (section "פיבונאצי") and as a line on the list card.
+Code: `srs_app/fib.py` (export: `fib_low`, `fib_low_date`, `fib_high`, `fib_high_date`, `fib_atr`, `fib_price_level`,
+`fib_zone_levels`, `fib_confluence` in `app/data/index.json`) = `webapp/src/indicators.ts` (live chart); `webapp/test_fib.mjs`
+checks both agree on every exported ticker, `tests/test_fib.py` the math.
+
 ## My positions (הפוזיציות שלי)
 
 Open trades live in `positions.json` (repo root) and are shown at the top of `index.html` and `table.html`
