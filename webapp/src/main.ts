@@ -6,6 +6,7 @@ import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
+import { researchHtml, type Research } from './research';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -22,13 +23,14 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
   loaded: false,
   positions: [] as Position[],
   quotes: new Map<string, Quote>(),
+  research: new Map<string, Research>(),
 };
 const saveUi = () => localStorage.setItem(LS, JSON.stringify(S.ui));
 
@@ -986,6 +988,7 @@ function renderPanel() {
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
+    ${researchHtml(S.research.get(t), S.ui.researchOpen !== false)}
     ${fibPanelHtml(r)}
     <section class="unfitsec">
       <h3>לא מתאימה לשיטה</h3>
@@ -1006,6 +1009,7 @@ function renderPanel() {
       ${r.badges.includes('hammer') ? `${esc(r.last_week_reversal_kind)} E ${fmt(r.hammer_entry)} SL ${fmt(r.hammer_sl)} TP ${fmt(r.hammer_tp)} R:R ${fmt(r.hammer_rr)} calm ${r.hammer_calm_weeks ?? '?'}w` : ''}
       ${r.tradingview_url ? `<br/><a href="${esc(r.tradingview_url)}" target="_blank" rel="noopener">TradingView ↗</a>` : ''}</div></section>` : ''}
     <div class="spacer"></div>`;
+  const rs = $('#research', p) as HTMLDetailsElement | null; if (rs) rs.ontoggle = () => { S.ui.researchOpen = rs.open; saveUi(); };
   const fa = $('#fibAuto', p); if (fa) fa.onclick = () => { if (S.ticker) saveFibManual(S.ticker, null); };
 
   p.querySelectorAll<HTMLElement>('.card[data-id]').forEach((c) => {
@@ -1073,6 +1077,12 @@ async function loadAll() {
   S.watch = new Map(ws.map((w) => [w.ticker, w])); S.drawings = new Map(ds.map((d) => [d.id, d])); S.labels = ls; S.commands = cs;
   S.loaded = true;
   loadPositions();
+  loadResearch();
+}
+/** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */
+async function loadResearch() {
+  try { S.research = new Map((await api.loadResearch()).map((x) => [x.ticker, x])); } catch { return; }
+  if (cv && S.ticker) renderPanel();
 }
 
 // ---------------- open positions bar (Eyal 2026-10-24): always on top of every page ----------------

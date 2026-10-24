@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
 import type { Command, Drawing, Feedback, Label, TvDrawing, Watch } from './types';
 import { normPosition, type Position } from './positions';
+import type { Research } from './research';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
@@ -31,6 +32,8 @@ export interface Api {
   removeWatch(ticker: string): Promise<void>;
   /** open positions (read-only; owner-only RLS; mirrored from positions.json by positions.py supabase-sql) */
   loadPositions(): Promise<Position[]>;
+  /** stock overviews (read-only; owner-only RLS; written by the bot) */
+  loadResearch(): Promise<Research[]>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -91,6 +94,9 @@ class SupaApi implements Api {
   async removeWatch(ticker: string) { check(await this.sb.from('watchlist').delete().eq('ticker', ticker)); }
   async loadPositions() {
     return (check(await this.sb.from('positions').select('*').eq('status', 'open').order('entry_date')) as any[]).map(normPosition);
+  }
+  async loadResearch() {
+    return check(await this.sb.from('ticker_research').select('ticker,summary_he,data,sources,updated_at')) as Research[];
   }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
@@ -162,6 +168,8 @@ class MemApi implements Api {
   }
   // demo: tests inject made-up positions with addInitScript (window.__demoPositions); nothing real is in the bundle
   async loadPositions() { return (((window as any).__demoPositions || []) as any[]).filter((p) => (p.status ?? 'open') === 'open').map(normPosition); }
+  // demo: tests inject made-up overviews (window.__demoResearch)
+  async loadResearch() { return [...(((window as any).__demoResearch || []) as Research[])]; }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }
 }
 

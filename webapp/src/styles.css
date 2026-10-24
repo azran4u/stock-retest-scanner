@@ -231,3 +231,14 @@ body.has-pb .cv { height: calc(100dvh - var(--pb, 0px)); }
 .unfit .wkb.on { background: var(--blue); color: #fff; }
 .unfit .grow { flex: 1; min-width: 0; }
 .unfit input[type=date] { width: auto; }
+
+/* stock overview (ticker_research) */
+.research { border: 1px solid var(--bg3); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.research > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; }
+.research > summary::-webkit-details-marker { display: none; }
+.research > summary h3 { margin: 0; }
+.research > summary h3::before { content: '▸ '; }
+.research[open] > summary h3::before { content: '▾ '; }
+.research .rs-body p { margin: 6px 0; line-height: 1.5; }
+.research .rs-src ul { margin: 4px 0; padding-inline-start: 18px; }
+.research .rs-src a { word-break: break-all; }

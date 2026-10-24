@@ -127,6 +127,12 @@ collapsible (localStorage `srs_posbar_collapsed`). Read-only: positions are mana
   (שעון ישראל)'), or 'CNBC · מחיר סגירה dd/mm' when CNBC only gives the date (after the close); pre/after-market last is
   shown next to the price (pre/AH) but P/L uses the regular-session price. Tests `test_positions.mjs`, `e2e_positions.mjs`.
 
+**Stock overview 'סקירה' (Eyal 2026-10-24).** The stock page shows a collapsible 'סקירה' section for ANY ticker
+with a row in Supabase `public.ticker_research` (owner-only RLS; not only starred): the bot's short Hebrew summary, one
+topic per line (תחום / דוח אחרון / אנליסטים / חדשות / דוח הבא; the topic is bolded, Latin/number runs are bidi-isolated),
+the update date (Israel time) and the source links. Open/closed is remembered. Rows are written by the bot (PASS
+overviews: `data.scope = 'pass_overview'`, `data.news[]`; starred research), never by the app. Test: `e2e_research.mjs`.
+
 ## `srs` — deterministic building blocks (CLI + Python package)
 
 Small pure functions with tests, runnable on any Mac/Linux. Separate from the daily scan
