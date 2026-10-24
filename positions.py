@@ -7,6 +7,12 @@
   python positions.py close SWK --price 101.5 [--date ...]  # mark closed (kept for history)
   python positions.py refresh                               # fetch latest daily bar + weekly ATR(14) (run by the daily export)
   python positions.py check [--no-refresh] [--json]         # alert check; exit 2 if any flag fires
+  python positions.py supabase-sql                          # print SQL mirroring positions.json -> Supabase public.positions
+
+Supabase mirror (web app top bar, 2026-10-24): positions.json stays the source of truth (the box has no Supabase key);
+after any add / set / close / refresh / check, the bot runs the SQL printed by `supabase-sql` through its Supabase
+connector (execute_sql, project wkkdblnykgolqijzagva). The table is owner-only (RLS: azran4u@gmail.com, read-only
+for the app); the SQL upserts every position (open + closed) and deletes rows no longer in the file.
 
 Dashboard (index.html / table.html via positions.js) reads positions.json; all P/L, R and distance
 numbers are computed from the stored `market` block (close, low, high, weekly_atr).
@@ -108,6 +114,52 @@ def metrics(p: dict) -> dict:
     return out
 
 
+SB_COLS = ("id", "ticker", "exchange", "side", "status", "entry_date", "qty", "entry_price", "stop", "target",
+           "zone_top", "zone_bottom", "exit_price", "exit_date", "realized_pl", "note", "market", "raw")
+SB_TYPES = {"id": "text", "ticker": "text", "exchange": "text", "side": "text", "status": "text", "entry_date": "date",
+            "qty": "numeric", "entry_price": "numeric", "stop": "numeric", "target": "numeric", "zone_top": "numeric",
+            "zone_bottom": "numeric", "exit_price": "numeric", "exit_date": "date", "realized_pl": "numeric", "note": "text",
+            "market": "jsonb", "raw": "jsonb"}
+
+
+def pos_id(p: dict) -> str:
+    return f"{p['ticker'].upper()}:{p.get('entry_date') or ''}"
+
+
+def supabase_rows(d: dict) -> list:
+    rows = []
+    for p in d.get("positions", []):
+        z = p.get("zone") or [None, None]
+        rows.append({
+            "id": pos_id(p), "ticker": p["ticker"].upper(), "exchange": p.get("exchange") or None,
+            "side": p.get("side", "long"), "status": p.get("status", "open"), "entry_date": p.get("entry_date") or None,
+            "qty": p["qty"], "entry_price": p["entry_price"], "stop": p.get("stop"), "target": p.get("target"),
+            "zone_bottom": min(z) if None not in z else None, "zone_top": max(z) if None not in z else None,
+            "exit_price": p.get("exit_price"), "exit_date": p.get("exit_date"), "realized_pl": p.get("realized_pl"),
+            "note": p.get("note") or None, "market": p.get("market"), "raw": p,
+        })
+    return rows
+
+
+def supabase_sql(d: dict) -> str:
+    """One SQL script (execute_sql) that makes public.positions equal to positions.json."""
+    rows = supabase_rows(d)
+    js = json.dumps(rows, ensure_ascii=False)
+    tag = "$pj$"
+    while tag in js:
+        tag = tag[:-1] + "x$"
+    cols = ", ".join(SB_COLS)
+    defs = ", ".join(f"{c} {SB_TYPES[c]}" for c in SB_COLS)
+    upd = ", ".join(f"{c} = excluded.{c}" for c in SB_COLS if c != "id")
+    return (
+        f"with src as (select * from jsonb_to_recordset({tag}{js}{tag}::jsonb) as x({defs})),\n"
+        f"del as (delete from public.positions where id not in (select id from src) returning id)\n"
+        f"insert into public.positions ({cols}, updated_at)\n"
+        f"select {cols}, now() from src\n"
+        f"on conflict (id) do update set {upd}, updated_at = now();"
+    )
+
+
 def cmd_check(a) -> int:
     d = load() if a.no_refresh else refresh(quiet=a.json)
     res, flagged = [], False
@@ -147,7 +199,10 @@ def main() -> None:
     c.add_argument("ticker"); c.add_argument("--price", type=float, required=True); c.add_argument("--date", default=date.today().isoformat())
     sp.add_parser("refresh")
     k = sp.add_parser("check"); k.add_argument("--no-refresh", action="store_true"); k.add_argument("--json", action="store_true")
+    sp.add_parser("supabase-sql")
     a_ = ap.parse_args()
+    if a_.cmd == "supabase-sql":
+        print(supabase_sql(load())); return
     if a_.cmd == "check":
         sys.exit(cmd_check(a_))
     if a_.cmd == "refresh":
@@ -173,7 +228,7 @@ def main() -> None:
         p.update(status="closed", exit_price=a_.price, exit_date=a_.date,
                  realized_pl=round((a_.price - p["entry_price"]) * p["qty"], 2))
     save(d)
-    print(f"saved {PATH}")
+    print(f"saved {PATH}  (now mirror it: python positions.py supabase-sql -> Supabase execute_sql)")
 
 
 if __name__ == "__main__":

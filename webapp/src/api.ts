@@ -1,12 +1,13 @@
 // Data layer: Supabase (real) or in-memory (demo mode, ?demo=1, for screenshots / offline tests).
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js';
 import type { Command, Drawing, Feedback, Label, TvDrawing, Watch } from './types';
+import { normPosition, type Position } from './positions';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
 export const OWNER_EMAIL = 'azran4u@gmail.com';
 
-export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist';
+export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist' | 'positions';
 export type ChangeFn = (table: Table, event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) => void;
 
 export interface Api {
@@ -28,6 +29,8 @@ export interface Api {
   loadWatch(): Promise<Watch[]>;
   addWatch(ticker: string): Promise<void>;
   removeWatch(ticker: string): Promise<void>;
+  /** open positions (read-only; owner-only RLS; mirrored from positions.json by positions.py supabase-sql) */
+  loadPositions(): Promise<Position[]>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -86,9 +89,12 @@ class SupaApi implements Api {
   async loadWatch() { return check(await this.sb.from('watchlist').select('*').order('added_at')) as Watch[]; }
   async addWatch(ticker: string) { check(await this.sb.from('watchlist').upsert({ ticker }, { onConflict: 'ticker' })); }
   async removeWatch(ticker: string) { check(await this.sb.from('watchlist').delete().eq('ticker', ticker)); }
+  async loadPositions() {
+    return (check(await this.sb.from('positions').select('*').eq('status', 'open').order('entry_date')) as any[]).map(normPosition);
+  }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
-    for (const t of ['drawings', 'labels', 'commands', 'watchlist'] as Table[]) {
+    for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions'] as Table[]) {
       ch.on('postgres_changes' as any, { event: '*', schema: 'public', table: t },
         (p: any) => fn(t, p.eventType, p.new, p.old));
     }
@@ -154,6 +160,8 @@ class MemApi implements Api {
     const c: Command = { id: this.seq++, ticker, text, status: 'pending', reply: null, created_at: new Date().toISOString(), done_at: null, kind, payload };
     this.commands.unshift(c); this.emit('commands', 'INSERT', c, null); return c;
   }
+  // demo: tests inject made-up positions with addInitScript (window.__demoPositions); nothing real is in the bundle
+  async loadPositions() { return (((window as any).__demoPositions || []) as any[]).filter((p) => (p.status ?? 'open') === 'open').map(normPosition); }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }
 }
 

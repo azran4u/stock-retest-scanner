@@ -1,4 +1,5 @@
 import './styles.css';
+import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
 import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
@@ -26,6 +27,8 @@ const S = {
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
   loaded: false,
+  positions: [] as Position[],
+  quotes: new Map<string, Quote>(),
 };
 const saveUi = () => localStorage.setItem(LS, JSON.stringify(S.ui));
 
@@ -1029,6 +1032,7 @@ function renderPanel() {
 
 // ---------------- realtime ----------------
 function onChange(table: Table, ev: string, row: any, old: any) {
+  if (table === 'positions') { loadPositions(); return; }
   if (table === 'drawings') {
     if (ev === 'DELETE' || row?.status === 'deleted') S.drawings.delete(old?.id ?? row?.id); else if (row) S.drawings.set(row.id, row);
   } else if (table === 'labels') {
@@ -1053,7 +1057,62 @@ async function loadAll() {
   S.rows = idx.rows; S.byT = new Map(idx.rows.map((r) => [r.ticker, r])); S.reportDate = idx.report_date;
   S.watch = new Map(ws.map((w) => [w.ticker, w])); S.drawings = new Map(ds.map((d) => [d.id, d])); S.labels = ls; S.commands = cs;
   S.loaded = true;
+  loadPositions();
 }
+
+// ---------------- open positions bar (Eyal 2026-10-24): always on top of every page ----------------
+const PB_LS = 'srs_posbar_collapsed';
+const posbar = document.getElementById('posbar')!;
+const sgn = (x: number, d = 2) => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(d);
+const usdS = (x: number) => (x >= 0 ? '+' : '−') + '$' + Math.abs(x).toFixed(2);
+const ud = (x: number | null) => (x == null ? '' : x >= 0 ? 'up' : 'dn');
+let quoteBusy = false;
+async function loadPositions() {
+  try { S.positions = await api.loadPositions(); } catch { S.positions = []; }
+  renderPosBar();
+  await refreshQuotes();
+}
+async function refreshQuotes() {
+  if (!S.positions.length || quoteBusy) return;
+  quoteBusy = true; posbar.classList.add('busy');
+  try { S.quotes = await fetchQuotes(S.positions); } finally { quoteBusy = false; posbar.classList.remove('busy'); }
+  renderPosBar();
+}
+function renderPosBar() {
+  const show = !!S.email && S.email.toLowerCase() === OWNER_EMAIL && S.loaded && S.positions.length > 0;
+  posbar.hidden = !show;
+  document.body.classList.toggle('has-pb', show);
+  if (!show) { document.documentElement.style.setProperty('--pb', '0px'); return; }
+  const collapsed = localStorage.getItem(PB_LS) === '1';
+  const cs = S.positions.map((p) => calcPosition(p, S.quotes.get(p.ticker)?.price ?? null));
+  const tot = totals(cs);
+  const labels = [...new Set(S.positions.map((p) => quoteLabel(S.quotes.get(p.ticker))))];
+  const rows = S.positions.map((p, i) => {
+    const c = cs[i], q = S.quotes.get(p.ticker), lab = quoteLabel(q);
+    return `<a class="pb-row" href="#/t/${encodeURIComponent(p.ticker)}" data-t="${esc(p.ticker)}" title="${esc(lab)}">
+      <b class="pb-tk" dir="ltr">${esc(p.ticker)}</b>
+      <span class="pb-q" dir="ltr">${fmt(p.qty, p.qty % 1 ? 2 : 0)} × ${fmt(p.entry_price)}</span>
+      <span class="pb-px" dir="ltr" data-v="${c.price ?? ''}">${c.price == null ? '—' : fmt(c.price)}${q && q.src !== 'cnbc' ? `<small>${q.src === 'tv' ? ' מושהה' : ' סגירה'}</small>` : ''}${q?.ext ? `<small> ${q.ext.kind === 'PRE_MKT' ? 'pre' : 'AH'} ${fmt(q.ext.price)}</small>` : ''}</span>
+      <span class="pb-pl ${ud(c.pl)}" dir="ltr" data-v="${c.pl ?? ''}">${c.pl == null ? '—' : `${usdS(c.pl)} (${sgn(c.plPct!)}%)`}</span>
+      <span class="pb-r ${ud(c.r)}" dir="ltr" data-v="${c.r ?? ''}">${c.r == null ? '' : sgn(c.r) + 'R'}</span>
+      <span class="pb-sl" dir="ltr" data-v="${c.toStopPct ?? ''}">${p.stop == null ? '' : `SL ${fmt(p.stop)}${c.toStopPct == null ? '' : ` (${sgn(c.toStopPct, 1)}%)`}`}</span>
+      <span class="pb-tp" dir="ltr" data-v="${c.toTgtPct ?? ''}">${p.target == null ? '' : `TP ${fmt(p.target)}${c.toTgtPct == null ? '' : ` (${sgn(c.toTgtPct, 1)}%)`}`}</span>
+    </a>`;
+  }).join('');
+  posbar.innerHTML = `<div class="pb-head">
+      <button class="pb-tog ghost small" id="pbTog" aria-expanded="${!collapsed}">${collapsed ? '▸' : '▾'} פוזיציות (${S.positions.length})</button>
+      <span class="pb-tot ${ud(tot.pl)}" dir="ltr" data-pl="${tot.pl ?? ''}">${tot.pl == null ? '—' : `${usdS(tot.pl)} (${sgn(tot.plPct!)}%)${tot.r != null ? ` · ${sgn(tot.r)}R` : ''}`}</span>
+      <span class="pb-src muted">${esc(labels.join(' / '))}</span>
+      <button class="ghost small pb-ref" id="pbRef" aria-label="רענן מחיר">↻</button>
+    </div>
+    <div class="pb-rows" ${collapsed ? 'hidden' : ''}>${rows}</div>`;
+  $('#pbTog', posbar)!.onclick = () => { localStorage.setItem(PB_LS, collapsed ? '0' : '1'); renderPosBar(); };
+  $('#pbRef', posbar)!.onclick = () => refreshQuotes();
+  document.documentElement.style.setProperty('--pb', posbar.offsetHeight + 'px');
+}
+new ResizeObserver(() => { if (!posbar.hidden) document.documentElement.style.setProperty('--pb', posbar.offsetHeight + 'px'); }).observe(posbar);
+setInterval(() => { if (document.visibilityState === 'visible') refreshQuotes(); }, 60_000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshQuotes(); });
 
 let subscribed = false;
 let loading: Promise<void> | null = null;
@@ -1067,6 +1126,7 @@ async function onLogin(email: string | null) {
   }
   if (!email) { S.loaded = false; destroyChart(); S.ticker = null; }
   route();
+  renderPosBar();
 }
 
 api.onAuth((e) => { if (e !== S.email || (e && !S.loaded)) onLogin(e); });
@@ -1076,7 +1136,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+(window as any).__srs = { S, api, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

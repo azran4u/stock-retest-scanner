@@ -109,6 +109,24 @@ The daily export (`export_daily_report.py`) calls `positions.refresh()` (yfinanc
 Alert routine: `/workspace/.venv/bin/python /workspace/stock-screener/positions_check.py` (exit 2 if any flag fires).
 Default target = TP of the user's TradingView drawing (tv_drawings.json) at entry time.
 
+**Web app positions bar (Eyal 2026-10-24).** Every app page (list + stock page, desktop + iPhone) has a fixed bar on top
+with each open position: ticker (tap → stock page), qty × entry, current price, P/L $ (%), R = (price − entry)/(entry − SL),
+SL and TP with the distance (level − price)/price, plus the total (Σ P/L $, Σ P/L / Σ cost %, Σ P/L / Σ risk R); green/red;
+collapsible (localStorage `srs_posbar_collapsed`). Read-only: positions are managed with `positions.py` (chat), not in the app.
+- *Storage / privacy:* Supabase `public.positions` (migration `positions_table`): RLS on, policy `owner_select` = SELECT for
+  `authenticated` with JWT email azran4u@gmail.com (same rule as drawings / labels / watchlist); anon has no grant at all;
+  no INSERT/UPDATE/DELETE grant for app users (written only by the bot's connector). In realtime publication.
+- *Sync:* `positions.json` on the box stays the source of truth (the box has no Supabase key, so `positions.py` /
+  `positions_check.py` keep reading the file). After any `add / set / close / refresh / check` (and after the daily export,
+  which refreshes the market block), run the SQL printed by `python positions.py supabase-sql` with the Supabase connector
+  (`execute_sql`, project wkkdblnykgolqijzagva): it upserts every position (open + closed, `raw` = the full JSON) and deletes
+  rows no longer in the file. Test `tests/test_positions_supabase.py`.
+- *Price* (`webapp/src/positions.ts`, polled every 60 s while visible, ↻ to refresh): CNBC quote API (real-time, CORS `*`)
+  → if it fails, TradingView scanner (≈15 min delayed, labelled 'מושהה') → else the stored nightly close, labelled
+  'סגירה אחרונה dd/mm'; no price → '—' (never invented). The label shows the quote time in Israel time ('CNBC 23/10 22:59
+  (שעון ישראל)'), or 'CNBC · מחיר סגירה dd/mm' when CNBC only gives the date (after the close); pre/after-market last is
+  shown next to the price (pre/AH) but P/L uses the regular-session price. Tests `test_positions.mjs`, `e2e_positions.mjs`.
+
 ## `srs` — deterministic building blocks (CLI + Python package)
 
 Small pure functions with tests, runnable on any Mac/Linux. Separate from the daily scan
