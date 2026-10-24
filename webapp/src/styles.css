@@ -73,7 +73,7 @@ header.ch { position: static; padding: calc(4px + var(--safe-t)) 4px 4px; }
 .tkb { display: flex; gap: 3px; flex-wrap: nowrap; overflow: hidden; }
 .chartwrap { height: 52dvh; min-height: 260px; flex: none; position: relative; touch-action: none; }
 .overlay { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 3; }
-.overlay g.h, .overlay g.tag { pointer-events: all; cursor: grab; touch-action: none; }
+.overlay g.h, .overlay g.tag, .overlay g.fh { pointer-events: all; cursor: grab; touch-action: none; }
 .overlay text { fill: #fff; font-size: 11px; font-family: -apple-system, Arial, sans-serif; }
 .tools { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--bg2); border-bottom: 1px solid var(--bg2); }
 .tools > button { flex: 1; }
@@ -163,3 +163,6 @@ canvas.spark.empty { height: 0; margin: 0; }
 .fibbox .fiblv { display: flex; gap: 14px; margin: 4px 0; }
 .fibline { color: #ffca28; }
 .fibconf b { color: #ffca28; }
+.overlay g.fh text { paint-order: stroke; stroke: #131722; stroke-width: 3px; }
+.fibhint { background: rgba(255,202,40,.16); }
+.badge.b-fibm { background: rgba(255,202,40,.25); color: #ffca28; }

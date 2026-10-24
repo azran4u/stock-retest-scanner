@@ -184,6 +184,36 @@ select ticker, until from (
 
 APP_STATE = "/workspace/stock-screener/app_state.json"
 
+# Manual Fibonacci anchors Eyal placed in the app (label 'fib_anchor': JSON {low, low_date, high, high_date, at} or 'auto'
+# = back to automatic). Latest mark per ticker; export_data uses them instead of the automatic anchor (Eyal 2026-10-24).
+SQL_FIB_ANCHORS = """
+select distinct on (ticker) ticker, value, asof, created_at
+from public.labels
+where label = 'fib_anchor'
+order by ticker, asof desc, created_at desc;
+""".strip()
+
+
+def fib_anchors(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """{ticker: {low, low_date, high, high_date}} from SQL_FIB_ANCHORS rows (latest per ticker; 'auto' / invalid -> none)."""
+    import json
+    best: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        t = str(r["ticker"]).upper()
+        k = (str(r.get("asof") or ""), str(r.get("created_at") or ""))
+        if t not in best or k > best[t]["_k"]:
+            best[t] = {"_k": k, "value": r.get("value")}
+    out: Dict[str, Dict[str, Any]] = {}
+    for t, b in best.items():
+        try:
+            v = json.loads(b["value"]) if b["value"] and b["value"] != "auto" else None
+            lo, hi = float(v["low"]), float(v["high"])
+            if hi > lo and str(v["low_date"]) < str(v["high_date"]):
+                out[t] = {"low": lo, "low_date": str(v["low_date"])[:10], "high": hi, "high_date": str(v["high_date"])[:10]}
+        except Exception:
+            continue
+    return out
+
 
 def not_interesting_active(rows: Iterable[Dict[str, Any]], asof: Optional[str] = None) -> Dict[str, Optional[str]]:
     """{ticker: until|None} for rows from SQL_NOT_INTERESTING_ACTIVE(_ONLY) that are active on asof (YYYY-MM-DD, default today)."""
@@ -200,7 +230,8 @@ def not_interesting_active(rows: Iterable[Dict[str, Any]], asof: Optional[str] =
     return out
 
 
-def write_app_state(watch_rows: Iterable[Dict[str, Any]], ni_rows: Iterable[Dict[str, Any]], path: str = APP_STATE) -> Dict[str, Any]:
+def write_app_state(watch_rows: Iterable[Dict[str, Any]], ni_rows: Iterable[Dict[str, Any]], path: str = APP_STATE,
+                    fib_rows: Optional[Iterable[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Save what the routine read via SQL (SQL_WATCHLIST, SQL_NOT_INTERESTING_ACTIVE) for the offline scripts:
     export_data (watchlist tickers get candles) and export_daily_report (not-interesting excluded from targets)."""
     import json
@@ -214,6 +245,12 @@ def write_app_state(watch_rows: Iterable[Dict[str, Any]], ni_rows: Iterable[Dict
         "not_interesting": {str(r["ticker"]).upper(): (str(r["until"])[:10] if r.get("until") else None)
                             for r in ni_rows if str(r.get("value", "yes")).lower() == "yes"},
     }
+    if fib_rows is not None:
+        state["fib_anchors"] = fib_anchors(fib_rows)
+    else:  # keep what an earlier read stored
+        old = _load_state(path).get("fib_anchors")
+        if old:
+            state["fib_anchors"] = old
     Path(path).write_text(json.dumps(state, indent=1) + "\n")
     return state
 
@@ -229,13 +266,17 @@ def watchlist_from_state(path=APP_STATE) -> List[str]:
     return [str(t).upper() for t in _load_state(path).get("watchlist", [])]
 
 
+def fib_anchors_from_state(path=APP_STATE) -> Dict[str, Dict[str, Any]]:
+    return {str(t).upper(): v for t, v in (_load_state(path).get("fib_anchors") or {}).items()}
+
+
 def not_interesting_from_state(path=APP_STATE, asof: Optional[str] = None) -> set:
     ni = _load_state(path).get("not_interesting", {}) or {}
     return set(not_interesting_active([{"ticker": t, "value": "yes", "until": u} for t, u in ni.items()], asof))
 
 
 def main() -> None:
-    """python -m srs_app.sync --watch-json W --ni-json N  ->  /workspace/stock-screener/app_state.json
+    """python -m srs_app.sync --watch-json W --ni-json N [--fib-json F]  ->  /workspace/stock-screener/app_state.json
     W / N = execute_sql output (raw connector output or a JSON list) of SQL_WATCHLIST / SQL_NOT_INTERESTING_ACTIVE."""
     import argparse
     from pathlib import Path
@@ -243,10 +284,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=main.__doc__)
     ap.add_argument("--watch-json", required=True)
     ap.add_argument("--ni-json", required=True)
+    ap.add_argument("--fib-json", default=None, help="execute_sql output of SQL_FIB_ANCHORS (manual Fib anchors)")
     ap.add_argument("--out", default=APP_STATE)
     a = ap.parse_args()
-    st = write_app_state(load_rows(Path(a.watch_json)), load_rows(Path(a.ni_json)), a.out)
-    print(f"app state: {len(st['watchlist'])} watchlist, {len(st['not_interesting'])} not-interesting marks -> {a.out}")
+    st = write_app_state(load_rows(Path(a.watch_json)), load_rows(Path(a.ni_json)), a.out,
+                         load_rows(Path(a.fib_json)) if a.fib_json else None)
+    print(f"app state: {len(st['watchlist'])} watchlist, {len(st['not_interesting'])} not-interesting marks, "
+          f"{len(st.get('fib_anchors') or {})} manual fib anchors -> {a.out}")
 
 
 if __name__ == "__main__":

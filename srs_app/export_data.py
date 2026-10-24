@@ -276,14 +276,20 @@ def spark_ma(bars: List[list], weeks: int) -> Optional[Dict[str, Any]]:
     return {"lo": round(lo, dec), "hi": round(hi, dec), "q": base64.b64encode(q).decode()}
 
 
-def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]]) -> None:
+def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]], manual: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
     """fib_* columns (informational, not a PASS gate): anchor low/high (+ daily dates), weekly ATR, and confluence of the
-    key levels 0.382 / 0.5 / 0.618 with the current price and with the exported zone (srs_app.fib)."""
+    key levels 0.382 / 0.5 / 0.618 with the current price and with the exported zone (srs_app.fib).
+    manual = Eyal's anchors from the app ({ticker: {low, low_date, high, high_date}}, sync.fib_anchors_from_state);
+    they replace the automatic anchor (fib_manual = True); the weekly ATR stays the automatic one."""
     from srs_app.fib import fib_confluence
+    manual = manual or {}
     for r in rows:
-        f = fib.get(r["ticker"])
+        f, m = fib.get(r["ticker"]), manual.get(r["ticker"])
         for k in ("fib_low", "fib_low_date", "fib_high", "fib_high_date", "fib_atr", "fib_price_level", "fib_zone_levels", "fib_confluence"):
             r[k] = None
+        r["fib_manual"] = bool(m)
+        if m:
+            f = {**(f or {"atr_w": r.get("weekly_atr")}), "low": m["low"], "low_date": m["low_date"], "high": m["high"], "high_date": m["high_date"]}
         if not f:
             continue
         r.update(fib_low=f["low"], fib_low_date=f["low_date"], fib_high=f["high"], fib_high_date=f["high_date"], fib_atr=f["atr_w"])
@@ -393,7 +399,13 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
     fib: Dict[str, Dict[str, Any]] = {}
     n = export_candles(tickers, out, fetch_missing=watch, fib_out=fib)
-    attach_fib(rows, fib)
+    try:
+        from srs_app.sync import fib_anchors_from_state
+        manual = fib_anchors_from_state(os.environ.get("SRS_APP_STATE", "/workspace/stock-screener/app_state.json"))
+    except Exception as e:
+        print(f"  [app data] manual fib anchors skipped: {e}")
+        manual = {}
+    attach_fib(rows, fib, manual)
     attach_week_closes(rows, asof_date=report_date)
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:

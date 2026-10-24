@@ -105,3 +105,39 @@ def test_sma_weekly_sampled_at_last_trading_day():
     # a mid week: value = SMA at that week's Friday
     fri = max(i for i, r in enumerate(rows) if r[0] <= w[45]["last"])
     assert sm[50][45] == pytest.approx(sum(closes[fri - 49:fri + 1]) / 50)
+
+
+def test_manual_anchors_from_labels_and_export_override(tmp_path):
+    import json
+    from srs_app.sync import fib_anchors, write_app_state, fib_anchors_from_state
+    from srs_app.export_data import attach_fib
+    rows = [
+        {"ticker": "qcom", "value": json.dumps({"low": 140, "low_date": "2026-08-03", "high": 206, "high_date": "2026-09-25"}), "asof": "2026-10-24", "created_at": "2026-10-24T18:00:00Z"},
+        {"ticker": "QCOM", "value": "auto", "asof": "2026-10-23", "created_at": "2026-10-23T10:00:00Z"},   # older reset
+        {"ticker": "USB", "value": json.dumps({"low": 50, "low_date": "2026-03-01", "high": 66, "high_date": "2026-08-01"}), "asof": "2026-10-20", "created_at": "x"},
+        {"ticker": "USB", "value": "auto", "asof": "2026-10-24", "created_at": "y"},                        # newer reset -> auto
+        {"ticker": "BAD", "value": json.dumps({"low": 70, "low_date": "2026-09-01", "high": 60, "high_date": "2026-08-01"}), "asof": "2026-10-24"},
+    ]
+    m = fib_anchors(rows)
+    assert m == {"QCOM": {"low": 140.0, "low_date": "2026-08-03", "high": 206.0, "high_date": "2026-09-25"}}
+    st = tmp_path / "state.json"
+    write_app_state([], [], str(st), rows)
+    assert fib_anchors_from_state(str(st)) == m
+    write_app_state([{"ticker": "A"}], [], str(st))           # a later read without fib rows keeps the anchors
+    assert fib_anchors_from_state(str(st)) == m
+    out = [{"ticker": "QCOM", "current_price": 173.0, "weekly_atr": 18.0}, {"ticker": "USB", "current_price": 59.0}]
+    attach_fib(out, {"QCOM": {"low": 142.12, "low_date": "2026-08-03", "high": 205.85, "high_date": "2026-09-25", "atr_w": 18.68},
+                     "USB": {"low": 49.38, "low_date": "2026-03-09", "high": 65.47, "high_date": "2026-08-17", "atr_w": 2.0}}, m)
+    assert out[0]["fib_manual"] is True and out[0]["fib_low"] == 140.0 and out[0]["fib_high"] == 206.0 and out[0]["fib_atr"] == 18.68
+    assert out[0]["fib_price_level"] == 0.5          # 206 - 0.5*66 = 173
+    assert out[1]["fib_manual"] is False and out[1]["fib_low"] == 49.38
+
+
+def test_auto_anchor_uses_wicks():
+    """Low = the swing candle's LOW (wick), high = the top candle's HIGH (wick), not bodies / closes."""
+    rows = _daily_from_weekly(_path())
+    f = fib_anchor(rows)
+    w = weekly_bars(rows)
+    assert f["low"] == min(b["low"] for b in w[30:45]) and f["high"] == max(b["high"] for b in w)
+    day = {r[0]: r for r in rows}
+    assert day[f["low_date"]][3] == f["low"] and day[f["high_date"]][2] == f["high"]   # daily wick of that day

@@ -21,7 +21,10 @@ export interface ChartCallbacks {
   onDragMove(d: Drawing): void;
   onDragEnd(id: string, patch: Partial<Drawing>): void;
   onTap(price: number, date: string): void;
+  /** Fib edit mode: an anchor handle was dragged onto the bar at `time` (bar time of the current timeframe). */
+  onFibDrop?(which: 'low' | 'high', time: string): void;
 }
+export interface FibEdit { low: { time: string; price: number } | null; high: { time: string; price: number } | null }
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -78,7 +81,7 @@ export class ChartView {
     // own tap detection (lightweight-charts swallows quick 2nd taps as double-tap)
     let down: { x: number; y: number; t: number } | null = null;
     host.addEventListener('pointerdown', (e) => {
-      down = (e.target as Element).closest('g.h, g.tag') ? null : { x: e.clientX, y: e.clientY, t: Date.now() };
+      down = (e.target as Element).closest('g.h, g.tag, g.fh') ? null : { x: e.clientX, y: e.clientY, t: Date.now() };
     }, true);
     host.addEventListener('pointerup', (e) => {
       if (!down || this.dragging) return;
@@ -103,6 +106,10 @@ export class ChartView {
   private fibAnchorS: ISeriesApi<'Line'> | null = null;
   private legendEl: HTMLDivElement | null = null;
   private extraLevels: number[] = [];
+  /** Fib edit mode (Eyal 2026-10-24): draggable anchor handles that snap to the wick of the candle under the pointer. */
+  fibEdit: FibEdit | null = null;
+  private fibDrag: 'low' | 'high' | null = null;
+  setFibEdit(e: FibEdit | null) { if (this.fibDrag) return; this.fibEdit = e ? JSON.parse(JSON.stringify(e)) : null; this.lastKey = ''; }
   /** Moving averages to show: [{n, color, data}] (data already in the timeframe's bar times); [] hides all. */
   setMAs(mas: { n: number; color: string; data: { time: string; value: number }[] }[]) {
     const want = new Set(mas.map((m) => m.n));
@@ -261,7 +268,7 @@ export class ChartView {
     const lr = this.chart.timeScale().getVisibleLogicalRange();
     const key = [lr?.from, lr?.to, this.Y(this.bars[this.bars.length - 1].close), this.Y((this.bars[this.bars.length - 1].close) * 1.1),
       this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings), this.dragging?.key, this.atrVal,
-      this.chart.priceScale('right').width()].join('|');
+      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.render();
@@ -378,6 +385,20 @@ export class ChartView {
         guide = `<g class="dragguide"><line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="${col}" stroke-width="1" stroke-dasharray="5 4"/></g>`;
       }
     }
+    // Fib anchor handles (edit mode): low = circle under the candle's low wick, high = over the high wick
+    if (this.fibEdit) {
+      for (const which of ['low', 'high'] as const) {
+        const a = this.fibEdit[which]; if (!a) continue;
+        const x = this.X(a.time), y = this.Y(a.price);
+        if (x == null || y == null || y < -20 || y > H + 20) continue;
+        const col = which === 'low' ? '#26a69a' : '#ef5350';
+        const [yName, yPx] = which === 'low' ? [y + 35, y + 22] : [y - 27, y - 14];
+        handles.push(`<g class="fh" data-fk="${which}"><circle cx="${x}" cy="${y}" r="22" fill="transparent"/>` +
+          `<circle cx="${x}" cy="${y}" r="8" fill="${col}" stroke="#fff" stroke-width="2"/>` +
+          `<text x="${x}" y="${yName}" text-anchor="middle" style="font-size:11px;font-weight:600">${which === 'low' ? 'שפל' : 'שיא'}</text>` +
+          `<text x="${x}" y="${yPx}" text-anchor="middle" direction="ltr" style="font-size:11px">${a.price.toFixed(2)}</text></g>`);
+      }
+    }
     this.svg.innerHTML = s + guide + handles.join('');
   }
 
@@ -439,6 +460,34 @@ export class ChartView {
   // ---- interaction ----
   private onPointerDown(e: PointerEvent) {
     const t = e.target as Element;
+    const fh = t.closest('g.fh') as SVGGElement | null;
+    if (fh && this.fibEdit) {
+      e.preventDefault(); e.stopPropagation();
+      const which = fh.dataset.fk as 'low' | 'high';
+      this.fibDrag = which;
+      this.chart.applyOptions({ handleScroll: false, handleScale: false });
+      const rect = this.host.getBoundingClientRect();
+      const n = this.bars.length;
+      const move = (ev: PointerEvent) => {
+        ev.preventDefault();
+        const l = this.chart.timeScale().coordinateToLogical(ev.clientX - rect.left);
+        if (l == null || !n || !this.fibEdit) return;
+        const b = this.bars[Math.max(0, Math.min(n - 1, Math.round(l)))];
+        this.fibEdit[which] = { time: b.time, price: which === 'low' ? b.low : b.high }; // snap to the wick
+        this.lastKey = '';
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+        this.chart.applyOptions({ handleScroll: true, handleScale: true });
+        this.fibDrag = null; this.lastKey = '';
+        const a = this.fibEdit?.[which];
+        if (a) this.cb.onFibDrop?.(which, a.time);
+      };
+      window.addEventListener('pointermove', move, { passive: false });
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+      return;
+    }
     const h = t.closest('g.h') as SVGGElement | null;
     if (h) {
       e.preventDefault(); e.stopPropagation();

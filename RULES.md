@@ -442,6 +442,14 @@ the same idea as TradingView's Auto Fib Retracement:
   low + 3 ATR confirms it as a swing LOW. Ties = the first bar of an equal extreme.
 - **Fib low** = the most recent CONFIRMED swing low; **fib high** = the highest weekly high after it up to now (the leg's peak;
   its pullback does not need to be confirmed). No confirmed low -> no Fib.
+- **Wicks, not bodies:** the low is the swing candle's LOW (bottom of the wick) and the high is the top candle's HIGH
+  (top of the wick); the stored date is the day inside that week where the wick was made.
+- **Manual override (Eyal 2026-10-24):** on the stock page "ערוך פיבונאצי" lets him tap the candle where the up-wave starts and
+  then the top candle (or drag the two handles); each anchor snaps to that candle's wick (low / high; weekly or daily view).
+  The high must be after the low and above it, otherwise the edit is rejected. Saved per ticker as label `fib_anchor`
+  (JSON {low, low_date, high, high_date, at}; "אפס לאוטומטי" writes `auto`) in Supabase, with a localStorage copy; newest wins.
+  Manual anchors replace the automatic ones everywhere (chart, stock page "ידני" badge, list card line "(ידני)", mini chart)
+  and in the nightly export (`sync.SQL_FIB_ANCHORS` -> `app_state.json` `fib_anchors` -> `fib_manual` = true).
 - Levels as a TradingView retracement drawn low -> high: price(x) = high - x * (high - low), x = 0 (high), 0.382, 0.5, 0.618,
   1 (low). 0.382 / 0.5 / 0.618 are the key levels (bold on the chart).
 
