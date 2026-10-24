@@ -102,6 +102,12 @@ export interface Row {
   red_vol_ratio?: number | null;
   red_vol_detail?: string | null;
   has_candles?: boolean;
+  /** FinViz sector / industry (export_data.attach_sectors); null = unknown */
+  sector?: string | null;
+  industry?: string | null;
+  tv_entry?: number | null;
+  tv_sl?: number | null;
+  tv_tp?: number | null;
   tradingview_url?: string | null;
   [k: string]: unknown;
 }

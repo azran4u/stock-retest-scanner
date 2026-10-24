@@ -63,3 +63,50 @@ def test_spark_series_weekly_ohlc():
     assert all(h[i] >= max(o[i], cl[i]) and l[i] <= min(o[i], cl[i]) for i in range(156))
     assert list(cl) == sorted(cl)
     assert spark_series(d.iloc[:3]) is None
+
+
+def test_attach_sectors_cache_and_missing(tmp_path):
+    """List card sector/industry (Eyal 2026-10-24): fetched once, then served from the cache; unknown = None ('—')."""
+    from datetime import datetime, timedelta, timezone
+    from srs_app.export_data import attach_sectors
+    cache = tmp_path / "sec.json"
+    calls = []
+
+    def fake(t):
+        calls.append(t)
+        return {"CSCO": {"sector": "Technology", "industry": "Communication Equipment", "src": "finviz"}}.get(t, {})
+
+    now = datetime(2026, 10, 24, tzinfo=timezone.utc)
+    rows = [{"ticker": "CSCO"}, {"ticker": "ZZZZ"}]
+    assert attach_sectors(rows, cache, fake, now) == 2
+    assert rows[0]["sector"] == "Technology" and rows[0]["industry"] == "Communication Equipment"
+    assert rows[1]["sector"] is None and rows[1]["industry"] is None
+    # next day: the hit is cached, the miss is not retried yet (7-day miss TTL)
+    rows = [{"ticker": "CSCO"}, {"ticker": "ZZZZ"}]
+    assert attach_sectors(rows, cache, fake, now + timedelta(days=1)) == 0 and rows[0]["sector"] == "Technology"
+    # after the miss TTL the unknown one is retried; a failed re-fetch never wipes a known sector
+    assert attach_sectors([{"ticker": "ZZZZ"}], cache, fake, now + timedelta(days=8)) == 1
+    later = [{"ticker": "CSCO"}]
+    calls.clear()
+    assert attach_sectors(later, cache, lambda t: {}, now + timedelta(days=200)) == 1
+    assert later[0]["sector"] == "Technology"
+    # no fetcher (SRS_NO_NET): cache only
+    rows = [{"ticker": "CSCO"}, {"ticker": "NEW"}]
+    import os
+    os.environ["SRS_NO_NET"] = "1"
+    try:
+        assert attach_sectors(rows, cache, None, now) == 0
+    finally:
+        del os.environ["SRS_NO_NET"]
+    assert rows[0]["sector"] == "Technology" and rows[1]["sector"] is None
+
+
+def test_finviz_sector_parser_current_and_legacy_layout():
+    from bs4 import BeautifulSoup
+    from srs.info import parse_sector_industry
+    cur = ('<div class="quote-header_categories"><a href="screener?v=111&f=sec_technology" class="quote-header_category">Technology</a>'
+           '<a href="screener?v=111&f=ind_communicationequipment" class="quote-header_category">Communication Equipment</a>'
+           '<a href="screener?v=111&f=geo_usa">USA</a></div>')
+    assert parse_sector_industry(BeautifulSoup(cur, "lxml")) == ("Technology", "Communication Equipment")
+    old = '<div class="quote-links"><a class="tab-link">Industrials</a><a class="tab-link">Tools &amp; Accessories</a></div>'
+    assert parse_sector_industry(BeautifulSoup(old, "lxml")) == ("Industrials", "Tools & Accessories")

@@ -63,10 +63,33 @@ def finviz_snapshot(ticker: str, timeout: int = 20) -> Dict[str, str]:
     cells = soup.select("table.snapshot-table2 td")
     for a, b in zip(cells[0::2], cells[1::2]):
         out[a.get_text(strip=True)] = b.get_text(strip=True)
-    links = [a.get_text(strip=True) for a in soup.select("div.quote-links a.tab-link")]
-    if len(links) >= 2:
-        out["_sector"], out["_industry"] = links[0], links[1]
+    sec, ind = parse_sector_industry(soup)
+    if sec:
+        out["_sector"] = sec
+    if ind:
+        out["_industry"] = ind
     return out
+
+
+def parse_sector_industry(soup) -> tuple:
+    """(sector, industry) from a FinViz quote page. Current layout (2026): header category links
+    <a href="screener?v=111&f=sec_technology" class="quote-header_category">; legacy: div.quote-links a.tab-link."""
+    sec = ind = None
+    for a in soup.select("a[href*='f=sec_'], a[href*='f=ind_']"):
+        href, txt = a.get("href") or "", a.get_text(strip=True)
+        if not txt:
+            continue
+        if "f=sec_" in href and sec is None:
+            sec = txt
+        elif "f=ind_" in href and ind is None:
+            ind = txt
+        if sec and ind:
+            break
+    if not (sec or ind):
+        links = [a.get_text(strip=True) for a in soup.select("div.quote-links a.tab-link")]
+        if len(links) >= 2:
+            sec, ind = links[0], links[1]
+    return sec, ind
 
 
 def info(ticker: str, today: Optional[date] = None) -> Dict[str, Any]:

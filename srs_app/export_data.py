@@ -28,6 +28,11 @@ import pandas as pd
 
 HIST_CACHE = Path(os.environ.get("SRS_HIST_CACHE", "/workspace/hist_cache.pkl"))
 TV_DRAWINGS = Path(os.environ.get("SRS_TV_DRAWINGS", "/workspace/stock-screener/tv_drawings.json"))
+# Sector / industry per ticker (list card, Eyal 2026-10-24). FinViz quote page first, yfinance fallback; cached because
+# a company's sector rarely changes: hits kept SECTOR_TTL_DAYS, misses retried after SECTOR_MISS_TTL_DAYS.
+SECTOR_CACHE = Path(os.environ.get("SRS_SECTOR_CACHE", "/workspace/cache/sector_industry.json"))
+SECTOR_TTL_DAYS = 120
+SECTOR_MISS_TTL_DAYS = 7
 YEARS = 5
 SPARK_WEEKS = 156  # ~3 years of weekly closes for the list mini chart
 SPARK_Q = 255      # OHLC quantized to one byte between lo and hi (keeps spark.json small)
@@ -108,6 +113,73 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         row["tv_found"] = has_tv
         rows.append(row)
     return rows
+
+
+def fetch_sector(ticker: str) -> Dict[str, Any]:
+    """{'sector', 'industry', 'src'} from FinViz (quote page header), else yfinance .info; None = unknown."""
+    out: Dict[str, Any] = {"sector": None, "industry": None, "src": None}
+    try:
+        from srs.info import finviz_snapshot
+        s = finviz_snapshot(ticker)
+        out.update(sector=s.get("_sector"), industry=s.get("_industry"))
+        out["src"] = "finviz" if (out["sector"] or out["industry"]) else None
+    except Exception as e:
+        print(f"  [sector] finviz {ticker}: {e}")
+    if not out["sector"] or not out["industry"]:
+        try:
+            import yfinance as yf
+            inf = yf.Ticker(ticker.replace(".", "-")).info or {}
+            if inf.get("sector") or inf.get("industry"):
+                out["sector"] = out["sector"] or inf.get("sector")
+                out["industry"] = out["industry"] or inf.get("industry")
+                out["src"] = "finviz+yfinance" if out["src"] else "yfinance"
+        except Exception as e:
+            print(f"  [sector] yfinance {ticker}: {e}")
+    return out
+
+
+def attach_sectors(rows: List[Dict[str, Any]], cache_path: Optional[Path] = None, fetch=None,
+                   now: Optional[datetime] = None, max_fetch: int = 400) -> int:
+    """Set row['sector'] / row['industry'] (None = unknown, shown as '—') from the cache, fetching missing/expired
+    tickers (at most max_fetch per run). SRS_NO_NET=1 disables fetching. Returns the number of fetches."""
+    import time
+    cache_path = cache_path or SECTOR_CACHE
+    fetch = fetch or (None if os.environ.get("SRS_NO_NET") else fetch_sector)
+    now = now or datetime.now(timezone.utc)
+    try:
+        cache: Dict[str, Any] = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    except Exception:
+        cache = {}
+
+    def fresh(e: Dict[str, Any]) -> bool:
+        try:
+            age = (now - datetime.fromisoformat(e["fetched"])).days
+        except Exception:
+            return False
+        return age < (SECTOR_TTL_DAYS if e.get("sector") else SECTOR_MISS_TTL_DAYS)
+
+    n = 0
+    for r in rows:
+        t = r["ticker"]
+        e = cache.get(t)
+        if fetch and (e is None or not fresh(e)) and n < max_fetch:
+            got = fetch(t) or {}
+            n += 1
+            if got.get("sector") or got.get("industry") or e is None or not e.get("sector"):
+                e = {"sector": got.get("sector"), "industry": got.get("industry"), "src": got.get("src"),
+                     "fetched": now.isoformat(timespec="seconds")}
+                cache[t] = e
+            if fetch is fetch_sector:
+                time.sleep(0.35)
+        r["sector"] = (e or {}).get("sector") or None
+        r["industry"] = (e or {}).get("industry") or None
+    if n:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(cache, indent=0, sort_keys=True))
+        except Exception as ex:
+            print(f"  [sector] cache write failed: {ex}")
+    return n
 
 
 def load_watchlist() -> List[str]:
@@ -236,6 +308,9 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
                 full = {r["ticker"]: r for r in build_index(repo, True, report)}
             r = dict(full.get(t) or {"ticker": t, "status": "OUT", "badges": ["off_screen"], "tv_found": t in tv})
             rows.append(r)
+    nsec = attach_sectors(rows)
+    if nsec:
+        print(f"  [app data] sector/industry fetched for {nsec} tickers")
     n = export_candles(tickers, out, fetch_missing=watch)
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:

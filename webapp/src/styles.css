@@ -125,6 +125,25 @@ header.ch { position: static; padding: calc(4px + var(--safe-t)) 4px 4px; }
 canvas.spark { display: block; width: 100%; height: 124px; margin: 4px 0 2px; border-radius: 6px; background: rgba(30,34,45,.55); }
 canvas.spark.empty { height: 0; margin: 0; }
 
+/* list card: sector, R:R + $ risk / reward (Eyal 2026-10-24) */
+.r4 { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r5 { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 2px 0; }
+.sz-rr { color: #5fd4c6; font-weight: 600; }
+.sz-risk { color: #ff8a87; font-weight: 600; }
+.sz-rew { color: #5fd4c6; font-weight: 600; }
+.sz-wide { color: var(--orange); }
+
+/* desktop / tablet: cards in a grid so the 3y mini chart keeps phone-like proportions instead of stretching full width */
+@media (min-width: 720px) {
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; padding: 10px 12px calc(30px + var(--safe-b)); max-width: 1680px; margin: 0 auto; }
+  .list > .center, .list > .addrow { grid-column: 1 / -1; }
+  .row { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
+  .row:hover { background: var(--bg2); }
+  canvas.spark { height: auto; aspect-ratio: 2.6 / 1; max-height: 200px; }
+  canvas.spark.empty { height: 0; aspect-ratio: auto; }
+  .filters { max-width: 1680px; margin: 0 auto; }
+}
+
 /* bot drawing feedback */
 .fb { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .fbbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }

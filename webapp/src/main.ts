@@ -3,6 +3,7 @@ import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
 import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
+import { maxRiskUsd, sizeLong } from './sizing';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -91,6 +92,32 @@ function liveOf(r: Row): Live | null {
   return { status, rr: q, gatesOk, why };
 }
 const liveRR = (r: Row) => { const l = liveOf(r); return l ? l.rr : (r.tv_rr ?? null); };
+/** Levels of the Long that counts for the row (same pick as liveOf; rows without exported gates fall back to the export). */
+function longLevels(r: Row): { entry: number | null; stop: number | null; target: number | null } | null {
+  const lg = countedOf(r.ticker, 'long');
+  if (lg) return { entry: lg.entry, stop: lg.stop, target: lg.target };
+  if (liveOf(r)) return null;
+  const n = (x: unknown) => (x == null || x === '' ? null : +x);
+  return r.tv_entry != null ? { entry: n(r.tv_entry), stop: n(r.tv_sl), target: n(r.tv_tp) } : null;
+}
+/** List card line (Eyal 2026-10-24): R:R + shares / $ risk / $ reward at up to maxRisk per position (sizing.ts). */
+const usd = (x: number) => '$' + (Math.abs(x) >= 100 ? Math.round(x).toLocaleString('en-US') : x.toFixed(x % 1 ? 2 : 0));
+function sizingHtml(r: Row): string {
+  const L = longLevels(r), mr = maxRiskUsd();
+  const z = L ? sizeLong(L.entry, L.stop, L.target, mr) : null;
+  const q = liveRR(r);
+  const rrS = `<span class="sz-rr" dir="ltr">R:R ${q == null ? "—" : q.toFixed(2)}</span>`;
+  if (!z) return `<div class="r5 small" data-sizing="none">${rrS}<span class="muted">${L ? 'לונג לא תקין' : 'אין לונג'}</span></div>`;
+  if (!z.shares) return `<div class="r5 small" data-sizing="wide" data-shares="0">${rrS}<span class="sz-wide">סטופ רחב מ-<bdi dir="ltr">${usd(mr)}</bdi> למניה (<bdi dir="ltr">${usd(z.perShare)}</bdi>)</span></div>`;
+  return `<div class="r5 small" data-sizing="ok" data-shares="${z.shares}" data-risk="${z.risk}" data-reward="${z.reward}">${rrS}`
+    + `<span><bdi dir="ltr">${z.shares}</bdi> מניות</span>`
+    + `<span>סיכון <b class="sz-risk"><bdi dir="ltr">${usd(z.risk)}</bdi></b></span>`
+    + `<span>רווח <b class="sz-rew"><bdi dir="ltr">${usd(z.reward)}</bdi></b></span></div>`;
+}
+const secHtml = (r: Row) => {
+  const sec = r.sector as string | null | undefined, ind = r.industry as string | null | undefined;
+  return `<div class="r4 small muted" data-sector="${esc(sec || '')}"><span>תחום:</span> <bdi dir="ltr">${sec || ind ? esc([sec || '—', ind || '—'].join(' · ')) : '—'}</bdi></div>`;
+};
 
 function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
 function isNi(t: string): boolean {
@@ -314,6 +341,13 @@ function observeSparks() {
   els.forEach((c) => sparkIO!.observe(c));
 }
 
+// list mini charts keep their proportions when the window is resized (desktop grid): redraw the painted ones
+let sparkRT = 0, sparkW = window.innerWidth;
+window.addEventListener('resize', () => {
+  if (window.innerWidth === sparkW) return; // iOS fires resize on toolbar show/hide (height only)
+  sparkW = window.innerWidth; clearTimeout(sparkRT);
+  sparkRT = window.setTimeout(() => app.querySelectorAll<HTMLCanvasElement>('canvas.spark[data-drawn]').forEach(drawSpark), 150);
+});
 function bindRows() {
   observeSparks();
   const aw = $('#addWatch') as HTMLButtonElement | null;
@@ -338,7 +372,9 @@ function rowHtml(r: Row) {
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
-    <div class="r3 muted small" dir="ltr">${liveRR(r) != null ? `R:R ${fmt(liveRR(r))}` : ''} ${dist ? '· ' + dist : ''} ${r.badges.includes('hammer') ? `· hammer R:R ${fmt(r.hammer_rr)}` : ''} ${r.days_to_earnings != null ? `· earn ${r.days_to_earnings}d` : ''}</div>
+    ${secHtml(r)}
+    ${sizingHtml(r)}
+    <div class="r3 muted small" dir="ltr">${[dist, r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', r.days_to_earnings != null ? `earn ${r.days_to_earnings}d` : ''].filter(Boolean).join(' · ')}</div>
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
@@ -799,4 +835,4 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js').catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, get cv() { return cv; } };
+(window as any).__srs = { S, api, atr, botLongFromZone, loadDaily, liveOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
