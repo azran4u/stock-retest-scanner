@@ -80,16 +80,38 @@ function countedOf(t: string, kind: 'zone' | 'long'): Drawing | null {
   }
   return best;
 }
-interface Live { status: 'PASS' | 'WAIT' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string }
+interface Live { status: 'PASS' | 'WAIT' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string; fromBelow: boolean }
+/** Mirror of report_filters.zone_approach: trailing closes under the zone = pullback in progress (skipped); then the
+ * most recent weekly close outside [zb - tol, zt] decides (tol = 0.25 weekly ATR). */
+function zoneApproach(closes: number[], zb: number, zt: number, tol: number): 'above' | 'below' | 'inside' {
+  const lo = Math.min(zb, zt), hi = Math.max(zb, zt);
+  let k = closes.length;
+  while (k > 0 && closes[k - 1] < lo) k--;
+  for (let i = k - 1; i >= 0; i--) {
+    if (closes[i] > hi) return 'above';
+    if (closes[i] < lo - tol) return 'below';
+  }
+  return 'inside';
+}
+const FROM_ABOVE_TOL_ATR = 0.25;
+/** f_from_above live (Eyal 2026-10-24, USB): re-checked against the zone that counts now; no zone / closes -> export. */
+function fromBelowOf(r: Row): boolean {
+  const z = countedOf(r.ticker, 'zone');
+  const cl = r.wk_closes;
+  if (z && z.zone_top != null && z.zone_bottom != null && cl && cl.length) return zoneApproach(cl, +z.zone_bottom, +z.zone_top, FROM_ABOVE_TOL_ATR * (Number(r.weekly_atr) || 0)) === 'below';
+  return r.f_from_above === false;
+}
 function liveOf(r: Row): Live | null {
   if (GATES.some((g) => r[g] === undefined)) return null; // no gate data exported for this row -> keep the export
   const gatesOk = GATES.every((g) => r[g] === true);
   const lg = countedOf(r.ticker, 'long');
   const q = lg ? rr(lg.entry, lg.stop, lg.target) : null;
   const rrOk = q != null && q >= RR_MIN;
-  const status = !gatesOk || !rrOk ? 'FAIL' : r.f_no_red_vol_week === false ? 'WAIT' : 'PASS';
-  const why = rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
-  return { status, rr: q, gatesOk, why };
+  const fromBelow = fromBelowOf(r);
+  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : r.f_no_red_vol_week === false ? 'WAIT' : 'PASS';
+  const why = fromBelow ? 'חזרה לאזור מלמטה'
+    : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
+  return { status, rr: q, gatesOk, why, fromBelow };
 }
 const liveRR = (r: Row) => { const l = liveOf(r); return l ? l.rr : (r.tv_rr ?? null); };
 /** Levels of the Long that counts for the row (same pick as liveOf; rows without exported gates fall back to the export). */
@@ -628,6 +650,7 @@ function feedbackHtml(d: Drawing) {
 // TP stays. His own Long (user / TV / a bot Long he edited) is never moved: only its R:R is re-checked (live PASS).
 function liveBoxHtml(r: Row): string {
   const l = liveOf(r); if (!l || !l.gatesOk) return '';
+  if (l.status === 'FAIL' && l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הסגירה השבועית האחרונה מחוץ לאזור הייתה מתחתיו, כלומר המניה חזרה לאזור מלמטה. היא תחזור להיות מעניינת רק אחרי סגירה שבועית מעל האזור וחזרה אליו מלמעלה.</div></section>`;
   if (l.status === 'FAIL') return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">${l.rr == null ? 'אין לונג פעיל, ולכן ה-R:R לא ידוע.' : 'ה-R:R של הלונג הנוכחי מתחת ל-2.'} הסטטוס מתעדכן מיד כשמשנים אזור או לונג.</div></section>`;
   return '';
 }

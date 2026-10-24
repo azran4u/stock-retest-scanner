@@ -109,7 +109,7 @@ def test_next_week_clears_wait():
 
 
 def test_status_wait_only_when_red_week_is_the_only_failure():
-    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True}
+    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True}
     assert rf.finalize_status({**base, "f_no_red_vol_week": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_red_vol_week": False})
     assert r["status"] == "WAIT" and r["failed_filters"] == "no_red_vol_week"

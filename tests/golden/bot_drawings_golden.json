@@ -850,14 +850,15 @@
 {
 "ticker": "PR",
 "data_date": "2026-10-02",
-"zone_bottom": 21.79,
-"zone_top": 22.34,
-"entry": 22.14,
-"sl": 20.82,
+"zone_bottom": 21.21,
+"zone_top": 21.81,
+"entry": 21.61,
+"sl": 20.2,
 "tp": 23.93,
 "kind": "retest",
-"pivot_date": "2026-05-08",
-"touches_w": 6
+"pivot_date": "2026-07-24",
+"touches_w": 5,
+"changed_by": "v4-2026-10-24 FROM_ABOVE (USB, Eyal): 21.79-22.34 skipped - weekly close 21.37 on 2026-09-25 under it, then back in from below"
 },
 {
 "ticker": "RS",

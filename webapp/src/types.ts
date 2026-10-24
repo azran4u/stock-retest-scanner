@@ -101,6 +101,14 @@ export interface Row {
   red_vol_body_pct?: number | null;
   red_vol_ratio?: number | null;
   red_vol_detail?: string | null;
+  /** Eyal 2026-10-24 (USB): back in the zone from below = not interesting until a weekly close above the zone top */
+  f_from_above?: boolean | null;
+  from_above_side?: string | null;
+  from_above_date?: string | null;
+  from_above_detail?: string | null;
+  /** last completed weekly closes (oldest first), for the live from-above check */
+  wk_closes?: number[] | null;
+  wk_closes_end?: string | null;
   has_candles?: boolean;
   /** FinViz sector / industry (export_data.attach_sectors); null = unknown */
   sector?: string | null;

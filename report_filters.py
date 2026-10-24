@@ -38,7 +38,7 @@ import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -122,15 +122,23 @@ CONFIG: Dict[str, Any] = {
     # before that week = same 30-day basis as $vol) -> not PASS yet, status WAIT until a later weekly close
     "red_vol_body_min": 0.5,
     "red_vol_avg_days": 30,
+    # f_from_above (Eyal 2026-10-24, USB): a stock that comes back INTO its zone from BELOW is not interesting -
+    # it has to break the zone (a weekly close above the zone top) and come back to it from above. Decided by the
+    # most recent completed weekly close OUTSIDE the zone (looking back from the last completed week, up to
+    # from_above_lookback_w weeks): below the zone bottom (or the latest close itself under the zone) -> False.
+    "from_above_lookback_w": 52,
+    "from_above_tol_atr": 0.25,  # a close less than this x weekly ATR under the bottom is not 'under the zone'
+                                 # (same tolerance as the bot's touch count; OXY 2026-09-25 0.07 ATR under its zone)
 }
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
-    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_no_red_vol_week",
+    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_no_red_vol_week", "f_from_above",
 ]
 # filters that only make a stock WAIT (status WAIT = 'waiting for the weekly close') when they are the
 # only failing core filters (Eyal 2026-10-23)
 WAIT_FILTERS = ["f_no_red_vol_week"]
 RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
+FROM_ABOVE_COLS = ["from_above_side", "from_above_date", "from_above_detail"]
 # ownership data (informational filters; None = data missing, never silently False)
 OWNERSHIP_COLS = ["f_short_float", "f_inst_own", "short_float_src", "inst_own_src", "ownership_missing"]
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
@@ -175,6 +183,7 @@ REPORT_COLS = [
     "f_last_week_reversal", "last_week_reversal_kind", "last_week_date",
     *HAMMER_COLS,
     *RED_VOL_COLS,
+    *FROM_ABOVE_COLS,
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
@@ -436,6 +445,7 @@ def compute_row(
     for f in ALL_FILTERS:
         r[f] = False
     r["f_no_red_vol_week"] = True  # blocks only on evidence (compute_red_vol_week)
+    r["f_from_above"] = True  # blocks only on evidence (compute_from_above)
     r["f_rr_computed"] = False
     r["smooth_pullback"] = False
     r["weekly_reversal_kind"] = r["daily_reversal_kind"] = ""
@@ -559,6 +569,11 @@ def compute_row(
     except Exception as e:  # pragma: no cover
         r["f_no_red_vol_week"] = True
         notes.append(f"red-vol-week error: {e}")
+    try:
+        r.update(compute_from_above(daily, report_date, r))
+    except Exception as e:  # pragma: no cover
+        r["f_from_above"] = True
+        notes.append(f"from-above error: {e}")
 
     # --- informational smooth_pullback (needs a zone) -----------------------
     if setup is not None:
@@ -666,6 +681,86 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
     if healthy and loud:
         out["f_no_red_vol_week"] = False
         out["red_vol_detail"] = "WAIT weekly close - healthy red " + out["red_vol_detail"]
+    return out
+
+
+def completed_weekly(daily: Optional[pd.DataFrame], report_date: date,
+                     now_et: Optional[pd.Timestamp] = None) -> Optional[pd.DataFrame]:
+    """Completed W-FRI weekly bars (a week is complete after Friday 16:30 New York), as compute_red_vol_week."""
+    if daily is None or len(daily) < 2:
+        return None
+    as_of = now_et if now_et is not None else _as_of_ts(report_date)
+    dd = ssa.flatten_cols(daily)
+    dd = dd[["Open", "High", "Low", "Close", "Volume"]].dropna(subset=["Open", "High", "Low", "Close"])
+    dd = ssa.completed_daily_bars(dd, as_of=as_of)
+    if dd is None or len(dd) < 2:
+        return None
+    wk = ssa.completed_weeks(ssa.to_weekly(dd), dd.index[-1])
+    if len(wk):
+        t = pd.Timestamp.now(tz="America/New_York") if as_of is None else pd.Timestamp(as_of)
+        t = t.tz_localize("America/New_York") if t.tzinfo is None else t.tz_convert("America/New_York")
+        if (pd.Timestamp(wk.index[-1]).normalize() == t.normalize().tz_localize(None)
+                and t.hour * 60 + t.minute < RED_VOL_WEEK_CLOSE_MIN):
+            wk = wk.iloc[:-1]
+    return wk
+
+
+def zone_approach(closes: Iterable[float], dates: Iterable[Any], zb: float, zt: float,
+                  lookback: Optional[int] = None, tol: float = 0.0) -> tuple:
+    """('above' | 'below' | 'inside', date): how the price came to the zone, from weekly closes (oldest first).
+    1) a trailing run of closes under the zone bottom is a pullback in progress THROUGH the zone (it came from above
+       or is still falling) - skipped (SL / obsolete rules handle a real break);
+    2) then the most recent close outside [zb - tol, zt] decides: above the top -> 'above', under zb - tol ->
+       'below' (it was under the zone and came back up into it without a weekly close above the top).
+    tol absorbs a marginal one-cent close under the bottom (from_above_tol_atr x weekly ATR)."""
+    cl, dt = list(closes), list(dates)
+    if lookback:
+        cl, dt = cl[-int(lookback):], dt[-int(lookback):]
+    lo, hi = min(zb, zt), max(zb, zt)
+    k = len(cl)
+    while k > 0 and cl[k - 1] < lo:
+        k -= 1
+    for c, d in zip(reversed(cl[:k]), reversed(dt[:k])):
+        if c > hi:
+            return "above", d
+        if c < lo - tol:
+            return "below", d
+    return "inside", None
+
+
+def compute_from_above(daily: Optional[pd.DataFrame], report_date: date, r: Dict[str, Any],
+                       now_et: Optional[pd.Timestamp] = None) -> Dict[str, Any]:
+    """f_from_above (Eyal 2026-10-24, USB: 'a stock that comes back to the zone from below has to break it and come
+    back from above, otherwise it is not interesting'). Zone = the drawing in r (tv_zone_bottom / tv_zone_top,
+    tv_found=yes). The most recent completed weekly close outside the zone decides: above the top -> True (a
+    pullback / retest from above); under the bottom -> False (it came back into the zone from below; True again
+    after a weekly close above the zone top). See zone_approach for the trailing-dip and tolerance details.
+    No zone / no data -> True."""
+    out: Dict[str, Any] = {"f_from_above": True, "from_above_side": None, "from_above_date": None,
+                           "from_above_detail": ""}
+    if str(r.get("tv_found")) != "yes":
+        return out
+    top, bot = _num(r.get("tv_zone_top")), _num(r.get("tv_zone_bottom"))
+    if top is None or bot is None:
+        return out
+    wk = completed_weekly(daily, report_date, now_et)
+    if wk is None or wk.empty:
+        out["from_above_detail"] = "no completed week"
+        return out
+    A = _num(r.get("weekly_atr")) or 0.0
+    side, d = zone_approach(wk["Close"].astype(float).values, [x.date().isoformat() for x in wk.index],
+                            bot, top, CONFIG["from_above_lookback_w"], float(CONFIG["from_above_tol_atr"]) * A)
+    out["from_above_side"], out["from_above_date"] = side, d
+    last = float(wk["Close"].iloc[-1])
+    if side == "below":
+        out["f_from_above"] = False
+        where = "back at the zone from below (weekly close under %.2f on %s, no weekly close above %g since)" % (
+            min(bot, top), d, max(bot, top))
+        out["from_above_detail"] = f"from below - {where}; needs a weekly close above {max(bot, top):g} and a retest from above"
+    elif side == "above":
+        out["from_above_detail"] = f"from above (last weekly close outside the zone: above {max(bot, top):g} on {d})"
+    else:
+        out["from_above_detail"] = "every weekly close in the lookback inside the zone"
     return out
 
 
@@ -1321,6 +1416,8 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
             rec_note = {"yes": f"TV R:R {r.get('tv_rr')} < {CONFIG['rr_min']:g}",
                         "no": "TV drawing not found"}.get(str(r.get("tv_found")), "no TV drawing read")
             f = f"rr ({rec_note})"
+        elif f == "from_above":
+            f = f"from_above ({r.get('from_above_detail') or 'came back to the zone from below'})"
         elif f == "no_red_vol_week":
             f = f"no_red_vol_week ({r.get('red_vol_detail') or 'healthy red week on above-average volume'})"
         fails.append(f)

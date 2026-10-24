@@ -46,6 +46,7 @@ INDEX_COLS = [
     "hammer_score", "inst_own_pct", "short_float_pct", "tradingview_url",
     "f_dollar_vol", "f_history", "f_no_earnings_14d",
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
+    "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
 ]
 
 
@@ -292,6 +293,32 @@ def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[s
     return n
 
 
+def attach_week_closes(rows: List[Dict[str, Any]], asof_date: Optional[str] = None, hist: Optional[Dict[str, Any]] = None) -> None:
+    """row['wk_closes'] = the last FROM_ABOVE lookback COMPLETED weekly closes (oldest first) so the app can re-check
+    f_from_above live against the zone that counts now (Eyal 2026-10-24, USB: back in the zone from below = not
+    interesting until a weekly close above the zone top). Same weeks as report_filters.compute_from_above."""
+    import sys as _s
+    from datetime import date as _d
+    root = str(Path(__file__).resolve().parent.parent)
+    if root not in _s.path:
+        _s.path.insert(0, root)
+    import report_filters as rf
+    hist = hist if hist is not None else dict(pd.read_pickle(HIST_CACHE))
+    rd = _d.fromisoformat(asof_date) if asof_date else _d.today()
+    lb = int(rf.CONFIG["from_above_lookback_w"])
+    for r in rows:
+        df = hist.get(r["ticker"])
+        try:
+            wk = rf.completed_weekly(df, rd) if df is not None and not getattr(df, "empty", True) else None
+        except Exception:
+            wk = None
+        if wk is None or wk.empty:
+            continue
+        c = wk["Close"].astype(float).iloc[-lb:]
+        r["wk_closes"] = [round(float(x), 2 if float(x) >= 1 else 4) for x in c]
+        r["wk_closes_end"] = wk.index[-1].strftime("%Y-%m-%d")
+
+
 def export(repo: Path, report: Path | None = None, include_all: bool = False, report_date: str | None = None) -> Path:
     """Write app/data/* under repo. report = latest.csv to read (default repo/historical-reports/latest.csv)."""
     out = repo / "app" / "data"
@@ -312,6 +339,7 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     if nsec:
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
     n = export_candles(tickers, out, fetch_missing=watch)
+    attach_week_closes(rows, asof_date=report_date)
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:
         r["has_candles"] = r["ticker"] in with_candles

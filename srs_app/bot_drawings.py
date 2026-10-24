@@ -33,7 +33,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RULE_VERSION = "v4-2026-10-23"  # v4: touch-count zone scoring with recency (his principle) on top of v3e; v3e: reclaimed levels count again + pullback from the latest swing high (QCOM) + last higher low with clarity 2 (TWST) + reclaimed level not above price; c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
+RULE_VERSION = "v4-2026-10-24"  # 2026-10-24: FROM_ABOVE - a level the price came back to from below is skipped (USB); v4: touch-count zone scoring with recency (his principle) on top of v3e; v3e: reclaimed levels count again + pullback from the latest swing high (QCOM) + last higher low with clarity 2 (TWST) + reclaimed level not above price; c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
 LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
@@ -76,6 +76,12 @@ TOUCH_LOOKBACK_W = 52
 TOUCH_MIN_CLARITY = 2      # sanity: a swing pivot with >= 2 weekly bars on each side
 PROX_W = 3.0
 RECENCY_W = 6.0  # per year of pivot age: the RECENT support / resistance wins among viable levels (his rule)  # zone bottom may sit at most this many weekly ATR above the close (retest in progress)
+# FROM_ABOVE (Eyal 2026-10-24, USB: "a stock that comes back to the zone from below has to break it and come back from
+# above, otherwise it is not interesting"): a candidate level is skipped when the most recent weekly close outside it
+# (last FROM_ABOVE_LOOKBACK_W weeks) was BELOW its bottom. Same test as the PASS gate report_filters.f_from_above.
+FROM_ABOVE = True
+FROM_ABOVE_LOOKBACK_W = 52
+FROM_ABOVE_TOL_ATR = 0.25
 # v3d parameters (fit on all 54 of his drawings, bot_drawings.json 'fit'; frozen so runs are reproducible)
 FIT = dict(grace=3, wick_n=1, body_piv=2, s_min=3, wick_cap=0.5, L=52, X=0.75, lo=0.9, hi=1.2, mode="fit")
 
@@ -242,6 +248,21 @@ def touches(lo: Any, hi: Any, cl: Any, zb: float, zt: float, tol: float) -> tupl
     return int(starts.sum()), int(np.where(m)[0][-1])
 
 
+def _approach(closes: List[float], zb: float, zt: float, tol: float = 0.0) -> str:
+    """'above' | 'below' | 'inside' (report_filters.zone_approach): trailing closes under zb = pullback in progress,
+    skipped; then the most recent close outside [zb - tol, zt] decides."""
+    lo, hi = min(zb, zt), max(zb, zt)
+    k = len(closes)
+    while k > 0 and closes[k - 1] < lo:
+        k -= 1
+    for c in reversed(closes[:k]):
+        if c > hi:
+            return "above"
+        if c < lo - tol:
+            return "below"
+    return "inside"
+
+
 def _below_price_ok(z: Dict[str, Any], last: float, A: float) -> bool:
     if ABOVE_PRICE_GUARD == "all" or (ABOVE_PRICE_GUARD == "reclaimed" and z.get("reclaimed")):
         return z["zb"] <= last + ABOVE_PRICE_TOL_ATR * A
@@ -339,6 +360,13 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     zones = [z for z in zones if _below_price_ok(z, last, A)]
     if not zones:
         return dict(out, has_level=False, reason="no valid level: every clear retest/support below price is broken or none exists")
+    if FROM_ABOVE:
+        wc = [float(x) for x in C["c"][-FROM_ABOVE_LOOKBACK_W:]]
+        fb = [z for z in zones if _approach(wc, float(z["zb"]), float(z["zt"]), FROM_ABOVE_TOL_ATR * A) == "below"]
+        zones = [z for z in zones if z not in fb]
+        if not zones:
+            return dict(out, has_level=False, reason="no valid level: the price came back to every candidate level from "
+                                                     "below (needs a weekly close above it and a retest from above)")
     near = [z for z in zones if (last - z["zt"]) / A <= FAR_CAP_ATR]
     if not near:
         d = min((last - z["zt"]) / A for z in zones)
@@ -444,10 +472,27 @@ def close_atr(ticker: str) -> Optional[tuple]:
     return float(d["Close"].iloc[-1]), atr
 
 
-def bot_obsolete(ticker: str, bots: List[Dict[str, Any]], today: str, low_fn=low_since, price_fn=close_atr) -> List[str]:
+def approach_side(ticker: str, zb: float, zt: float) -> Optional[str]:
+    """FROM_ABOVE side of a zone on the scanner's weekly closes ('above' / 'below' / 'inside'; None = no data)."""
+    V1 = _rules()["V1"]
+    d = V1.H.get(ticker)
+    if d is None or d.empty:
+        return None
+    try:
+        rd = str(d.index.max().date())
+        C = V1.ctx(ticker, rd)
+        wc = [float(x) for x in C["c"][-FROM_ABOVE_LOOKBACK_W:]]
+        return _approach(wc, float(zb), float(zt), FROM_ABOVE_TOL_ATR * float(C["atr"]))
+    except Exception:
+        return None
+
+
+def bot_obsolete(ticker: str, bots: List[Dict[str, Any]], today: str, low_fn=low_since, price_fn=close_atr,
+                 approach_fn=None) -> List[str]:
     """Why a live bot drawing is obsolete (same rules as report_filters.compute_stale), [] if still valid:
     broken = any low since it was drawn < SL; target hit = latest close >= TP;
-    far = latest close > zone top + FAR_CAP_ATR x weekly ATR."""
+    far = latest close > zone top + FAR_CAP_ATR x weekly ATR;
+    from below = FROM_ABOVE (Eyal 2026-10-24, USB): the price came back to the zone from below."""
     f = lambda v: None if v is None else float(v)
     longs = [d for d in bots if d.get("kind") == "long"]
     zones = [d for d in bots if d.get("kind") == "zone"]
@@ -467,6 +512,13 @@ def bot_obsolete(ticker: str, bots: List[Dict[str, Any]], today: str, low_fn=low
                 out.append("target hit")
             if tops and atr and px > max(tops) + FAR_CAP_ATR * atr:
                 out.append("far")
+    if FROM_ABOVE:
+        fn = approach_fn or (approach_side if low_fn is low_since else None)  # tests with fake price fns skip it
+        for z in zones:
+            if fn and z.get("zone_top") is not None and z.get("zone_bottom") is not None \
+                    and fn(ticker, f(z["zone_bottom"]), f(z["zone_top"])) == "below":
+                out.append("from below")
+                break
     return out
 
 
