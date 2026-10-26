@@ -37,7 +37,7 @@ export function renderRulesHtml(j: RulesJson | null, o: { maxRisk: number }): st
   return [
     `<p class="muted small">נוצר מהקוד שרץ בלילה · ${L((j.generated_at || '').slice(0, 10))}</p>`,
     sec('finviz', '1. מה מסונן ב-FinViz', li(fv) + `<p class="small muted">יקום: מניות + ETF. כל השאר נבדק אחר כך על כל מניה בנפרד. (הוסר ב-26/10/2026: "מחיר מעל SMA200".)</p>`
-      + (sc.url ? `<p class="small"><a href="${esc(sc.url)}" target="_blank" rel="noopener" dir="ltr">הסריקה ב-FinViz ↗</a></p>` : '')),
+      + (sc.url ? `<p class="small"><a href="${esc(sc.url)}" target="_blank" rel="noopener">הסריקה ב-<bdi dir="ltr">FinViz</bdi> ↗</a></p>` : '')),
     sec('pass', '2. PASS — כל התנאים חייבים להתקיים', li(core.map((c) => filterText(c, t)))
       + `<p class="small muted">מגמת עליה ראשית (טכנית) וסחירות לחשבון <b>אינן</b> תנאי ל-PASS — הן פילטרים נפרדים ברשימה.</p>`),
     sec('wait', '3. WAIT — ממתינה לסגירה', `<p>כל תנאי ה-PASS מתקיימים חוץ מאחד מאלה, על הנר השבועי האחרון שנסגר:</p>` + li(wait.map((c) => filterText(c, t)))
