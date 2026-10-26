@@ -324,7 +324,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     report_date = report_date or _today()
 
-    store = load_store() if store is None else store
+    store = ss.drawing_store() if store is None else store  # app drawings when present (= the nightly export)
     store = {str(k).strip().upper(): v for k, v in store.items()}
     df = df.copy()
     if "f_rr_computed" not in df.columns:  # pre-TV report: old f_rr was the computed flag

@@ -133,7 +133,14 @@ def build_store(rows: Iterable[Dict[str, Any]], tv_store: Optional[Dict[str, Dic
 def load_rows(path: Path) -> List[Dict[str, Any]]:
     """A JSON list of rows, or the Supabase connector's raw execute_sql output
     ({"result": "...<untrusted-data-…>[ rows ]</untrusted-data-…>..."}) saved with write_to_file."""
-    raw: Any = json.loads(path.read_text())
+    txt = path.read_text()
+    try:
+        raw: Any = json.loads(txt)
+    except json.JSONDecodeError:  # tool output saved with a plain-text wrapper around the JSON (small results)
+        i = min([k for k in (txt.find("{"), txt.find("[")) if k >= 0], default=-1)
+        if i < 0:
+            raise
+        raw, _ = json.JSONDecoder().raw_decode(txt[i:])
     if isinstance(raw, dict):
         raw = raw.get("rows", raw.get("result", raw))
     if isinstance(raw, str):

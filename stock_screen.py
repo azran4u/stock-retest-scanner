@@ -4,6 +4,7 @@ FinViz screener pull + fast yfinance filters for weekly retest setups.
 """
 from __future__ import annotations
 
+import os
 import re
 import time
 import json
@@ -64,6 +65,10 @@ UNIVERSE_JSON = Path("/workspace/stock_screen_universe.json")  # all-ticker shor
 # User's TradingView drawings (read-only daily reads): source of zone / entry / SL / TP / R:R.
 # status' R:R gate = latest stored reading found AND its TradingView R:R >= RR_MIN.
 TV_DRAWINGS_JSON = Path("/workspace/stock-screener/tv_drawings.json")
+# The web app is the drawing source of truth (srs_app.app_drawings writes this nightly from Supabase); every
+# default drawing lookup (screen R:R gate, report_filters recompute, tv_drawings merge) uses it when present, like
+# export_daily_report. SRS_DRAWING_STORE=tv forces the legacy TradingView store.
+APP_DRAWINGS_JSON = Path(os.environ.get("SRS_APP_DRAWINGS", "/workspace/stock-screener/app_drawings.json"))
 GROK_LIST = Path("/workspace/Grok.txt")  # optional EXCHANGE:TICKER hints
 UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -886,7 +891,7 @@ def process_from_daily(ticker: str, daily: pd.DataFrame) -> Dict[str, Any]:
 
 def _apply_tv_rr_gate(ticker: str, out: Dict[str, Any], short: Optional[float],
                       short_flag: bool, dollar_vol: float) -> Dict[str, Any]:
-    rec = load_tv_drawings().get(ticker.strip().upper())
+    rec = drawing_store().get(ticker.strip().upper())
     ok, why = tv_rr_check(rec)
     out["detail"]["tv_found"] = None if rec is None else bool(rec.get("found"))
     for k in ("zone_top", "zone_bottom", "entry", "sl", "tp", "rr"):
@@ -1443,6 +1448,23 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
         "earnings_cache": "fetched",
         "earnings_error": err,
     }
+
+
+_STORE_CACHE: Dict[str, Any] = {}
+
+
+def drawing_store() -> Dict[str, Dict[str, Any]]:
+    """Default drawing store: app_drawings.json (web app) when present, else tv_drawings.json (cached by mtime)."""
+    p = TV_DRAWINGS_JSON
+    if os.environ.get("SRS_DRAWING_STORE", "app") != "tv" and APP_DRAWINGS_JSON.exists():
+        p = APP_DRAWINGS_JSON
+    try:
+        key = (str(p), p.stat().st_mtime)
+    except OSError:
+        return {}
+    if _STORE_CACHE.get("key") != key:
+        _STORE_CACHE.update(key=key, data=load_tv_drawings(p))
+    return _STORE_CACHE["data"]
 
 
 def load_tv_drawings(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:

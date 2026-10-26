@@ -1618,8 +1618,8 @@ def apply_filters_to_report(
         hist_map = pd.read_pickle(ss.HIST_CACHE) if ss.HIST_CACHE.exists() else {}
     if universe is None:
         universe = _read_json(UNIVERSE_JSON).get("tickers", {}) if UNIVERSE_JSON.exists() else {}
-    if tv_store is None:
-        tv_store = ss.load_tv_drawings()
+    if tv_store is None:  # app_drawings.json when present (= the nightly export), else tv_drawings.json
+        tv_store = ss.drawing_store()
     rows = []
     for _, src in df.iterrows():
         t = str(src["ticker"]).strip()
