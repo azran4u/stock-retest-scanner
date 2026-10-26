@@ -112,6 +112,28 @@ CONFIG: Dict[str, Any] = {
     # no 3y direction). CRGY 0.019 / 0.007; lowest of his golden 'up' charts: CPAY 0.009 / 0.389, SJM 0.097 / 0.001.
     "tech_flat_r2_max": 0.05,
     "tech_flat_windows": (104, 156),
+    # v3 (2026-10-26, calibrated on Eyal's 60 calibration marks + earlier labels; leave-one-ticker-out CV
+    # balanced accuracy 0.887 -> 0.920). PRIMARY uptrend = (A) OR (B) OR (C), and never (R):
+    #  A  v2.1 (near high, EMA +8%, R2 >= 0.05) - or a SLOW STEADY RISER: EMA +4% when R2 >= 0.6 (MTG)
+    #  B  V-RECOVERY (LNTH): 30w EMA +25% in 26w and +30% in 52w, close > rising SMA30, recent high within
+    #     8 ATR of the prior high and close >= 75% of the 3-year high (keeps bottoming downtrends out)
+    #  C  CONSOLIDATION AFTER A STRONG ADVANCE (IDCC): 30w EMA +50% in 104w, recent high within 3 ATR of the
+    #     prior high, R2 >= 0.5
+    #  R  MULTI-YEAR RANGE back at its top (BIO, PRU, TROW): best R2 < 0.2 AND 30w EMA < +20% in 52w
+    "tech_version": "v3-2026-10-26",
+    "tech_slow_ema_min_pct": 4.0,
+    "tech_slow_r2_min": 0.6,
+    "tech_vrec_ema26_min_pct": 25.0,
+    "tech_vrec_ema52_min_pct": 30.0,
+    "tech_vrec_newhi_atr": -8.0,
+    "tech_vrec_close_hi156_min": 0.75,
+    "tech_vrec_sma_weeks": 30,
+    "tech_vrec_sma_rise_weeks": 10,
+    "tech_cons_ema104_min_pct": 50.0,
+    "tech_cons_newhi_atr": -3.0,
+    "tech_cons_r2_min": 0.5,
+    "tech_range_r2_max": 0.2,
+    "tech_range_ema52_max_pct": 20.0,
     # bot drawings (review needed): levels within max(0.011, 0.15% of the level) = same drawing
     "bot_match_rel": 0.0015,
     "bot_match_abs": 0.011,
@@ -160,7 +182,8 @@ INFO_FILTERS = ["f_near_zone"]  # checkbox filters that may be null (not in stat
 STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
 # technical = clear weekly uptrend (every row with >= tech_min_weekly_bars weekly bars; else empty)
 TECH_COLS = ["f_technical", "tech_computed", "tech_override", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
-             "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail"]
+             "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail", "tech_path", "tech_ema30_slope52_pct",
+             "tech_ema30_slope104_pct", "tech_r2max", "tech_range"]
 # reversal evidence at the TV zone (compute_evidence; grade is computed live in the browser)
 EVIDENCE_COLS = [
     "ev_pullback_high", "ev_pullback_high_date",
@@ -1049,18 +1072,42 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
         struct = (hh / nh + hl / nl) / 2
         ema = pd.Series(c).ewm(span=int(C["tech_ema_span"]), adjust=False).mean().values
         slope = (ema[-1] / ema[-27] - 1) * 100
+        slope52 = (ema[-1] / ema[-53] - 1) * 100
+        slope104 = (ema[-1] / ema[-105] - 1) * 100
         r2s = [_trend_r2(c[-min(win, n):]) for win in C.get("tech_flat_windows", ())]
+        sw = int(C.get("tech_vrec_sma_weeks", 30))
+        sma = pd.Series(c).rolling(sw).mean().values
+        sk = int(C.get("tech_vrec_sma_rise_weeks", 10))
+        hi156 = float(h[-min(156, n):].max())
     except Exception as e:  # pragma: no cover
         out["tech_detail"] = f"technical error: {e}"
         return out
     ok1 = newhi >= float(C["tech_newhi_atr"])
     ok2 = struct >= float(C["tech_structure_min"]) or not bool(C.get("tech_use_structure", False))
-    ok3 = slope >= float(C.get("tech_ema_min_pct", 0.0))
+    r2max = max(r2s) if r2s else 1.0
+    slow = ("tech_slow_ema_min_pct" in C and slope >= float(C["tech_slow_ema_min_pct"])
+            and r2max >= float(C["tech_slow_r2_min"]))
+    ok3 = slope >= float(C.get("tech_ema_min_pct", 0.0)) or slow
     ok4 = not (r2s and all(r < float(C.get("tech_flat_r2_max", 0.0)) for r in r2s))
-    tech = bool(ok1 and ok2 and ok3 and ok4)
+    path_a = bool(ok1 and ok2 and ok3 and ok4)
+    path_b = bool("tech_vrec_ema26_min_pct" in C and slope >= float(C["tech_vrec_ema26_min_pct"])
+                  and slope52 >= float(C["tech_vrec_ema52_min_pct"]) and np.isfinite(sma[-1]) and np.isfinite(sma[-1 - sk])
+                  and c[-1] > sma[-1] and sma[-1] > sma[-1 - sk] and newhi >= float(C["tech_vrec_newhi_atr"])
+                  and c[-1] >= float(C["tech_vrec_close_hi156_min"]) * hi156)
+    path_c = bool("tech_cons_ema104_min_pct" in C and slope104 >= float(C["tech_cons_ema104_min_pct"])
+                  and newhi >= float(C["tech_cons_newhi_atr"]) and r2max >= float(C["tech_cons_r2_min"]))
+    rng = bool("tech_range_r2_max" in C and r2s and r2max < float(C["tech_range_r2_max"])
+               and slope52 < float(C["tech_range_ema52_max_pct"]))
+    tech = bool((path_a or path_b or path_c) and not rng)
+    path = "" if rng else "A" if path_a else "B" if path_b else "C" if path_c else ""  # the path that made it an uptrend
     if tech:
-        why = [f"clear uptrend: recent high {newhi:+.1f} ATR vs prior 2.5y high, 30w EMA {slope:+.1f}% in 26w "
-               f"({hh}/{nh} HH, {hl}/{nl} HL)"]
+        kind = {"A": "clear uptrend" + (" (slow steady riser)" if slope < float(C.get("tech_ema_min_pct", 0.0)) else ""),
+                "B": "V-recovery uptrend", "C": "consolidation after a strong advance"}[path]
+        why = [f"{kind}: recent high {newhi:+.1f} ATR vs prior 2.5y high, 30w EMA {slope:+.1f}% in 26w / "
+               f"{slope52:+.1f}% in 52w / {slope104:+.1f}% in 104w, R2 {r2max:.2f} ({hh}/{nh} HH, {hl}/{nl} HL)"]
+    elif rng:
+        why = [f"multi-year range back at its top: best log-trend R2 {r2max:.3f} < {float(C['tech_range_r2_max']):g} "
+               f"and 30w EMA only {slope52:+.1f}% in 52w (needs >= +{float(C['tech_range_ema52_max_pct']):g}%)"]
     else:
         why = []
         if not ok1:
@@ -1079,6 +1126,9 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
     out.update({"f_technical": tech, "tech_new_high_atr": round(newhi, 2), "tech_hh": f"{hh}/{nh}",
                 "tech_hl": f"{hl}/{nl}", "tech_structure": round(struct, 2),
                 "tech_ema30_slope_pct": round(slope, 1), "tech_ema_rising": bool(ok3),
+                "tech_path": path, "tech_ema30_slope52_pct": round(slope52, 1),
+                "tech_ema30_slope104_pct": round(slope104, 1), "tech_r2max": round(r2max, 3),
+                "tech_range": rng,
                 "tech_detail": "; ".join(why)})
     return out
 
