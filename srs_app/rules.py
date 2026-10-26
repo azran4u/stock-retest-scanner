@@ -1,5 +1,5 @@
 """app/data/rules.json for the app's 'כללים' page (Eyal 2026-10-26): the real thresholds, read from the code that runs
-the nightly (stock_screen.py SCREENER_URL + constants, report_filters.CONFIG / CORE_FILTERS / WAIT_FILTERS,
+the nightly (stock_screen.py SCREENER_URL + constants, report_filters.CONFIG / CORE_FILTERS / WARN_FILTERS,
 srs_app.bot_drawings constants), so the page never drifts from the rules. The Hebrew wording lives in the app
 (webapp/src/rules.ts); only numbers / lists come from here."""
 from __future__ import annotations
@@ -35,6 +35,9 @@ def screener_filters(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
             "universe": "stocks + ETFs"}
 
 
+SIZING_ACCOUNT_USD = 5000
+SIZING_RISK_PCT = 1.1
+
 def build_rules(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
@@ -45,10 +48,11 @@ def build_rules(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "screener": screener_filters(stock_screen_py),
         "core": list(rf.CORE_FILTERS),
-        "wait": list(rf.WAIT_FILTERS),
+        "info": list(rf.WARN_FILTERS),  # not PASS gates (WAIT cancelled 2026-10-26)
         "t": {
             "dollar_vol_min": C["dollar_vol_min"], "avg_vol_days": C["avg_vol_days"],
             "earnings_blackout_days": C["earnings_blackout_days"], "min_weekly_bars": C["min_weekly_bars"],
+            "earnings_est_cycle_days": rf.ss.EARN_EST_CYCLE_DAYS,
             "rr_min": C["rr_min"], "red_vol_body_min": C["red_vol_body_min"], "red_vol_avg_days": C["red_vol_avg_days"],
             "inv_hammer_upper_min": C["inv_hammer_upper_min"], "inv_hammer_lower_max": C["inv_hammer_lower_max"],
             "from_above_lookback_w": C["from_above_lookback_w"], "from_above_tol_atr": C["from_above_tol_atr"],
@@ -61,10 +65,16 @@ def build_rules(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
             "reversal_kinds": list(C["reversal_kinds"]),
             "short_float_max_pct": C["short_float_max_pct"], "inst_own_min_pct": C["inst_own_min_pct"],
         },
+        # Eyal 2026-10-26: max risk $55 per trade (account $5000 x 1.1%); the app's sizing.ts / dashboard sizing.js
+        # defaults match; tradable = weekly ATR(14) per share < max risk
+        "sizing": {"account_usd": SIZING_ACCOUNT_USD, "risk_pct": SIZING_RISK_PCT,
+                   "max_risk_usd": round(SIZING_ACCOUNT_USD * SIZING_RISK_PCT / 100, 2)},
         "bot": {
             "rule_version": bd.RULE_VERSION, "long_w_bars": bd.LONG_W_BARS, "far_cap_atr": bd.FAR_CAP_ATR,
-            "structure_exclude_weeks": bd.STRUCTURE_EXCLUDE_WEEKS, "touch_tol_atr": bd.TOUCH_TOL_ATR,
+            "touch_tol_atr": bd.TOUCH_TOL_ATR, "zone_scoring": bd.ZONE_SCORING,
             "touch_lookback_w": bd.TOUCH_LOOKBACK_W, "from_above_lookback_w": bd.FROM_ABOVE_LOOKBACK_W,
+            "v5_shift_atr": bd.V5_SHIFT_ATR, "v5_min_gain": bd.V5_MIN_GAIN,
+            "entry_below_top_atr": 0.13, "tp_off_atr": 0.09, "sl_band_atr_w": [0.9, 1.2],
         },
     }
 

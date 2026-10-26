@@ -12,8 +12,9 @@ export interface Facts {
   revD: Partial<Record<RevKind, string>>;   // kind -> date of the most recent daily candle of that shape
   revW: Partial<Record<RevKind, string>>;   // kind -> date (week end) of the most recent weekly candle
   daysToEarn: number | null;                // null = unknown date
+  earnNone?: boolean;                       // no earnings in any source (ETFs...) -> passes 'days to earnings'
   unfit: boolean;
-  status: string;                           // live PASS / WAIT / FAIL / OUT ...
+  status: string;                           // live PASS / FAIL / OUT ... (WAIT cancelled 2026-10-26)
   needsDrawing: boolean; review: boolean; obsolete: boolean; hammer: boolean; position: boolean;
   starred: boolean; mine: boolean; commands: boolean;
   zoneDist: number | null;                  // weekly ATRs from the live zone (0 inside); null = no zone
@@ -56,13 +57,11 @@ export const FILTERS: FilterDef[] = [
     test: (f, s) => withinWeeks(f.revD, s.kinds?.length ? s.kinds : DEF_KINDS, s.x ?? 1, f.today) },
   { id: 'revW', label: 'נר היפוך שבועי ב-', group: 'main', param: { def: 2, min: 1, max: 26, step: 1, unit: 'שבועות אחרונים' }, kinds: true,
     test: (f, s) => withinWeeks(f.revW, s.kinds?.length ? s.kinds : DEF_KINDS, s.x ?? 2, f.today) },
-  { id: 'earn', label: 'ימים עד דוחות ≥', group: 'main', param: { def: 14, min: 0, max: 120, step: 1 }, test: (f, s) => f.daysToEarn != null && f.daysToEarn >= (s.x ?? 14) },
+  { id: 'earn', label: 'ימים עד דוחות ≥', group: 'main', param: { def: 14, min: 0, max: 120, step: 1 }, test: (f, s) => !!f.earnNone || (f.daysToEarn != null && f.daysToEarn >= (s.x ?? 14)) },
   { id: 'unfit', label: 'לא מתאימות לשיטה', group: 'main', tri: true,
     test: (f, s) => ((s.mode ?? 'hide') === 'all' ? true : (s.mode ?? 'hide') === 'only' ? f.unfit : !f.unfit) },
   // ---- status / app ----
   { id: 'st_pass', label: 'PASS', group: 'status', test: (f) => f.status === 'PASS' },
-  { id: 'st_wait', label: 'ממתינה לסגירה (WAIT)', group: 'status', test: (f) => f.status === 'WAIT' },
-  { id: 'st_need', label: 'צריך שרטוט', group: 'status', test: (f) => f.needsDrawing },
   { id: 'st_review', label: 'לבדיקה', group: 'status', test: (f) => f.review },
   { id: 'st_obsolete', label: 'שרטוט לא עדכני', group: 'status', test: (f) => f.obsolete },
   { id: 'hammer', label: 'פטיש שבוע אחרון', group: 'status', test: (f) => f.hammer },
@@ -76,8 +75,8 @@ export const FILTERS: FilterDef[] = [
   { id: 'history', label: 'היסטוריה ≥ 3 שנים', group: 'setup', test: (f) => t(f.history) },
   { id: 'tradable', label: 'סחירה לחשבון (ATR שבועי < סיכון)', group: 'setup', test: (f) => t(f.tradable) },
   { id: 'fromAbove', label: 'חזרה לאזור מלמעלה', group: 'setup', test: (f) => t(f.fromAbove) },
-  { id: 'noInvHammer', label: 'בלי פטיש הפוך', group: 'setup', test: (f) => f.noInvHammer !== false },
-  { id: 'noRedVol', label: 'בלי שבוע אדום במחזור גבוה', group: 'setup', test: (f) => f.noRedVol !== false },
+  { id: 'noInvHammer', label: 'אין פטיש הפוך', group: 'setup', test: (f) => f.noInvHammer !== false },
+  { id: 'noRedVol', label: 'אין שבוע אדום עם מחזור גבוה', group: 'setup', test: (f) => f.noRedVol !== false },
   { id: 'smooth', label: 'ירידה רגועה ≥', group: 'setup', param: { def: 5, min: 0, max: 104, step: 1, unit: 'שבועות' }, test: (f, s) => f.smoothWeeks != null && f.smoothWeeks >= (s.x ?? 5) },
   { id: 'fib', label: 'התלכדות פיבונאצי', group: 'setup', test: (f) => f.fib },
   { id: 'sector', label: 'תחום', group: 'setup', select: 'sector', test: (f, s) => !s.v || f.sector === s.v },

@@ -1,5 +1,5 @@
 """f_no_red_vol_week (Eyal 2026-10-23, example CLMT): a healthy red last COMPLETED weekly candle on
-above-average volume -> not PASS yet (status WAIT) until a later weekly close.
+above-average volume -> a warning. Since 2026-10-26 (WAIT cancelled) information only, not a PASS gate.
 
 healthy red = Close < Open and body >= 50% of the week's range; above average = the week's average daily
 volume > the average daily volume of the 30 trading days before the week."""
@@ -51,7 +51,7 @@ def test_clmt_like_red_week_waits():
     assert out["red_vol_week_date"] == "2026-10-23"
     assert out["f_no_red_vol_week"] is False
     assert out["red_vol_body_pct"] >= 50 and out["red_vol_ratio"] > 1
-    assert out["red_vol_detail"].startswith("WAIT")
+    assert out["red_vol_detail"].startswith("info (not a gate)")
 
 
 def test_week_not_complete_before_friday_1630():
@@ -108,9 +108,10 @@ def test_next_week_clears_wait():
     assert _run(d)["f_no_red_vol_week"] is True
 
 
-def test_status_wait_only_when_red_week_is_the_only_failure():
+def test_red_week_no_longer_blocks_pass():
+    """Regression (Eyal 2026-10-26): WAIT cancelled, a red loud week alone leaves the stock PASS."""
     base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True}
     assert rf.finalize_status({**base, "f_no_red_vol_week": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_red_vol_week": False})
-    assert r["status"] == "WAIT" and r["failed_filters"] == "no_red_vol_week"
+    assert r["status"] == "PASS" and r["failed_filters"] == ""
     assert rf.finalize_status({**base, "f_rr": False, "f_no_red_vol_week": False})["status"] == "FAIL"

@@ -117,18 +117,22 @@ def _earn_cached(ticker: str) -> Optional[str]:
 
 
 def no_earnings_live(ticker: str, row_date: Any, today: date) -> bool:
-    """Live f_no_earnings_14d: earliest known future date (earnings cache, then the
-    report's earnings_date); unknown / already passed -> False."""
-    for cand in (_earn_cached(ticker), row_date):
-        if cand is None or str(cand).strip() in ("", "nan", "None"):
-            continue
-        try:
-            d = date.fromisoformat(str(cand)[:10])
-        except Exception:
-            continue
-        if d >= today:
-            return (d - today).days >= EARNINGS_BLACKOUT_DAYS
-    return False
+    """Live f_no_earnings_14d (stock_screen.earnings_state, Eyal 2026-10-26): upcoming date (earnings cache,
+    then the report's earnings_date) or the estimate (last report + 91d) >= 14 days away; no date in any of
+    TradingView / Yahoo / Nasdaq -> no earnings -> True; never looked up -> False."""
+    try:
+        cache = json.loads((Path("/workspace/cache") / f"earn_{ticker.strip().upper()}.json").read_text())
+    except Exception:
+        cache = {}
+    if str(Path(__file__).resolve().parent) not in sys.path:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import stock_screen as _ss
+    st = _ss.earnings_state(ticker, today, (row_date,), cache=cache)
+    if st["kind"] == "none":
+        return True
+    if not st["date"]:
+        return False
+    return (date.fromisoformat(st["date"]) - today).days >= EARNINGS_BLACKOUT_DAYS
 
 
 def target_rows(df: pd.DataFrame, today: date) -> pd.DataFrame:
@@ -351,7 +355,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         for c in rf.STALE_COLS:
             df.at[i, c] = _csv_val(st[c])
         tech = rf.apply_user_overrides(dict(rf.compute_technical(h), ticker=str(row["ticker"]).strip()),
-                                       str(row["ticker"]).strip())
+                                       str(row["ticker"]).strip(), report_date)
         for c in rf.TECH_COLS:
             df.at[i, c] = _csv_val(tech.get(c))
         r["f_technical"] = tech.get("f_technical")  # needs_drawing requires technical (after overrides)

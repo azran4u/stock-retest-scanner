@@ -9,6 +9,7 @@ import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, s
 import { researchHtml, type Research } from './research';
 import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, matches, type Facts, type Filters, type RevKind } from './filters';
 import { renderRulesHtml } from './rules';
+import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -37,7 +38,7 @@ const S = {
 // old single-select chip (before 2026-10-26) -> the equivalent independent filter
 { const c = (S.ui as any).chip as string | undefined; delete (S.ui as any).chip; if (c && c !== 'all') applyChip(S.ui.f, c); }
 function applyChip(f: Filters, c: string) {
-  const m: Record<string, string> = { pass: 'st_pass', waiting: 'st_wait', needs_drawing: 'st_need', review: 'st_review', obsolete: 'st_obsolete', hammer: 'hammer', position: 'position', watch: 'starred', mine: 'mine', commands: 'commands' };
+  const m: Record<string, string> = { pass: 'st_pass', waiting: 'st_pass', review: 'st_review', obsolete: 'st_obsolete', hammer: 'hammer', position: 'position', watch: 'starred', mine: 'mine', commands: 'commands' };
   if (c === 'ni') f.unfit = { on: true, mode: 'only' }; else if (m[c]) f[m[c]] = { ...(f[m[c]] || {}), on: true };
   if (c === 'watch') f.unfit = { on: true, mode: 'all' }; // the old ★ chip listed starred tickers even when marked unfit
 }
@@ -59,31 +60,30 @@ async function guard<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 }
 
 const BADGES: Record<string, [string, string]> = {
-  pass: ['PASS', 'b-pass'], waiting: ['ממתינה לסגירה', 'b-wait'], needs_drawing: ['צריך שרטוט', 'b-need'], review: ['לבדיקה', 'b-review'],
+  pass: ['PASS', 'b-pass'], redvol: ['שבוע אדום במחזור גבוה', 'b-wait'], invh: ['פטיש הפוך', 'b-wait'], review: ['לבדיקה', 'b-review'],
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
   watch: ['מעקב', 'b-watch'], ni: ['לא מתאימה לשיטה', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
-/** WAIT (Eyal 2026-10-23 / 2026-10-24): last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH) -> wait for the next weekly close */
+/** Last-week warnings (Eyal 2026-10-23 / 2026-10-24; WAIT status cancelled 2026-10-26 -> information only, not a PASS gate):
+ *  last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH). */
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
-  if (!badgesOf(r).includes('waiting')) return '';
   const parts: string[] = [];
   if (r.f_no_inv_hammer === false) parts.push(`פטיש הפוך ${ddmm(r.inv_hammer_week_date)}`);
   if (r.f_no_red_vol_week === false) parts.push(`נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`);
   return parts.join(' · ');
 }
 function waitLong(r: Row): string {
-  if (!badgesOf(r).includes('waiting')) return '';
   const parts: string[] = [];
-  if (r.f_no_inv_hammer === false) parts.push(`הנר השבועי של השבוע שהסתיים ב-${ddmm(r.inv_hammer_week_date)} הוא פטיש הפוך — סימן שלילי לירידה צפויה. ממתינים לסגירת השבוע הבא.`);
-  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. המניה תחזור ל-PASS אם הנר השבועי הבא ייסגר בלי לשבור את האזור.`);
+  if (r.f_no_inv_hammer === false) parts.push(`הנר השבועי של השבוע שהסתיים ב-${ddmm(r.inv_hammer_week_date)} הוא פטיש הפוך — הקונים נדחו למעלה, סימן שלילי. מידע בלבד, לא משנה את ה-PASS.`);
+  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו — מוכרים חזקים. מידע בלבד, לא משנה את ה-PASS.`);
   return parts.join(' ');
 }
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>`
   : b.startsWith('rrfail:') ? `<span class="badge b-obs" dir="rtl">FAIL · ${esc(b.slice(7))}</span>` : '');
 
 // ---------------- live PASS (Eyal 2026-10-23: re-check R:R whenever a drawing changes) ----------------
-// PASS = exported gates ($vol, no earnings <= 14d, 3y history; WAIT = red loud week) AND the R:R of the ticker's
+// PASS = exported gates ($vol, no earnings <= 14d, 3y history) AND from above AND the R:R of the ticker's
 // CURRENT Long in the app >= 2. The Long that counts = newest active / approved long row (same pick as
 // srs_app/app_drawings.build_store, which the nightly export uses). No Long -> R:R unknown -> not PASS.
 const RR_MIN = 2;
@@ -97,7 +97,7 @@ function countedOf(t: string, kind: 'zone' | 'long'): Drawing | null {
   }
   return best;
 }
-interface Live { status: 'PASS' | 'WAIT' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string; fromBelow: boolean }
+interface Live { status: 'PASS' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string; fromBelow: boolean }
 /** Mirror of report_filters.zone_approach: trailing closes under the zone = pullback in progress (skipped); then the
  * most recent weekly close outside [zb - tol, zt] decides (tol = 0.25 weekly ATR). */
 function zoneApproach(closes: number[], zb: number, zt: number, tol: number): 'above' | 'below' | 'inside' {
@@ -125,7 +125,7 @@ function liveOf(r: Row): Live | null {
   const q = lg ? rr(lg.entry, lg.stop, lg.target) : null;
   const rrOk = q != null && q >= RR_MIN;
   const fromBelow = fromBelowOf(r);
-  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : r.f_no_red_vol_week === false || r.f_no_inv_hammer === false ? 'WAIT' : 'PASS';
+  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (red-volume / inverted-hammer weeks = info)
   const why = fromBelow ? 'חזרה לאזור מלמטה'
     : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
   return { status, rr: q, gatesOk, why, fromBelow };
@@ -171,11 +171,13 @@ function allRows(): Row[] {
 }
 function badgesOf(r: Row): string[] {
   const live = liveOf(r);
-  const b = live ? r.badges.filter((x) => x !== 'pass' && x !== 'waiting') : [...r.badges];
+  // 'waiting' (WAIT) and 'needs_drawing' are gone (Eyal 2026-10-26): never shown even from an older export
+  const b = (live ? r.badges.filter((x) => x !== 'pass') : [...r.badges]).filter((x) => x !== 'waiting' && x !== 'needs_drawing');
   if (live?.status === 'PASS') b.unshift('pass');
-  else if (live?.status === 'WAIT') b.unshift('waiting');
   else if (live && live.gatesOk && live.why) b.unshift('rrfail:' + live.why); // would pass except the R:R
 
+  if (r.f_no_inv_hammer === false) b.push('invh');
+  if (r.f_no_red_vol_week === false) b.push('redvol');
   if (isWatched(r.ticker)) b.unshift('watch');
   if (isNi(r.ticker)) b.unshift('ni');
   return b;
@@ -311,13 +313,25 @@ function filtered(): Row[] {
     rows = [...rows].sort((a, b) => hs(b) - hs(a) || a.ticker.localeCompare(b.ticker));
   }
   else {
-    const rank = (r: Row) => { const bs = badgesOf(r); return bs.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : bs.includes('pass') ? 1 : bs.includes('waiting') ? 1.5 : bs.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : r.badges.includes('needs_drawing') ? 4 : 5; };
+    const rank = (r: Row) => { const bs = badgesOf(r); return bs.includes('position') ? 0 : isWatched(r.ticker) ? 0.5 : bs.includes('pass') ? 1 : bs.includes('review') ? 2 : r.badges.includes('hammer') ? 3 : 5; };
     const rk = new Map(rows.map((r) => [r.ticker, [rank(r), num(liveRR(r))] as const]));
     rows = [...rows].sort((a, b) => rk.get(a.ticker)![0] - rk.get(b.ticker)![0] || rk.get(b.ticker)![1] - rk.get(a.ticker)![1] || a.ticker.localeCompare(b.ticker));
   }
   return rows;
 }
 
+/** Days to the next earnings, live from earnings_date (Israel today); null = no date. Eyal 2026-10-26:
+ *  earnings_none = no date in TradingView / Yahoo / Nasdaq (ETFs...) -> 'אין דוחות', passes the 14-day gate;
+ *  earnings_estimated = last report + 91 days (no next date published yet). */
+function daysToEarn(r: Row): number | null {
+  const ed = typeof r.earnings_date === 'string' ? r.earnings_date.slice(0, 10) : null;
+  return ed ? daysBetween(today(), ed) : null;
+}
+function earnShort(r: Row): string {
+  if (r.earnings_none) return '';
+  const d = daysToEarn(r);
+  return d == null ? '' : r.earnings_estimated ? `earn ~${d}d (est.)` : `earn ${d}d`;
+}
 // ---------------- per-row facts for the filters (export values + live app values) ----------------
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
 const bool = (x: unknown) => (x === true ? true : x === false ? false : null);
@@ -332,9 +346,9 @@ function factsOf(r: Row): Facts {
     technical: bool(r.f_technical),
     rr: liveRR(r),
     revD: (r.rev_d as Facts['revD']) || {}, revW: (r.rev_w as Facts['revW']) || {},
-    daysToEarn: ed ? daysBetween(td, ed) : null,
+    daysToEarn: ed ? daysBetween(td, ed) : null, earnNone: r.earnings_none === true,
     unfit: isNi(r.ticker),
-    status: live ? live.status : bs.includes('pass') ? 'PASS' : bs.includes('waiting') ? 'WAIT' : String(r.status || ''),
+    status: live ? live.status : bs.includes('pass') ? 'PASS' : String(r.status || ''),
     needsDrawing: bs.includes('needs_drawing'), review: bs.includes('review'), obsolete: bs.includes('obsolete'), hammer: bs.includes('hammer'),
     position: bs.includes('position') || S.positions.some((p) => p.ticker === r.ticker),
     starred: isWatched(r.ticker), mine: userDrawings(r.ticker).length > 0, commands: S.commands.some((x) => x.ticker === r.ticker),
@@ -406,6 +420,7 @@ function route() {
   const m = location.hash.match(/^#\/t\/([^/?]+)/);
   if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
   else if (location.hash.startsWith('#/rules')) renderRules();
+  else if (location.hash.startsWith('#/calibrate')) renderCalibrate();
   else renderList();
 }
 window.addEventListener('hashchange', route);
@@ -449,7 +464,7 @@ function renderList() {
   app.innerHTML = `
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
-    <div class="hbtns"><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
+    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
     <input id="q" type="search" dir="ltr" placeholder="חיפוש טיקר" value="${esc(S.ui.q)}" autocapitalize="characters" />
@@ -481,7 +496,41 @@ async function renderRules() {
   const j = await rulesP;
   if (!location.hash.startsWith('#/rules')) return;
   const el = $('.rules')!; el.className = 'rules';
-  el.innerHTML = renderRulesHtml(j, { maxRisk: maxRiskUsd() });
+  el.innerHTML = `<p class="small"><a href="#/calibrate">כיול מגמה →</a> (סימון 60 מניות לכיול כלל המגמה)</p>` + renderRulesHtml(j, { maxRisk: maxRiskUsd() });
+}
+// ---------------- trend calibration page (#/calibrate, calibrate.ts) ----------------
+let calP: Promise<CalRow[]> | null = null;
+let calIO: IntersectionObserver | null = null;
+async function renderCalibrate() {
+  destroyChart();
+  app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">כיול מגמה</div><span></span></header><div class="cal center muted">טוען…</div>`;
+  $('#back')!.onclick = () => { location.hash = '#/'; };
+  calP ??= fetch(import.meta.env.BASE_URL + 'data/calibration.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  const [rows, sp] = await Promise.all([calP, loadSpark()]);
+  if (!location.hash.startsWith('#/calibrate')) return;
+  const el = $('.cal')!; el.className = 'cal';
+  if (!rows.length) { el.innerHTML = '<p class="center muted">אין נתוני כיול</p>'; return; }
+  el.innerHTML = calPageHtml(rows, S.labels);
+  calIO?.disconnect();
+  calIO = new IntersectionObserver((ents) => ents.forEach((e) => {
+    if (e.isIntersecting) { const c = e.target as HTMLCanvasElement; drawCalChart(c, (sp as any)[c.dataset.calchart!]); calIO?.unobserve(c); }
+  }), { rootMargin: '400px 0px' });
+  el.querySelectorAll<HTMLCanvasElement>('canvas.calchart').forEach((c) => calIO!.observe(c));
+  el.querySelectorAll<HTMLElement>('.calcard').forEach((card) => {
+    const t = card.dataset.cal!;
+    card.querySelectorAll<HTMLButtonElement>('[data-mark]').forEach((b) => (b.onclick = async () => {
+      const note = (card.querySelector('.calnote') as HTMLInputElement).value.trim() || null;
+      const l: Label = { ticker: t, label: CAL_LABEL, value: b.dataset.mark!, note, asof: today(), until: null, created_at: new Date().toISOString() };
+      S.labels = S.labels.filter((x) => !(x.ticker === t && x.label === l.label && x.asof === l.asof)); S.labels.push(l);
+      card.querySelectorAll<HTMLButtonElement>('[data-mark]').forEach((x) => x.classList.toggle('on', x === b));
+      const p = progress(rows, S.labels); $('#calprog')!.textContent = `סומנו ${p.done}/${p.total}`;
+      let mk = card.querySelector('.calmarked'); if (!mk) { mk = document.createElement('span'); mk.className = 'badge b-pass calmarked'; card.querySelector('.r1')!.appendChild(mk); }
+      mk.textContent = 'סומן: ' + b.textContent;
+      await guard(api.upsertLabel(l), `${t}: ${b.textContent}`);
+    }));
+    // a note typed after the mark re-saves the current mark with it
+    (card.querySelector('.calnote') as HTMLInputElement).onchange = () => (card.querySelector<HTMLButtonElement>('[data-mark].on'))?.click();
+  });
 }
 function updateListBody() {
   const rows = filtered();
@@ -616,7 +665,8 @@ function rowHtml(r: Row) {
     ${sizingHtml(r)}
     ${zoneDistHtml(r)}
     ${fibRowHtml(r)}
-    <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', r.days_to_earnings != null ? `earn ${r.days_to_earnings}d` : ''].filter(Boolean).join(' · ')}</div>
+    <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', earnShort(r)].filter(Boolean).join(' · ')}</div>
+    ${r.earnings_none ? '<div class="r3 small muted earn-none">אין דוחות</div>' : ''}
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
@@ -920,7 +970,8 @@ async function onChartTap(price: number, date: string) {
 const LEVELS = ['zone_top', 'zone_bottom', 'entry', 'stop', 'target', 't_start', 't_end'] as const;
 const levelsOf = (d: Drawing) => Object.fromEntries(LEVELS.map((k) => [k, d[k] ?? null]));
 const FB: [FeedbackCategory, string, string][] = [
-  ['structure', 'מבנה לא מתאים לשיטה', 'bad'], ['zone', 'אזור לא נכון', 'bad'], ['position', 'פוזיציה לא נכונה', 'bad'], ['approved', 'מאושר', 'ok'],
+  // 'structure' (מבנה לא מתאים לשיטה) removed 2026-10-26 (Eyal): the 'לא מתאימה לשיטה' mark covers it
+  ['zone', 'אזור לא נכון', 'bad'], ['position', 'פוזיציה לא נכונה', 'bad'], ['approved', 'מאושר', 'ok'],
 ];
 const botSnap = new Map<string, Record<string, any>>(); // levels of a bot row before his first edit
 /** First edit of a bot drawing: it becomes his (source user, counts as his drawing), the bot's levels are kept in meta.bot_before. */
@@ -946,7 +997,7 @@ async function sendFeedback(d: Drawing, cat: FeedbackCategory, note: string) {
     before[x.kind] = x.meta?.bot_before ?? levelsOf(x);
     if (x.meta?.bot_before) { after[x.kind] = levelsOf(x); edited = true; }
   }
-  const label = FB.find((f) => f[0] === cat)![1];
+  const label = FB.find((f) => f[0] === cat)?.[1] ?? cat;
   const payload = {
     ticker: t, drawing_ids: rows.map((x) => x.id), category: cat, category_he: label, note: note || null,
     before, after: edited ? after : null, rule_version: d.meta?.rule_version ?? null, why: d.meta?.why ?? null,
@@ -1061,7 +1112,7 @@ function updateCardValues(d: Drawing) {
 /** Compact read-only status line (was only in the zone / Long cards): live status + reason, R:R and sizing. */
 function statusLineHtml(r: Row): string {
   const l = liveOf(r), st = l?.status ?? r.status;
-  return `<div id="statusLine" class="statusline small"><span class="badge ${st === 'PASS' ? 'b-pass' : st === 'WAIT' ? 'b-review' : 'b-obs'}">${esc(st || '—')}</span>${l?.why ? ` <bdi>${esc(l.why)}</bdi>` : ''}${sizingHtml(r)}</div>`;
+  return `<div id="statusLine" class="statusline small"><span class="badge ${st === 'PASS' ? 'b-pass' : 'b-obs'}">${esc(st || '—')}</span>${l?.why ? ` <bdi>${esc(l.why)}</bdi>` : ''}${sizingHtml(r)}</div>`;
 }
 
 let panelDirty = false;
@@ -1075,7 +1126,7 @@ function renderPanel() {
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
     ${r ? liveBoxHtml(r) : ''}
-    ${r && waitLong(r) ? `<section class="wait-box"><h3>ממתינה לסגירה שבועית</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
+    ${r && waitLong(r) ? `<section class="wait-box"><h3>אזהרה על הנר השבועי האחרון (מידע בלבד)</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section class="drawsec">
       ${r ? statusLineHtml(r) : ''}
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
@@ -1098,7 +1149,7 @@ function renderPanel() {
     </section>
     ${r ? `<section><h3>נתוני סריקה</h3><div class="kv small" dir="ltr">
       status ${esc(liveOf(r)?.status ?? r.status)}${liveOf(r) && liveOf(r)!.status !== r.status ? ` (export ${esc(r.status)})` : ''} · R:R ${fmt(liveRR(r))} · zone dist ${fmt(r.tv_zone_dist_atr, 1)} ATR · wATR ${fmt(r.weekly_atr)}<br/>
-      earnings ${r.days_to_earnings ?? '?'}d ${r.tv_stale ? `· stale: ${esc(r.tv_stale)}` : ''}<br/>
+      ${r.earnings_none ? '<span dir="rtl">אין דוחות</span>' : `earnings ${earnShort(r).replace(/^earn /, '') || '?'}`} ${r.tv_stale ? `· stale: ${esc(r.tv_stale)}` : ''}<br/>
       ${r.badges.includes('hammer') ? `${esc(r.last_week_reversal_kind)} E ${fmt(r.hammer_entry)} SL ${fmt(r.hammer_sl)} TP ${fmt(r.hammer_tp)} R:R ${fmt(r.hammer_rr)} calm ${r.hammer_calm_weeks ?? '?'}w` : ''}
       ${r.tradingview_url ? `<br/><a href="${esc(r.tradingview_url)}" target="_blank" rel="noopener">TradingView ↗</a>` : ''}</div></section>` : ''}
     <div class="spacer"></div>`;

@@ -33,8 +33,9 @@ ok(F.matches(f({ daysToEarn: 10 }), { earn: { on: true, x: 7 } }), 'earnings par
 // AND
 const fs = { rr: { on: true }, uptrend: { on: true }, near: { on: true }, st_pass: { on: true } };
 ok(F.matches(base, fs), 'AND all true');
-for (const [k, v] of [['rr', 1], ['technical', false], ['zoneDist', 1.5], ['status', 'WAIT']]) ok(!F.matches(f({ [k]: v }), fs), `AND fails when ${k}=${v}`);
-ok(!F.matches(base, { st_pass: { on: true }, st_wait: { on: true } }), 'PASS AND WAIT = nothing');
+for (const [k, v] of [['rr', 1], ['technical', false], ['zoneDist', 1.5], ['status', 'FAIL']]) ok(!F.matches(f({ [k]: v }), fs), `AND fails when ${k}=${v}`);
+ok(!F.matches(f({ status: 'FAIL' }), { st_pass: { on: true } }) && !F.FILTERS.some((d) => d.id === 'st_wait'), 'PASS filter; no WAIT filter (cancelled 2026-10-26)');
+ok(F.matches(f({ noInvHammer: false }), { st_pass: { on: true } }) && !F.matches(f({ noInvHammer: false }), { noInvHammer: { on: true } }), 'inverted hammer = info filter only');
 ok(F.matches(base, { inst: { on: true } }) && !F.matches(base, { short: { on: true } }) && F.matches(f({ shortFloat: null }), { short: { on: true } }), 'ownership: missing passes, 7% short fails ≤5');
 ok(F.matches(base, { sector: { on: true, v: 'Technology' } }) && !F.matches(base, { sector: { on: true, v: 'Energy' } }), 'sector');
 ok(F.matches(base, { dvol: { on: true } }) && !F.matches(base, { dvol: { on: true, x: 100 } }), '$vol ≥ X M');
@@ -43,3 +44,6 @@ ok(F.matches(base, { mine: { on: true }, tradable: { on: true }, fromAbove: { on
 ok(!F.matches(base, { fib: { on: true } }) && !F.matches(base, { starred: { on: true } }), 'fib / starred off');
 ok(F.activeCount({}) === 0 && F.activeCount({ rr: { on: true }, unfit: { on: true, mode: 'hide' }, sector: { on: true, v: '' } }) === 1
   && F.activeCount({ unfit: { on: true, mode: 'only' }, earn: { on: true } }) === 2, 'active count');
+// Eyal 2026-10-26: no earnings in any source (ETF) passes 'days to earnings'; a known date within 14d still fails
+ok(F.matches(f({ daysToEarn: null, earnNone: true }), { earn: { on: true } }), 'no earnings (ETF) passes days-to-earnings');
+ok(!F.matches(f({ daysToEarn: 5, earnNone: false }), { earn: { on: true } }), 'known date within 14d still fails');

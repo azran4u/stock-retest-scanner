@@ -22,8 +22,10 @@ def env(tmp_path, monkeypatch):
         calls["tv"] += 1
         return answers["tv"]
 
-    def yf(t, today):
+    def yf(t, today, past=None):
         calls["yf"] += 1
+        if past is not None:
+            past.extend(answers.get("yf_past") or [])
         return answers["yf"], ("get_earnings_dates" if answers["yf"] else "unknown"), []
 
     monkeypatch.setattr(ss, "scrape_tradingview_earnings_date", tv)

@@ -7,10 +7,9 @@ earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
-sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_no_red_vol_week. status = WAIT
-('waiting for the weekly close', Eyal 2026-10-23) when f_no_red_vol_week is the only failing core
-filter: the last completed weekly candle is a healthy red bar on above-average volume
-(see compute_red_vol_week). (f_short_float / f_inst_own are
+sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above; else FAIL. The WAIT status
+(Eyal 2026-10-23) was cancelled 2026-10-26: f_no_red_vol_week / f_no_inv_hammer (last completed weekly
+candle = healthy red bar on above-average volume / inverted hammer) are informational warnings (WARN_FILTERS). (f_short_float / f_inst_own are
 informational dashboard filters since 2026-10-14; None = data missing.)
 The smooth/reversal filters never change PASS.
 
@@ -36,7 +35,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -138,19 +137,18 @@ CONFIG: Dict[str, Any] = {
 }
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
-    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_no_red_vol_week", "f_from_above",
-    "f_no_inv_hammer",
+    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above",
 ]
-# filters that only make a stock WAIT (status WAIT = 'waiting for the weekly close') when they are the
-# only failing core filters (Eyal 2026-10-23)
-WAIT_FILTERS = ["f_no_red_vol_week", "f_no_inv_hammer"]
+# Informational warnings on the last completed weekly candle (Eyal 2026-10-26: status WAIT cancelled; they were
+# WAIT gates 2026-10-23 / 2026-10-24). Still computed for every row, shown as badges / app filters, NOT in status.
+WARN_FILTERS = ["f_no_red_vol_week", "f_no_inv_hammer"]
 INV_HAMMER_COLS = ["inv_hammer_week_date", "inv_hammer_detail"]
 RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
 FROM_ABOVE_COLS = ["from_above_side", "from_above_date", "from_above_detail"]
 # ownership data (informational filters; None = data missing, never silently False)
 OWNERSHIP_COLS = ["f_short_float", "f_inst_own", "short_float_src", "inst_own_src", "ownership_missing"]
 EXTRA_FILTERS = ["f_smooth_streak", "f_weekly_reversal", "f_daily_reversal"]
-ALL_FILTERS = CORE_FILTERS + EXTRA_FILTERS
+ALL_FILTERS = CORE_FILTERS + WARN_FILTERS + EXTRA_FILTERS
 
 TV_COLS = ["tv_found", "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_read_date",
            "tv_screenshot"]  # tv_screenshot = repo-relative chart image (charts/latest/<TICKER>.webp)
@@ -180,7 +178,7 @@ HAMMER_COLS = ["hammer_entry", "hammer_sl", "hammer_tp", "hammer_tp_date", "hamm
 
 REPORT_COLS = [
     "ticker", "status", "failed_filters",
-    *CORE_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS, "needs_drawing",
+    *CORE_FILTERS, *WARN_FILTERS, "f_rr_computed", *EXTRA_FILTERS, *INFO_FILTERS, "needs_drawing",
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     *OWNERSHIP_COLS,
     "earnings_date", "days_to_earnings", "weekly_bars",
@@ -194,7 +192,7 @@ REPORT_COLS = [
     *INV_HAMMER_COLS,
     *FROM_ABOVE_COLS,
     "daily_reversal_kind", "daily_reversal_date",
-    "smooth_pullback", "earnings_known", "earnings_blackout",
+    "smooth_pullback", "earnings_known", "earnings_blackout", "earnings_estimated", "earnings_none",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
 ]
 
@@ -245,6 +243,11 @@ def _read_json(p: Path) -> Dict[str, Any]:
 def fv_cached(ticker: str) -> Dict[str, Any]:
     """FinViz quote cache (short float / inst own), ignoring TTL, no network."""
     return _read_json(FV_CACHE_DIR / f"fv_{ticker}.json")
+
+
+def earn_state(ticker: str, report_date: date, extra: Tuple[Any, ...] = ()) -> Dict[str, Any]:
+    """stock_screen.earnings_state on the earnings cache in FV_CACHE_DIR."""
+    return ss.earnings_state(ticker, report_date, extra, cache=_read_json(FV_CACHE_DIR / f"earn_{ticker.strip().upper()}.json"))
 
 
 def earn_cached(ticker: str) -> Optional[str]:
@@ -467,8 +470,13 @@ def compute_row(
     earnings_date: Optional[str] = None,
     exchange: str = "UNKNOWN",
     tv_rec: Optional[Dict[str, Any]] = None,
+    earnings_kind: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Compute every filter + value for one ticker independently.
+
+    earnings_kind = stock_screen.earnings_state kind for `earnings_date`: "estimated" (last report + 91d,
+    flagged), "none" (no date in TradingView / Yahoo / Nasdaq -> no earnings, the 14-day must-have passes);
+    None / "known" = a real date (Eyal 2026-10-26).
 
     tv_rec = latest stored TradingView drawing reading for the ticker (or None).
     """
@@ -495,7 +503,16 @@ def compute_row(
         r["f_short_float"] = bool(short_float_pct < C["short_float_max_pct"])
 
     # --- earnings ---------------------------------------------------------
-    if earnings_date:
+    r["earnings_estimated"] = bool(earnings_kind == "estimated" and earnings_date)
+    r["earnings_none"] = bool(earnings_kind == "none" and not earnings_date)
+    if r["earnings_estimated"]:
+        notes.append(f"earnings date estimated (last report + {ss.EARN_EST_CYCLE_DAYS}d)")
+    if r["earnings_none"]:
+        r["f_no_earnings_14d"] = True
+        r["earnings_known"] = False
+        r["earnings_blackout"] = False
+        notes.append("no earnings (no date in TradingView / Yahoo / Nasdaq)")
+    elif earnings_date:
         try:
             ed = date.fromisoformat(str(earnings_date)[:10])
             dte = (ed - report_date).days
@@ -583,7 +600,7 @@ def compute_row(
         pass
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
     r.update(compute_technical(hist))
-    apply_user_overrides(r, ticker)
+    apply_user_overrides(r, ticker, report_date)
     r.update(compute_evidence(hist, r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
@@ -720,7 +737,7 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
                              f"avg daily vol {vtxt} the {int(C['red_vol_avg_days'])}d avg before it")
     if healthy and loud:
         out["f_no_red_vol_week"] = False
-        out["red_vol_detail"] = "WAIT weekly close - healthy red " + out["red_vol_detail"]
+        out["red_vol_detail"] = "info (not a gate) - healthy red " + out["red_vol_detail"]
     return out
 
 
@@ -762,7 +779,7 @@ def compute_inv_hammer_week(daily: Optional[pd.DataFrame], report_date: date,
     rng = h - l
     if is_inverted_hammer(o, h, l, c, atr):
         out["f_no_inv_hammer"] = False
-        out["inv_hammer_detail"] = (f"WAIT weekly close - inverted hammer week {wend}: upper shadow "
+        out["inv_hammer_detail"] = (f"info (not a gate) - inverted hammer week {wend}: upper shadow "
                                     f"{(h - max(o, c)) / rng * 100:.0f}% / body {abs(c - o) / rng * 100:.0f}% / "
                                     f"lower shadow {(min(o, c) - l) / rng * 100:.0f}% of the range")
     return out
@@ -1418,21 +1435,39 @@ def load_user_overrides() -> Dict[str, Dict[str, Any]]:
     return _load_cached_json(USER_OVERRIDES, "tickers")
 
 
-def user_technical(ticker: str) -> Optional[bool]:
-    """The user's technical verdict for `ticker` (True / False) or None when not overridden."""
+# Eyal 2026-10-26: "a stock not in a primary uptrend today may be later" - f_technical is recomputed from the price
+# history on every run (nightly) and nothing may freeze it. A manual technical verdict in user_overrides.json is
+# therefore point-in-time: it holds for USER_OVERRIDE_DAYS after its date (one weekly close), or until its
+# "until" date when one is given; then the computed value is back. (The app's 'unfit' mark expires with its period;
+# the calibration page's 'uptrend_mark' labels never touch f_technical.)
+USER_OVERRIDE_DAYS = 7
+
+
+def _override_active(o: Dict[str, Any], ref: Optional[date] = None) -> bool:
+    ref = ref or date.today()
+    try:
+        if o.get("until"):
+            return date.fromisoformat(str(o["until"])[:10]) >= ref
+        return date.fromisoformat(str(o.get("date"))[:10]) + timedelta(days=USER_OVERRIDE_DAYS) >= ref
+    except Exception:
+        return False  # undated -> not trusted to freeze the computed flag
+
+
+def user_technical(ticker: str, ref: Optional[date] = None) -> Optional[bool]:
+    """The user's ACTIVE technical verdict for `ticker` (True / False) or None (none / expired)."""
     o = load_user_overrides().get(str(ticker).strip().upper()) or {}
     v = o.get("technical")
-    return None if v is None else bool(v)
+    return None if v is None or not _override_active(o, ref) else bool(v)
 
 
-def apply_user_overrides(r: Dict[str, Any], ticker: str) -> Dict[str, Any]:
-    """After compute_technical: tech_computed = the computed f_technical; a user override
-    (user_overrides.json "technical") replaces f_technical; tech_override = e.g.
-    "not technical (Eyal) 2026-10-09: <note>" (empty when not overridden)."""
+def apply_user_overrides(r: Dict[str, Any], ticker: str, ref: Optional[date] = None) -> Dict[str, Any]:
+    """After compute_technical: tech_computed = the computed f_technical; an ACTIVE user override
+    (user_overrides.json "technical", USER_OVERRIDE_DAYS / until) replaces f_technical; tech_override = e.g.
+    "not technical (Eyal) 2026-10-09: <note>" (empty when not overridden or expired)."""
     r["tech_computed"] = r.get("f_technical")
     r["tech_override"] = ""
     o = load_user_overrides().get(str(ticker).strip().upper()) or {}
-    if o.get("technical") is not None:
+    if o.get("technical") is not None and _override_active(o, ref):
         v = bool(o["technical"])
         r["f_technical"] = v
         r["tech_override"] = (f"{'technical' if v else 'not technical'} ({o.get('by') or 'Eyal'}) "
@@ -1448,7 +1483,7 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
     confirms it) are excluded: they show as "review needed" instead; so are charts where the user
     drew only Fib / horizontal lines (tv_source user-lines), and tickers the user marked not technical
     (user_overrides.json technical=false)."""
-    if user_technical(str(r.get("ticker") or "")) is False:  # the user marked it not technical
+    if user_technical(str(r.get("ticker") or "")) is False:  # the user marked it not technical (active verdict only)
         return False
     if not _truthy(r.get("f_technical")):  # only technical stocks (Eyal 2026-10-09)
         return False
@@ -1460,8 +1495,8 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
-    # WAIT = everything passes except the red-volume week / inverted-hammer week -> wait for the next weekly close
-    r["status"] = "PASS" if not failed else ("WAIT" if all(f in WAIT_FILTERS for f in failed) else "FAIL")
+    # PASS / FAIL only (Eyal 2026-10-26: WAIT cancelled; red-volume / inverted-hammer weeks are informational)
+    r["status"] = "PASS" if not failed else "FAIL"
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
 
@@ -1545,23 +1580,14 @@ def apply_filters_to_report(
             sf, sf_src = _pct(uni.get("short_float")), str(uni.get("short_src") or "universe")
         if sf is None:
             sf, sf_src = _pct(fv.get("short_float")), "finviz_quote"
-        # Earnings: the earnings cache (absolute next date, kept until it passes)
-        # is the source of truth; then universe json; then the screen row.
-        ed, stale = None, None
-        for cand in (earn_cached(t), uni.get("earnings_date"), src.get("earnings_date")):
-            if cand is None or str(cand).strip() in ("", "nan", "None"):
-                continue
-            try:
-                if date.fromisoformat(str(cand)[:10]) >= report_date:
-                    ed = str(cand)[:10]
-                    break
-                stale = stale or str(cand)[:10]
-            except Exception:
-                continue
-        ed = ed or stale  # a stale date is kept only so compute_row can note it
+        # Earnings (Eyal 2026-10-26): stock_screen.earnings_state over the earnings cache (absolute next date +
+        # last reported date + every source's answer), universe json and the screen row: known upcoming date;
+        # past report only -> estimated next (last + 91d); nothing in TradingView / Yahoo / Nasdaq -> no earnings.
+        es = earn_state(t, report_date, (uni.get("earnings_date"), src.get("earnings_date")))
+        ed = es["date"]
         tv = src.get("tradingview_url")
         r = compute_row(t, hist_map.get(t), report_date, sf, ed, _exchange_from_tv(tv),
-                        tv_rec=tv_store.get(t.upper()))
+                        tv_rec=tv_store.get(t.upper()), earnings_kind=es["kind"])
         inst, inst_src = _num(src.get("inst_own_pct")), str(uni.get("inst_src") or "screen")
         if inst is None:
             inst, inst_src = _pct(uni.get("inst_own")), str(uni.get("inst_src") or "universe")

@@ -339,7 +339,7 @@ def write_review_target(df: pd.DataFrame, report_date: str, out_dir: Path) -> Pa
     mask = pd.Series(True, index=df.index)
     for c in ["f_bot_review"] + REVIEW_FILTERS:
         mask &= df[c].map(t) if c in df.columns else False
-    mask &= ~df["ticker"].map(lambda x: rf.user_technical(str(x)) is False)  # user: not technical
+    mask &= ~df["ticker"].map(lambda x: rf.user_technical(str(x), date.fromisoformat(str(report_date))) is False)  # user: not technical (active only)
     ni = app_not_interesting(report_date)  # user: 'not interesting' in the web app (until date)
     if ni:
         mask &= ~df["ticker"].map(lambda x: str(x).upper() in ni)

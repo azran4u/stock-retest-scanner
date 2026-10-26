@@ -49,17 +49,17 @@ async function open(viewport, mobile) {
   const withSec = await page.locator('.row .r4[data-sector]:not([data-sector=""])').count();
   ok(withSec > 0, `sector shown on ${withSec}/${n} cards`);
   const mr = await page.evaluate(() => window.__srs.maxRiskUsd());
-  ok(mr === 50, `default max risk $${mr} (5000 × 1%)`);
+  ok(mr === 55, `default max risk $${mr} (5000 × 1.1%, Eyal 2026-10-26)`);
 
-  // every 'ok' card's $ numbers = floor(50 / (entry - SL)) etc. from the Long that counts
+  // every 'ok' card's $ numbers = floor(55 / (entry - SL)) etc. from the Long that counts
   const check = await page.evaluate(() => {
     const { S, longLevels } = window.__srs; const bad = []; let good = 0;
     for (const li of document.querySelectorAll('.row')) {
       const r5 = li.querySelector('.r5'); if (r5.dataset.sizing !== 'ok') continue;
       const L = longLevels(S.byT.get(li.dataset.t)); const ps = L.entry - L.stop;
-      const sh = Math.floor(50 / ps + 1e-9);
+      const sh = Math.floor(55 / ps + 1e-9);
       const exp = { s: sh, r: Math.round(sh * ps * 100) / 100, w: Math.round(sh * (L.target - L.entry) * 100) / 100 };
-      if (+r5.dataset.shares !== exp.s || Math.abs(+r5.dataset.risk - exp.r) > 0.005 || Math.abs(+r5.dataset.reward - exp.w) > 0.005 || exp.r > 50) bad.push([li.dataset.t, r5.dataset, exp]);
+      if (+r5.dataset.shares !== exp.s || Math.abs(+r5.dataset.risk - exp.r) > 0.005 || Math.abs(+r5.dataset.reward - exp.w) > 0.005 || exp.r > 55) bad.push([li.dataset.t, r5.dataset, exp]);
       else good++;
     }
     return { good, bad: bad.slice(0, 3) };
@@ -76,14 +76,14 @@ async function open(viewport, mobile) {
     const l = await api.insertDrawing({ ticker: t, kind: 'long', entry: e, stop: sl, target: tp, source: 'user', status: 'active' });
     S.drawings.set(l.id, l); refreshLive();
     const a = { ...document.querySelector(`.row[data-t="${t}"] .r5`).dataset, rr: document.querySelector(`.row[data-t="${t}"] .sz-rr`).textContent };
-    // stop wider than $50 / share
+    // stop wider than $55 / share
     l.stop = Math.round((e - 60) * 100) / 100; l.updated_at = new Date().toISOString(); refreshLive();
     const b = { ...document.querySelector(`.row[data-t="${t}"] .r5`).dataset, txt: document.querySelector(`.row[data-t="${t}"] .r5`).textContent };
     l.stop = sl; refreshLive();
     return { a, b };
   }, t);
-  ok(live.a.shares === '12' && live.a.risk === '48' && live.a.reward === '144' && /3\.00/.test(live.a.rr), `${t} Long risk $4/share, TP +$12: 12 shares, risk $48, reward $144, ${live.a.rr}`);
-  ok(live.b.shares === '0' && live.b.sizing === 'wide' && /סטופ רחב מ-\$50 למניה/.test(live.b.txt), `stop $60 wide -> "${live.b.txt.trim()}"`);
+  ok(live.a.shares === '13' && live.a.risk === '52' && live.a.reward === '156' && /3\.00/.test(live.a.rr), `${t} Long risk $4/share, TP +$12: 13 shares, risk $52, reward $156, ${live.a.rr}`);
+  ok(live.b.shares === '0' && live.b.sizing === 'wide' && /סטופ רחב מ-\$55 למניה/.test(live.b.txt), `stop $60 wide -> "${live.b.txt.trim()}"`);
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${OUT}/21_list_iphone_390.png` });
   console.log('     shot', `${OUT}/21_list_iphone_390.png`);

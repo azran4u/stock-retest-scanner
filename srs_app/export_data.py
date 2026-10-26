@@ -6,7 +6,7 @@ Writes, relative to the repo root:
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
   app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) OHLC candles per exported ticker, 1 byte/value
 
-Candidates = PASS ∪ WAIT (badge 'waiting': PASS except a healthy red last week on above-average volume) ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
+Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
              ∪ any TradingView drawing found ∪ open positions.
 
 Hammer gate (Eyal 2026-10-23): a last-week hammer only earns the 'hammer' badge / list inclusion when it also passes the
@@ -40,7 +40,7 @@ SPARK_WEEKS = 156  # ~3 years of weekly closes for the list mini chart
 SPARK_Q = 255      # OHLC quantized to one byte between lo and hi (keeps spark.json small)
 
 INDEX_COLS = [
-    "ticker", "status", "current_price", "dollar_vol_30d", "days_to_earnings", "earnings_date",
+    "ticker", "status", "current_price", "dollar_vol_30d", "days_to_earnings", "earnings_date", "earnings_none", "earnings_estimated",
     "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_source", "tv_read_date",
     "tv_zone_dist_atr", "tv_stale", "tv_stale_detail", "tv_bot_status", "weekly_atr",
     "f_technical", "f_near_zone", "needs_drawing", "f_bot_review", "f_tv_stale", "f_last_week_reversal",
@@ -102,8 +102,8 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         badges = []
         if r.get("status") == "PASS":
             badges.append("pass")
-        elif r.get("status") == "WAIT":  # healthy red week on above-avg volume: wait for the weekly close
-            badges.append("waiting")
+        # (WAIT / badge 'waiting' cancelled 2026-10-26: the app shows the red-volume / inverted-hammer warnings
+        # from f_no_red_vol_week / f_no_inv_hammer as info badges)
         if _truthy(r.get("needs_drawing")):
             badges.append("needs_drawing")
         if _truthy(r.get("f_bot_review")):
@@ -282,6 +282,29 @@ def spark_ma(bars: List[list], weeks: int) -> Optional[Dict[str, Any]]:
     return {"lo": round(lo, dec), "hi": round(hi, dec), "q": base64.b64encode(q).decode()}
 
 
+def spark_ema(daily: pd.DataFrame, sp: Dict[str, Any], span: int = 30) -> Optional[str]:
+    """Weekly (W-FRI) EMA(span) of closes for the spark's weeks, computed on the whole daily history (so the first
+    weeks are warmed up), quantized like the spark OHLC (0..254 between sp lo / hi, clamped; 255 = none); base64."""
+    import base64
+    wk = daily["Close"].dropna().resample("W-FRI").last().dropna()
+    if len(wk) < 2:
+        return None
+    ema = wk.ewm(span=span, adjust=False).mean().iloc[-int(sp["n"]):]
+    if len(ema) != int(sp["n"]):
+        return None
+    span_ = (float(sp["hi"]) - float(sp["lo"])) or 1.0
+    q = bytes(255 if pd.isna(v) else max(0, min(254, int(round((float(v) - float(sp["lo"])) / span_ * 254)))) for v in ema)
+    return base64.b64encode(q).decode()
+
+
+def calibration_tickers(out: Path) -> List[str]:
+    """Tickers of the trend-calibration page (app/data/calibration.json, Eyal 2026-10-26); [] when absent."""
+    try:
+        return sorted({str(r["ticker"]).upper() for r in json.loads((out / "calibration.json").read_text())})
+    except Exception:
+        return []
+
+
 def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]], manual: Optional[Dict[str, Dict[str, Any]]] = None) -> None:
     """fib_* columns (informational, not a PASS gate): anchor low/high (+ daily dates), weekly ATR, and confluence of the
     key levels 0.382 / 0.5 / 0.618 with the current price and with the exported zone (srs_app.fib).
@@ -307,7 +330,7 @@ def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]], manua
 
 
 def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None,
-                   fib_out: Optional[Dict[str, Dict[str, Any]]] = None) -> int:
+                   fib_out: Optional[Dict[str, Dict[str, Any]]] = None, ema_for: Optional[set] = None) -> int:
     hist = dict(pd.read_pickle(HIST_CACHE))
     miss = [t for t in (fetch_missing or []) if hist.get(t) is None or getattr(hist.get(t), "empty", True)]
     hist.update(_download_missing(miss))
@@ -340,6 +363,10 @@ def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[s
             ma = spark_ma(bars, sp["n"])
             if ma:
                 sp["ma"] = ma
+            if ema_for and t in ema_for:
+                e = spark_ema(d, sp)  # d = the 5-year daily frame: ~100 weeks of warm-up before the spark window
+                if e:
+                    sp["ema30"] = e
             spark[t] = sp
         if fib_out is not None:
             try:
@@ -432,7 +459,9 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     if nsec:
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
     fib: Dict[str, Dict[str, Any]] = {}
-    n = export_candles(tickers, out, fetch_missing=watch, fib_out=fib)
+    calib = calibration_tickers(out)  # trend-calibration page: candles + spark (+ weekly EMA30), no list rows
+    n = export_candles(tickers + [t for t in calib if t not in set(tickers)], out, fetch_missing=list(watch) + calib,
+                       fib_out=fib, ema_for=set(calib))
     try:
         from srs_app.sync import fib_anchors_from_state
         manual = fib_anchors_from_state(os.environ.get("SRS_APP_STATE", "/workspace/stock-screener/app_state.json"))

@@ -23,7 +23,7 @@ await page.evaluate(async (meta) => {
   await api.insertDrawing({ ticker: 'CSCO', kind: 'long', entry: 97.5, stop: 91, target: 118, t_start: '2026-10-26', t_end: '2027-03-15', source: 'bot', status: 'active', note: 'BOT v3d', meta });
 }, meta);
 await page.waitForFunction(() => document.querySelectorAll('.card[data-id]').length === 2);
-ok((await page.locator('.card .fbb').count()) === 8, 'feedback buttons on both bot cards (4 each)');
+ok((await page.locator('.card .fbb').count()) === 6 && (await page.locator('.card .fbb:text("מבנה")').count()) === 0, 'feedback buttons on both bot cards (3 each, no "structure" since 2026-10-26)');
 ok((await page.locator('.card').first().textContent()).includes('מאושר אוטומטית'), 'bot drawing shown as active (auto-approved)');
 
 // edit the bot long ON THE CHART (no level inputs since 2026-10-24) -> becomes his (source user) with bot_before

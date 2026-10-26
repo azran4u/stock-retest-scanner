@@ -1,5 +1,5 @@
 """f_no_inv_hammer (Eyal 2026-10-24, app command 9, BFH): the last COMPLETED weekly candle is an inverted
-hammer -> a bearish sign: not PASS, status WAIT until the next weekly close."""
+hammer -> a bearish sign. Since 2026-10-26 (WAIT cancelled) information only: the stock stays PASS."""
 from datetime import date
 from pathlib import Path
 
@@ -21,7 +21,7 @@ def test_bfh_week_2026_10_23_is_inverted_hammer():
     out = rf.compute_inv_hammer_week(_bfh(), date(2026, 10, 23), now_et=AFTER_CLOSE)
     assert out["inv_hammer_week_date"] == "2026-10-23"
     assert out["f_no_inv_hammer"] is False
-    assert out["inv_hammer_detail"].startswith("WAIT")
+    assert out["inv_hammer_detail"].startswith("info (not a gate)")
 
 
 def test_bfh_before_friday_1630_uses_previous_week():
@@ -40,11 +40,13 @@ def test_shapes():
     assert not rf.is_inverted_hammer(100, 100.5, 99.98, 100.01, atr=10.0)
 
 
-def test_status_wait_only():
+def test_inverted_hammer_no_longer_blocks_pass():
+    """Regression (Eyal 2026-10-26): a former WAIT (BFH-type inverted hammer) is PASS when the other gates pass."""
     base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True,
             "f_no_red_vol_week": True, "f_from_above": True}
     assert rf.finalize_status({**base, "f_no_inv_hammer": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_inv_hammer": False})
-    assert r["status"] == "WAIT" and r["failed_filters"] == "no_inv_hammer"
-    assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_no_red_vol_week": False})["status"] == "WAIT"
+    assert r["status"] == "PASS" and r["failed_filters"] == ""
+    assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_no_red_vol_week": False})["status"] == "PASS"
+    assert "f_no_inv_hammer" not in rf.CORE_FILTERS and "f_no_inv_hammer" in rf.WARN_FILTERS
     assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_rr": False})["status"] == "FAIL"

@@ -983,6 +983,14 @@ def _earnings_dates_from_frame(frame: Any, today: date) -> List[date]:
     return sorted(set(candidates))
 
 
+def _past_dates_from_frame(frame: Any, today: date) -> List[date]:
+    """Already-reported earnings dates (< today) in get_earnings_dates output."""
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
+        return []
+    out = [_date_only(idx) for idx in frame.index]
+    return sorted({d for d in out if d is not None and d < today})
+
+
 _TV_EARN_RE = re.compile(
     r'earnings_release_next_date_fq"\s*:\s*([0-9]+(?:\.[0-9]+)?)'
 )
@@ -1078,6 +1086,52 @@ def pick_earnings_date(candidates: Dict[str, Optional[date]], today: date,
     return d, "+".join(srcs) + (" (confirmed)" if conf else "")
 
 
+EARN_EST_CYCLE_DAYS = 91  # estimated next report = last report + ~one quarter
+
+
+def _d(v: Any) -> Optional[date]:
+    if v is None or str(v).strip() in ("", "nan", "None", "NaT"):
+        return None
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except Exception:
+        return None
+
+
+def earnings_state(ticker: str, today: date, extra: Tuple[Any, ...] = (),
+                   cache: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Earnings verdict for the 14-day must-have (Eyal 2026-10-26: ETFs etc. have no earnings).
+
+    kind = "known"     an upcoming date (cache, then `extra` = universe / report values; earliest)
+           "estimated" no upcoming date, but a source showed a PAST report (cached date that passed,
+                       last_earnings_date, a source's past answer, a past `extra` date) -> a company with
+                       earnings whose next date is not out yet (KN reported 10-22): next = last + 91 days
+                       (rolled forward by 91 until >= today), the 14-day rule applies to that estimate
+           "none"      TradingView, Yahoo and Nasdaq were all asked (cache 'miss') and NONE had any date,
+                       past or future -> assume no earnings: the must-have passes
+           "unknown"   never looked up (no cache) -> fails (safe)
+    Returns {"kind", "date" (YYYY-MM-DD or None), "last" (YYYY-MM-DD or None)}."""
+    data = cache if cache is not None else (_load_earn_cache(ticker) or {})
+    seen = [_d(data.get("earnings_date")), _d(data.get("last_earnings_date"))]
+    seen += [_d(v) for k, v in (data.get("sources") or {}).items() if k != "confirmed"]
+    seen += [_d(x) for x in extra]
+    seen = [x for x in seen if x is not None]
+    cached_next = _d(data.get("earnings_date"))
+    fut = [cached_next] if cached_next is not None and cached_next >= today else [x for x in seen if x >= today]
+    if fut:
+        return {"kind": "known", "date": min(fut).isoformat(), "last": None}
+    pastd = [x for x in seen if x < today]
+    if pastd:
+        last = max(pastd)
+        est = last + timedelta(days=EARN_EST_CYCLE_DAYS)
+        while est < today:
+            est += timedelta(days=EARN_EST_CYCLE_DAYS)
+        return {"kind": "estimated", "date": est.isoformat(), "last": last.isoformat()}
+    if data and data.get("source") == "miss" and not data.get("earnings_date"):
+        return {"kind": "none", "date": None, "last": None}
+    return {"kind": "unknown", "date": None, "last": None}
+
+
 _NASDAQ_EARN_URL = "https://api.nasdaq.com/api/analyst/{t}/earnings-date"
 _NASDAQ_DATE_RE = re.compile(r"for\s+[A-Z.\-]+:\s*([A-Z][a-z]{2} \d{1,2}, \d{4})")
 
@@ -1110,7 +1164,8 @@ def parse_nasdaq_earnings(d: Dict[str, Any]) -> Tuple[Optional[date], bool]:
 
 
 def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str,
-                     error: Optional[str] = None, sources: Optional[Dict[str, Optional[str]]] = None) -> None:
+                     error: Optional[str] = None, sources: Optional[Dict[str, Optional[str]]] = None,
+                     last_date: Optional[str] = None) -> None:
     """Store the absolute next earnings DATE (YYYY-MM-DD) — never days-to-earnings.
     sources = every provider's answer of this fetch ({"tradingview": "2026-11-04", "get_earnings_dates": ...})."""
     payload = {
@@ -1120,6 +1175,8 @@ def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str,
     }
     if sources:
         payload["sources"] = sources
+    if last_date:
+        payload["last_earnings_date"] = last_date  # latest already-reported date seen (earnings_state)
     if error:
         payload["error"] = error[:300]
     try:
@@ -1219,9 +1276,10 @@ def scrape_tradingview_earnings_date(
 
 
 def _yahoo_next_earnings(
-    ticker: str, today: date
+    ticker: str, today: date, past: Optional[List[date]] = None
 ) -> Tuple[Optional[date], str, List[str]]:
-    """Fallback: next unreported earnings via yfinance APIs."""
+    """Fallback: next unreported earnings via yfinance APIs. `past` (if given) collects already-reported dates
+    seen in the answers (earnings_state: a company with a past report is never 'no earnings')."""
     import yfinance as yf
 
     errors: List[str] = []
@@ -1236,6 +1294,8 @@ def _yahoo_next_earnings(
                 frame = method(limit=12)
             except TypeError:
                 frame = method()
+            if past is not None:
+                past.extend(_past_dates_from_frame(frame, today))
             dates = _earnings_dates_from_frame(frame, today)
             if dates:
                 return dates[0], method_name, errors
@@ -1252,6 +1312,8 @@ def _yahoo_next_earnings(
 
     try:
         frame = getattr(yf_ticker, "earnings_dates", None)
+        if past is not None:
+            past.extend(_past_dates_from_frame(frame, today))
         dates = _earnings_dates_from_frame(frame, today)
         if dates:
             return dates[0], "earnings_dates", errors
@@ -1278,11 +1340,25 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     today = today or _local_today()
     errors: List[str] = []
 
+    past: List[date] = []
+
+    def _last() -> Optional[str]:
+        prev = _load_earn_cache(ticker) or {}
+        ds = list(past)
+        for v in (prev.get("earnings_date"), prev.get("last_earnings_date")):
+            try:
+                d0 = date.fromisoformat(str(v)[:10]) if v else None
+            except Exception:
+                d0 = None
+            if d0 is not None and d0 < today:
+                ds.append(d0)
+        return max(ds).isoformat() if ds else None
+
     def _ok(next_date: date, source: str, cached: bool = False,
             sources: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
         days = int((next_date - today).days)
         if not cached:
-            _save_earn_cache(ticker, next_date.isoformat(), source, sources=sources)
+            _save_earn_cache(ticker, next_date.isoformat(), source, sources=sources, last_date=_last())
         return {
             "earnings_date": next_date.isoformat(),
             "days_to_earnings": days,
@@ -1318,12 +1394,13 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
         cands["tradingview"] = tv_date
         if tv_date is not None and tv_date < today:
             errors.append(f"tradingview stale date {tv_date.isoformat()}")
+            past.append(tv_date)
     except Exception as exc:
         errors.append(f"tradingview: {exc}")
 
     # Yahoo / yfinance: always asked too (a provider's projected date can be later than the confirmed one)
     try:
-        yf_date, yf_source, yf_errors = _yahoo_next_earnings(ticker, today)
+        yf_date, yf_source, yf_errors = _yahoo_next_earnings(ticker, today, past=past)
         errors.extend(yf_errors)
         cands[yf_source if yf_date is not None else "yahoo"] = yf_date
     except Exception as exc:
@@ -1333,6 +1410,8 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     try:  # Nasdaq (Zacks): tells company-confirmed dates apart from algorithmic estimates
         nd, nconf = nasdaq_earnings_date(ticker)
         cands["nasdaq"] = nd
+        if nd is not None and nd < today:
+            past.append(nd)
         if nd is not None and nconf:
             confirmed.add("nasdaq")
     except Exception as exc:
@@ -1354,7 +1433,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     if getattr(_TV_STATE, "rate_limited", False):
         err = ("tradingview rate-limited; " + err).strip("; ")  # not cached: retry next run
     else:
-        _save_earn_cache(ticker, None, "miss", error=err)  # retried after EARN_MISS_TTL_HOURS
+        _save_earn_cache(ticker, None, "miss", error=err, last_date=_last())  # retried after EARN_MISS_TTL_HOURS
     return {
         "earnings_date": None,
         "days_to_earnings": None,

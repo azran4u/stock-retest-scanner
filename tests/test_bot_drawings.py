@@ -1,4 +1,5 @@
-"""Bot drawings: v3d golden regression (levels must reproduce), candidate selection, SQL format."""
+"""Bot drawings: v3d/v4 golden regression (levels must reproduce under the v4 'touches' scoring they were made with),
+v5 placement cases, candidate selection, SQL format."""
 import json
 from pathlib import Path
 
@@ -39,9 +40,16 @@ def rules_on_fixture(tmp_path_factory):
             os.environ[k] = v
 
 
+@pytest.fixture
+def v4(rules_on_fixture, monkeypatch):
+    """The golden rows were made with the v4 'touches' pick; v5 (2026-10-26) places / picks differently."""
+    monkeypatch.setattr(rules_on_fixture, "ZONE_SCORING", "touches")
+    return rules_on_fixture
+
+
 @pytest.mark.parametrize("g", GOLD, ids=[g["ticker"] for g in GOLD])
-def test_v3d_golden(g, rules_on_fixture):
-    r = rules_on_fixture.compute(g["ticker"], g["data_date"])
+def test_v3d_golden(g, v4):
+    r = v4.compute(g["ticker"], g["data_date"])
     if g.get("expect_no_level"):  # retired by a later rule fix (kept so the change stays visible)
         assert not r["has_level"] and "price ran away" in r["reason"], r
         return
@@ -74,16 +82,25 @@ def test_plan_selection():
         {"id": "7", "ticker": "REJOLD", "kind": "zone", "source": "bot", "status": "rejected", "meta": '{"rule_version": "v0"}'},
     ]
     labels = [{"ticker": "NI", "label": "not_interesting", "value": "yes", "until": "2026-12-01"}]
-    fb = [{"ticker": "STRUCT", "category": "structure", "created_at": "2026-10-20T10:00:00+00:00"}]
+    # Eyal 2026-10-26: the bot draws EVERY eligible stock: 'structure' feedback (even with a "don't draw" note) and
+    # rejected bot drawings no longer block; the only exclusion is the unfit (not_interesting) mark
+    rows.append(dict(REP, ticker="NODRAW"))
+    fb = [{"ticker": "STRUCT", "category": "structure", "created_at": "2026-10-20T10:00:00+00:00"},
+          {"ticker": "NODRAW", "category": "structure", "note": "אל תשרטט את זה", "created_at": "2026-10-20T10:00:00+00:00"}]
     lows = {"BOTOK": 11.0, "BOTBROKE": 9.5}
     p = B.plan(rows, dr, labels, fb, today="2026-10-23", low_fn=lambda t, since: lows.get(t))
-    assert sorted(p["draw"]) == ["BOTBROKE", "NEW", "REJOLD"]
+    assert sorted(p["draw"]) == ["BOTBROKE", "NEW", "NODRAW", "REJ", "REJOLD", "STRUCT"]
     assert sorted(p["obsolete"]["BOTBROKE"]) == ["4", "5"]
-    assert p["skip"] == {"LINES": "his own Fib / horizontal lines (user-lines)", "NI": "not interesting", "STRUCT": "structure feedback < 8w", "BOTOK": "live bot drawing",
-                         "REJ": "rejected under the current rule version"}
-    # structure feedback expires after 8 weeks
-    p2 = B.plan([dict(REP, ticker="STRUCT")], [], [], fb, today="2026-12-31", low_fn=lambda *a: None)
-    assert p2["draw"] == ["STRUCT"]
+    assert p["skip"] == {"LINES": "his own Fib / horizontal lines (user-lines)", "NI": "not interesting", "BOTOK": "live bot drawing"}
+
+
+def test_redraw_identical_to_rejected_is_dropped():
+    dr = [{"ticker": "REJ", "kind": "zone", "source": "bot", "status": "rejected", "zone_top": 11, "zone_bottom": 10},
+          {"ticker": "REJ", "kind": "long", "source": "bot", "status": "rejected", "entry": 10.9, "stop": 9.9, "target": 14}]
+    same = {"ticker": "REJ", "has_level": True, "zone_top": 11, "zone_bottom": 10, "entry": 10.9, "stop": 9.9, "target": 14}
+    new = dict(same, zone_top=12.5, zone_bottom=12, entry=12.4)
+    assert B.drop_same_as_rejected([same], dr) == ([], ["REJ"])
+    assert B.drop_same_as_rejected([new], dr) == ([new], [])
 
 
 def test_sql_insert_bot_is_active_with_meta():
@@ -200,6 +217,69 @@ def test_touch_count_and_recency():
 def test_touch_meta_stored(rules_on_fixture):
     r = rules_on_fixture.compute("QCOM", "2026-10-22")
     w = r["why"]
-    for k in ("touches_w", "touches_d", "pivot_age_w", "weeks_since_touch", "alt_levels", "zone_scoring"):
+    for k in ("touches_w", "touches_d", "pivot_age_w", "weeks_since_touch", "alt_levels", "zone_scoring", "points", "shift_atr"):
         assert k in w
-    assert w["zone_scoring"] == "touches" and w["touches_w"] >= 1
+    assert w["zone_scoring"] == "v5" and w["rule"] == "v5" and w["touches_w"] >= 1 and w["points"] >= 1
+    assert r["rule_version"] == "v5-2026-10-26"
+
+
+def test_points_in_counts_closes_highs_lows():
+    """v5: every weekly close, high and low inside [zb - tol, zt + tol] is one point."""
+    import numpy as np
+    lo = np.array([10.0, 9.0, 10.1]); hi = np.array([11.0, 10.05, 12.0]); cl = np.array([10.5, 9.5, 11.5])
+    assert B.points_in(lo, hi, cl, 10.0, 10.2, 0.05) == 3  # lows 10.0, 10.1 + high 10.05
+    assert B.points_in(lo, hi, cl, 20, 21, 0.1) == 0
+
+
+@pytest.mark.parametrize("t,his", [("QCOM", (173.47, 179.04)), ("TWST", (115.7, 121.2))])
+def test_v5_overlaps_his_zone(t, his, rules_on_fixture):
+    """v5 on his feedback cases: the placed zone overlaps the zone he drew, stays below the price, within 3 ATR."""
+    r = rules_on_fixture.compute(t, "2026-10-22")
+    assert r["has_level"] and r["zone_bottom"] < his[1] and r["zone_top"] > his[0]
+    assert r["zone_bottom"] <= r["price"]
+    assert (r["price"] - r["zone_top"]) / r["why"]["atr"] <= rules_on_fixture.FAR_CAP_ATR
+    assert abs(r["why"]["shift_atr"]) <= rules_on_fixture.V5_SHIFT_ATR + 1e-9
+
+
+def test_place_v5_slides_to_most_points_and_keeps_width():
+    """A band slides (same width, <= V5_SHIFT_ATR) onto the cluster of closes / wicks when that wins >= V5_MIN_GAIN."""
+    import numpy as np
+    import pandas as pd
+    n = 30
+    cl = np.full(n, 103.0); lo = np.full(n, 100.55); hi = np.full(n, 104.0)  # lows cluster at 100.55
+    w = pd.DataFrame({"Low": lo, "High": hi, "Close": cl})
+    C = {"l": lo, "c": cl, "n": n}
+    z = {"zb": 100.0, "zt": 100.4, "i": 0, "lows_rel": [0.55] * (n - 1), "reclaimed": False}
+
+    class V3D:
+        @staticmethod
+        def slp(P):
+            return ()
+
+        @staticmethod
+        def sl_d(t, rd, zb, zt, e):
+            return zb - 1.0, "fit"
+    old = B._rules
+    B._rules = lambda: {"V3": type("V3", (), {"ENTRY_BELOW_TOP": 0.13})}
+    try:
+        p = B.place_v5(z, C, w, 103.0, 1.0, "X", "2026-10-23", V3D, {}, 0.05)
+    finally:
+        B._rules = old
+    assert p is not None and p["shift_atr"] > 0 and abs((p["zt"] - p["zb"]) - 0.4) < 1e-9
+    assert p["points"] >= B.points_in(lo, hi, cl, 100.0, 100.4, 0.05) + B.V5_MIN_GAIN
+
+
+def test_redraw_rule_replaces_only_bot_rows_that_differ():
+    """v5 rule change: a live bot drawing is replaced when the current rule gives other levels; same levels or no
+    level under the current rule -> kept."""
+    lv = dict(zone_bottom=10.0, zone_top=11.0, entry=10.9, stop=9.8, target=14.0)
+    dr = [dict(id=f"{t}{k}", ticker=t, source="bot", status="active", kind=k, **lv) for t in ("SAME", "DIFF", "NONE") for k in ("zone", "long")]
+    pl = {"draw": [], "obsolete": {}, "skip": {"SAME": "live bot drawing", "DIFF": "live bot drawing", "NONE": "live bot drawing", "U": "not interesting"}}
+
+    def fake(t):
+        if t == "NONE":
+            return {"ticker": t, "has_level": False, "reason": "price ran away"}
+        return dict(lv, ticker=t, has_level=True, zone_top=11.0 if t == "SAME" else 11.5)
+    res, kept = B.redraw_rule(pl, dr, fake)
+    assert [r["ticker"] for r in res] == ["DIFF"] and pl["obsolete"] == {"DIFF": ["DIFFzone", "DIFFlong"]}
+    assert set(kept) == {"SAME", "NONE"} and pl["draw"] == ["DIFF"] and pl["skip"]["U"] == "not interesting"

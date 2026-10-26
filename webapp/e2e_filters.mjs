@@ -89,7 +89,7 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   await page.waitForSelector('.rsec');
   const txt = await page.locator('.rules').textContent();
   ok(/מחיר מעל \$10/.test(txt) && /SMA50/.test(txt) && !/מחיר מעל הממוצע הנע 200/.test(txt), `${name}: rules: FinViz = price > $10 + below SMA50, no SMA200 condition`);
-  ok(/PASS/.test(txt) && /\$50M/.test(txt) && /R:R ≥ 2/.test(txt) && /WAIT/.test(txt) && /פטיש הפוך/.test(txt) && /לא מתאימה לשיטה/.test(txt) && /גודל פוזיציה/.test(txt), `${name}: rules: PASS / WAIT / unfit / sizing sections`);
+  ok(/PASS/.test(txt) && /\$50M/.test(txt) && /R:R ≥ 2/.test(txt) && /מידע בלבד/.test(txt) && /פטיש הפוך/.test(txt) && /לא מתאימה לשיטה/.test(txt) && /גודל פוזיציה/.test(txt), `${name}: rules: PASS / info warnings / unfit / sizing sections`);
   ok(await page.locator('.rsec').count() >= 9 && await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: ${await page.locator('.rsec').count()} sections, no horizontal overflow`);
   await page.screenshot({ path: `${OUT}/rules_${name}.png`, fullPage: true });
   await page.screenshot({ path: `${OUT}/rules_top_${name}.png` });

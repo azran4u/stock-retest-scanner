@@ -25,7 +25,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   // zone / Long section removed: compact read-only lines, no inputs; status line with R:R + sizing kept
   ok(await page.locator('#panel input[data-f]').count() === 0 && await page.locator('.card.dline').count() >= 1, `${name}: no zone / Long level inputs; ${await page.locator('.card.dline').count()} compact drawing lines`);
   const sl = (await page.locator('#statusLine').textContent()).replace(/\s+/g, ' ').trim();
-  ok(/PASS|WAIT|FAIL/.test(sl) && /R:R/.test(sl), `${name}: status line kept: "${sl}"`);
+  ok(/PASS|FAIL/.test(sl) && /R:R/.test(sl), `${name}: status line kept: "${sl}"`);
   ok(await page.locator('.card.dline .act[data-act="delete"]').count() >= 1, `${name}: delete still reachable (🗑 on the line)`);
   await page.screenshot({ path: `${OUT}/70_stock_page_${name}.png` }); console.log('     shot', `${OUT}/70_stock_page_${name}.png`);
   await page.locator('#panel').evaluate((p) => p.scrollIntoView()); await page.evaluate(() => { const p = document.querySelector('#panel'); p.scrollTop = 0; });

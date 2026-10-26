@@ -65,6 +65,9 @@ def test_rules_json_from_code(tmp_path):
     assert [f["code"] for f in s["filters"]] == ["sh_price_o10", "ta_sma50_pb"]
     assert s["filters"][0]["he"] == "מחיר מעל $10"
     j = rules.build_rules()
-    assert j["core"] == list(rf.CORE_FILTERS) and j["wait"] == list(rf.WAIT_FILTERS)
+    assert j["core"] == list(rf.CORE_FILTERS) and j["info"] == list(rf.WARN_FILTERS) and "wait" not in j
     assert j["t"]["rr_min"] == rf.CONFIG["rr_min"] and j["t"]["dollar_vol_min"] == rf.CONFIG["dollar_vol_min"]
     assert "ta_sma200_pa" not in [f["code"] for f in j["screener"]["filters"]], "SMA200 dropped 2026-10-26"
+    assert j["sizing"] == {"account_usd": 5000, "risk_pct": 1.1, "max_risk_usd": 55.0}, "max risk $55 / trade (2026-10-26)"
+    b = j["bot"]
+    assert b["rule_version"] == "v5-2026-10-26" and b["zone_scoring"] == "v5" and "structure_exclude_weeks" not in b

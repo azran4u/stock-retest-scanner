@@ -4,7 +4,7 @@
  * Only for rows with a TradingView drawing (tv_found = yes, tv_entry / tv_sl / tv_tp). */
 (function () {
   const KEY = "srs_sizing_v1";
-  const DEFAULTS = { account: 5000, riskPct: 1, posPct: 15 };
+  const DEFAULTS = { account: 5000, riskPct: 1.1, posPct: 15 };  // max risk $55 per trade (Eyal 2026-10-26; was 1% = $50)
   const FIELDS = [
     { k: "account", label: "Account $", step: "100", min: "0" },
     { k: "riskPct", label: "Max risk %", step: "0.1", min: "0" },
@@ -17,10 +17,11 @@
       const s = JSON.parse(localStorage.getItem(KEY) || "{}");
       const out = { ...DEFAULTS };
       for (const f of FIELDS) { const n = num(s[f.k]); if (n !== null && n >= 0) out[f.k] = n; }
+      if (num(s.riskPct) === 1 && out.account === 5000 && !s.r55) out.riskPct = DEFAULTS.riskPct; // the old saved default 1% -> 1.1% ($55)
       return out;
     } catch (_) { return { ...DEFAULTS }; }
   }
-  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (_) {} }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify({ ...s, r55: 1 })); } catch (_) {} }
 
   /** {shares, cost, risk, profit, cap} or null when the row has no TV drawing. */
   function compute(row, s) {

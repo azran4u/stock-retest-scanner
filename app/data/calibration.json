@@ -1,0 +1,1802 @@
+[
+ {
+  "ticker": "BNY",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 3.99,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 25.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.952,
+    "r2_156": 0.983,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "עלייה רציפה מ-2023, שיאים ושפלים עולים, מעל EMA30 כל הזמן",
+  "sector": "Financial",
+  "industry": "Banks - Diversified"
+ },
+ {
+  "ticker": "IBKR",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.54,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 24.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.866,
+    "r2_156": 0.949,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיאים ושפלים עולים ברורים, תיקון 2025 עשה שפל גבוה יותר",
+  "sector": "Financial",
+  "industry": "Capital Markets"
+ },
+ {
+  "ticker": "C",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.73,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 17.1,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.896,
+    "r2_156": 0.948,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "מדרגות עולות מ-2023, כל תיקון נעצר מעל השפל הקודם",
+  "sector": "Financial",
+  "industry": "Banks - Diversified"
+ },
+ {
+  "ticker": "MS",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 3.43,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 18.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.84,
+    "r2_156": 0.945,
+    "min": 0.05
+   },
+   "weekly_bars": 261,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "מגמה עולה ארוכה, שיא חדש ב-2026 ותיקון נוכחי",
+  "sector": "Financial",
+  "industry": "Capital Markets"
+ },
+ {
+  "ticker": "CFG",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.19,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 14.9,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.81,
+    "r2_156": 0.916,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיאים ושפלים עולים מ-2023, תיקון נוכחי מעל השפל האחרון",
+  "sector": "Financial",
+  "industry": "Banks - Regional"
+ },
+ {
+  "ticker": "DAL",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 3.69,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 22.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.521,
+    "r2_156": 0.755,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.98,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "זיגזג עולה עם תיקונים עמוקים, כל שפל גבוה מהקודם",
+  "sector": "Industrials",
+  "industry": "Airlines"
+ },
+ {
+  "ticker": "TSM",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.79,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 27.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.901,
+    "r2_156": 0.941,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "מגמה עולה חזקה ועקבית, EMA30 עולה כל הזמן",
+  "sector": "Technology",
+  "industry": "Semiconductors"
+ },
+ {
+  "ticker": "VOD",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.4,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 14.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.941,
+    "r2_156": 0.884,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "פריצה מבסיס 2024 ומאז שיאים ושפלים עולים",
+  "sector": "Communication Services",
+  "industry": "Telecom Services"
+ },
+ {
+  "ticker": "VTR",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.99,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 10.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.89,
+    "r2_156": 0.931,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.98,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "עלייה מתמדת מ-2023, תיקונים קטנים",
+  "sector": "Real Estate",
+  "industry": "REIT - Healthcare Facilities"
+ },
+ {
+  "ticker": "AHR",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.76,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 10.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.904,
+    "r2_156": 0.914,
+    "min": 0.05
+   },
+   "weekly_bars": 142,
+   "sma30_rising_frac_52w": 0.9,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "קו כמעט ישר למעלה מ-2024",
+  "sector": "Real Estate",
+  "industry": "REIT - Healthcare Facilities"
+ },
+ {
+  "ticker": "WAB",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.89,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.9,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.79,
+    "r2_156": 0.906,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיאים ושפלים עולים, EMA30 עולה ברציפות",
+  "sector": "Industrials",
+  "industry": "Railroads"
+ },
+ {
+  "ticker": "CSCO",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 5.91,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 38.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.875,
+    "r2_156": 0.896,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "יצאה מדשדוש 2024 ומאז מגמה עולה עם שיאים חדשים",
+  "sector": "Technology",
+  "industry": "Communication Equipment"
+ },
+ {
+  "ticker": "AIT",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 4.11,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 19.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.655,
+    "r2_156": 0.882,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.96,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "עלייה מ-2023 עם תיקונים מסודרים מעל השפל הקודם",
+  "sector": "Industrials",
+  "industry": "Industrial Distribution"
+ },
+ {
+  "ticker": "NVDA",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.01,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.1,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.754,
+    "r2_156": 0.821,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.92,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "מגמה עולה רב-שנתית, תיקונים נקנים",
+  "sector": "Technology",
+  "industry": "Semiconductors"
+ },
+ {
+  "ticker": "ROST",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.17,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 17.5,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.816,
+    "r2_156": 0.707,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "מ-2025 שיאים ושפלים עולים, מעל EMA30",
+  "sector": "Consumer Cyclical",
+  "industry": "Apparel Retail"
+ },
+ {
+  "ticker": "PTGX",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 4.28,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 46.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.942,
+    "r2_156": 0.948,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "עלייה עקבית מ-2023, R² גבוה מאוד",
+  "sector": "Healthcare",
+  "industry": "Biotechnology"
+ },
+ {
+  "ticker": "WTS",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.6,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 18.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.92,
+    "r2_156": 0.863,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "בסיס 2024 ואז מגמה עולה ברורה",
+  "sector": "Industrials",
+  "industry": "Specialty Industrial Machinery"
+ },
+ {
+  "ticker": "AME",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.62,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 11.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.776,
+    "r2_156": 0.791,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיאים ושפלים עולים, EMA30 עולה",
+  "sector": "Industrials",
+  "industry": "Specialty Industrial Machinery"
+ },
+ {
+  "ticker": "ONB",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.38,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 11.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.564,
+    "r2_156": 0.85,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.94,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "עלייה ארוכה, תיקון 2025 עשה שפל גבוה יותר",
+  "sector": "Financial",
+  "industry": "Banks - Regional"
+ },
+ {
+  "ticker": "JNJ",
+  "group": "clear_up",
+  "bot_view": "מגמה ראשית עולה ברורה",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.22,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.0,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.933,
+    "r2_156": 0.807,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "דשדוש עד 2025, מאז מגמה עולה ברורה",
+  "sector": "Healthcare",
+  "industry": "Drug Manufacturers - General"
+ },
+ {
+  "ticker": "DXCM",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -6.38,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.014,
+    "r2_156": 0.426,
+    "min": 0.05
+   },
+   "weekly_bars": 264,
+   "sma30_rising_frac_52w": 0.44,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "קריסה ב-2024 ומאז דשדוש מתחת לשיא",
+  "sector": "Healthcare",
+  "industry": "Medical Devices"
+ },
+ {
+  "ticker": "HIMS",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -7.77,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -1.1,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.077,
+    "r2_156": 0.386,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.29,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "שיא ב-2025 ומאז ירידה, שפלים נמוכים",
+  "sector": "Healthcare",
+  "industry": "Drug Manufacturers - Specialty & Generic"
+ },
+ {
+  "ticker": "ABT",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -3.41,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -8.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.366,
+    "r2_156": 0.001,
+    "min": 0.05
+   },
+   "weekly_bars": 262,
+   "sma30_rising_frac_52w": 0.15,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "ירידה חדה ב-2026 מתחת לשפלים הקודמים",
+  "sector": "Healthcare",
+  "industry": "Medical Devices"
+ },
+ {
+  "ticker": "APPF",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.14,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -0.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.313,
+    "r2_156": 0.087,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.4,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "שיא 2025 ואז ירידה עמוקה, EMA30 יורד",
+  "sector": "Technology",
+  "industry": "Software - Application"
+ },
+ {
+  "ticker": "BEKE",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.7,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 1.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.297,
+    "r2_156": 0.158,
+    "min": 0.05
+   },
+   "weekly_bars": 261,
+   "sma30_rising_frac_52w": 0.27,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "דשדוש רחב בלי כיוון",
+  "sector": "Real Estate",
+  "industry": "Real Estate Services"
+ },
+ {
+  "ticker": "CZR",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -43.92,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 14.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.107,
+    "r2_156": 0.583,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.63,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "ירידה רב-שנתית, שיאים ושפלים יורדים",
+  "sector": "Consumer Cyclical",
+  "industry": "Resorts & Casinos"
+ },
+ {
+  "ticker": "DUOL",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -22.55,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -14.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.692,
+    "r2_156": 0.159,
+    "min": 0.05
+   },
+   "weekly_bars": 265,
+   "sma30_rising_frac_52w": 0.17,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "שיא 2025 ואז קריסה",
+  "sector": "Technology",
+  "industry": "Software - Application"
+ },
+ {
+  "ticker": "FRPT",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -13.15,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -6.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.528,
+    "r2_156": 0.419,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.46,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "ירידה מ-2025, שיאים יורדים",
+  "sector": "Consumer Defensive",
+  "industry": "Packaged Foods"
+ },
+ {
+  "ticker": "GPN",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.32,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 9.0,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.352,
+    "r2_156": 0.662,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.4,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "ירידה רב-שנתית, קפיצה קטנה עכשיו",
+  "sector": "Technology",
+  "industry": "Software - Infrastructure"
+ },
+ {
+  "ticker": "JHX",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -5.4,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 17.1,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.169,
+    "r2_156": 0.522,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.5,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיאים ושפלים יורדים מ-2024",
+  "sector": "Basic Materials",
+  "industry": "Building Materials"
+ },
+ {
+  "ticker": "KMX",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -5.58,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 18.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.42,
+    "r2_156": 0.49,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.42,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "ירידה גדולה 2025, התאוששות חלקית",
+  "sector": "Consumer Cyclical",
+  "industry": "Auto & Truck Dealerships"
+ },
+ {
+  "ticker": "PCVX",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.13,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 9.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.017,
+    "r2_156": 0.136,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.92,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "קריסה ב-2024, רחוק מהשיא",
+  "sector": "Healthcare",
+  "industry": "Biotechnology"
+ },
+ {
+  "ticker": "SMCI",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -8.16,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 8.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.022,
+    "r2_156": 0.21,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.35,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "קריסה אחרי 2024 ודשדוש נמוך",
+  "sector": "Technology",
+  "industry": "Computer Hardware"
+ },
+ {
+  "ticker": "CNR",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.09,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -0.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": false,
+    "r2_104": 0.001,
+    "r2_156": 0.046,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.73,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "דשדוש רחב אחרי קריסה ב-2025",
+  "sector": "Energy",
+  "industry": "Thermal Coal"
+ },
+ {
+  "ticker": "PGY",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -8.07,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 3.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.107,
+    "r2_156": 0.149,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.42,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "קפיצה וקריסה, אין מבנה עולה",
+  "sector": "Technology",
+  "industry": "Software - Infrastructure"
+ },
+ {
+  "ticker": "SLG",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.37,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 14.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.351,
+    "r2_156": 0.005,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.42,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "שיא 2024 ואז שיאים יורדים",
+  "sector": "Real Estate",
+  "industry": "REIT - Office"
+ },
+ {
+  "ticker": "VOR",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -13.2,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 13.0,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.0,
+    "r2_156": 0.171,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.56,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "קריסות חוזרות, אין מגמה",
+  "sector": "Healthcare",
+  "industry": "Biotechnology"
+ },
+ {
+  "ticker": "ZLAB",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -5.59,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 3.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.374,
+    "r2_156": 0.0,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.31,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיא 2025 ואז ירידה, שפל נמוך",
+  "sector": "Healthcare",
+  "industry": "Biotechnology"
+ },
+ {
+  "ticker": "GRND",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -4.17,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 9.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.249,
+    "r2_156": 0.266,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.38,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "שיא 2025 ואז שפל נמוך יותר",
+  "sector": "Technology",
+  "industry": "Software - Application"
+ },
+ {
+  "ticker": "LNTH",
+  "group": "clear_not",
+  "bot_view": "לא במגמה ראשית עולה",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -6.52,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 33.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.015,
+    "r2_156": 0.05,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.69,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "נפילה ב-2025, התאוששות עדיין מתחת לשיא",
+  "sector": "Healthcare",
+  "industry": "Drug Manufacturers - Specialty & Generic"
+ },
+ {
+  "ticker": "MDB",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 0.47,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.343,
+    "r2_156": 0.0,
+    "min": 0.05
+   },
+   "weekly_bars": 265,
+   "sma30_rising_frac_52w": 0.62,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "הכלל עובר, אבל זה טווח רחב 2024–2026 בלי שפלים עולים",
+  "sector": "Technology",
+  "industry": "Software - Infrastructure"
+ },
+ {
+  "ticker": "QCOM",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.39,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 19.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.166,
+    "r2_156": 0.096,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.65,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; טווח 120–250 שחוזר לראשו",
+  "sector": "Technology",
+  "industry": "Semiconductors"
+ },
+ {
+  "ticker": "BIO",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 0.33,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 16.8,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.07,
+    "r2_156": 0.001,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.67,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "הכלל עובר; דשדוש רב-שנתי שחזר לראש הטווח",
+  "sector": "Healthcare",
+  "industry": "Medical Devices"
+ },
+ {
+  "ticker": "TGT",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.83,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 30.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.192,
+    "r2_156": 0.026,
+    "min": 0.05
+   },
+   "weekly_bars": 264,
+   "sma30_rising_frac_52w": 0.9,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; ירידה 2024–2025 ואז התאוששות V לשיא",
+  "sector": "Consumer Defensive",
+  "industry": "Discount Stores"
+ },
+ {
+  "ticker": "MRVL",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 4.8,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 119.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.477,
+    "r2_156": 0.547,
+    "min": 0.05
+   },
+   "weekly_bars": 262,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; בסיס ארוך ואז זינוק — מגמה חדשה או ספייק?",
+  "sector": "Technology",
+  "industry": "Semiconductors"
+ },
+ {
+  "ticker": "IRDM",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 5.02,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 70.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.24,
+    "r2_156": 0.036,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.67,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; ירידה עד 2026 ואז זינוק",
+  "sector": "Communication Services",
+  "industry": "Telecom Services"
+ },
+ {
+  "ticker": "TWST",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 5.63,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 160.1,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.423,
+    "r2_156": 0.334,
+    "min": 0.05
+   },
+   "weekly_bars": 262,
+   "sma30_rising_frac_52w": 0.88,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; בסיס ואז זינוק פרבולי",
+  "sector": "Healthcare",
+  "industry": "Biotechnology"
+ },
+ {
+  "ticker": "PRU",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.25,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 13.2,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.063,
+    "r2_156": 0.174,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.83,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "הכלל עובר; טווח רחב עם שפלים לא עולים",
+  "sector": "Financial",
+  "industry": "Insurance - Life"
+ },
+ {
+  "ticker": "TROW",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.37,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 11.6,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.083,
+    "r2_156": 0.058,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.77,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר; טווח 75–120, שפל 2025 נמוך",
+  "sector": "Financial",
+  "industry": "Asset Management"
+ },
+ {
+  "ticker": "ABNB",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 2.15,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 20.8,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.262,
+    "r2_156": 0.005,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.75,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "הכלל עובר; טווח 110–190 רב-שנתי",
+  "sector": "Consumer Cyclical",
+  "industry": "Travel Services"
+ },
+ {
+  "ticker": "BHP",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 3.01,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 25.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.849,
+    "r2_156": 0.452,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": true
+  },
+  "reason_he": "ברשימת Roi; טווח 2024–2025 ואז פריצה",
+  "sector": "Basic Materials",
+  "industry": "Other Industrial Metals & Mining"
+ },
+ {
+  "ticker": "KN",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 3.13,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 38.8,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.801,
+    "r2_156": 0.734,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 1.0,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "ברשימת Roi; בסיס ואז עלייה חזקה מ-2025",
+  "sector": "Technology",
+  "industry": "Electronic Components"
+ },
+ {
+  "ticker": "MTG",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.52,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 5.9,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.592,
+    "r2_156": 0.813,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.63,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל (EMA 5.9%); עלייה איטית ויציבה",
+  "sector": "Financial",
+  "industry": "Insurance - Specialty"
+ },
+ {
+  "ticker": "NMIH",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 1.5,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 6.4,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.309,
+    "r2_156": 0.579,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.73,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל; עלייה 2024 ואז טווח 35–47",
+  "sector": "Financial",
+  "industry": "Insurance - Specialty"
+ },
+ {
+  "ticker": "DORM",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -1.16,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": 4.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.023,
+    "r2_156": 0.496,
+    "min": 0.05
+   },
+   "weekly_bars": 265,
+   "sma30_rising_frac_52w": 0.54,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל; עלייה עד 2025 ואז תיקון ארוך",
+  "sector": "Consumer Cyclical",
+  "industry": "Auto Parts"
+ },
+ {
+  "ticker": "HOOD",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -1.96,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 10.7,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.473,
+    "r2_156": 0.836,
+    "min": 0.05
+   },
+   "weekly_bars": 263,
+   "sma30_rising_frac_52w": 0.48,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל (רחוק מהשיא); מגמה חזקה עם תיקון עמוק",
+  "sector": "Financial",
+  "industry": "Capital Markets"
+ },
+ {
+  "ticker": "META",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": -0.22,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -0.8,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.003,
+    "r2_156": 0.525,
+    "min": 0.05
+   },
+   "weekly_bars": 261,
+   "sma30_rising_frac_52w": 0.33,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל (EMA שטוח); דשדוש קרוב לשיא אחרי מגמה",
+  "sector": "Communication Services",
+  "industry": "Internet Content & Information"
+ },
+ {
+  "ticker": "IDCC",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -1.54,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": false,
+    "slope_pct_26w": -4.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.618,
+    "r2_156": 0.878,
+    "min": 0.05
+   },
+   "weekly_bars": 264,
+   "sma30_rising_frac_52w": 0.6,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל; עלייה חזקה עד 2025 ואז דשדוש",
+  "sector": "Technology",
+  "industry": "Software - Application"
+ },
+ {
+  "ticker": "CHE",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": false,
+   "near_high": {
+    "pass": false,
+    "new_high_atr": -2.33,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 14.3,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.236,
+    "r2_156": 0.493,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.42,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל נכשל; ירידה 2025 ועכשיו התאוששות — הציור שלך",
+  "sector": "Healthcare",
+  "industry": "Medical Care Facilities"
+ },
+ {
+  "ticker": "GEN",
+  "group": "unsure",
+  "bot_view": "לא בטוח",
+  "rule_result": {
+   "f_technical": true,
+   "near_high": {
+    "pass": true,
+    "new_high_atr": 0.07,
+    "min": -1.0
+   },
+   "ema30_rising": {
+    "pass": true,
+    "slope_pct_26w": 9.9,
+    "min": 8.0
+   },
+   "not_flat": {
+    "pass": true,
+    "r2_104": 0.13,
+    "r2_156": 0.119,
+    "min": 0.05
+   },
+   "weekly_bars": 266,
+   "sma30_rising_frac_52w": 0.35,
+   "zigzag_hh_hl": false
+  },
+  "reason_he": "הכלל עובר בקושי; טווח עם שפל 2026 נמוך",
+  "sector": "Technology",
+  "industry": "Software - Infrastructure"
+ }
+]

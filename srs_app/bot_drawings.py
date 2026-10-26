@@ -12,11 +12,12 @@ srs_app/v3d/ so production and the golden test never depend on the box; params f
 Long Position is time-anchored: t_start = the week right after the last candle, t_end = +20 weekly bars.
 Each row carries meta = {rule_version, why{...}} so feedback can be analyzed later.
 
-Candidates: f_dollar_vol AND f_history AND f_no_earnings_14d AND f_technical, no live user/tv drawing, no active
-'not interesting' mark, not one of his lines-only charts (tv_source user-lines), no 'structure' feedback in the last 8 weeks, and no live bot drawing (unless it is broken:
+Candidates (Eyal 2026-10-26: EVERY eligible stock, no 'needs drawing' list): f_dollar_vol AND f_history AND
+f_no_earnings_14d AND f_technical, no live user/tv drawing, no active 'not interesting' mark, not one of his
+lines-only charts (tv_source user-lines), and no live bot drawing (unless it is broken:
 any price since it was drawn below its SL, latest close >= TP, or close > zone top + 3 ATR -> obsolete + redraw).
-A zone more than FAR_CAP_ATR (3) weekly ATRs below the close is never drawn (it would be 'far' on arrival). A bot drawing rejected via feedback under the current
-RULE_VERSION is not redrawn until the rule version changes.
+A zone more than FAR_CAP_ATR (3) weekly ATRs below the close is never drawn (it would be 'far' on arrival). A ticker whose
+bot drawing he rejected is redrawn under the current rules, unless the result equals the rejected levels.
 
     # 1) read state through the Supabase connector (execute_sql), save the JSON outputs:
     python -m srs_app.bot_drawings --print-read-sql
@@ -33,11 +34,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-RULE_VERSION = "v4-2026-10-24"  # 2026-10-24: FROM_ABOVE - a level the price came back to from below is skipped (USB); v4: touch-count zone scoring with recency (his principle) on top of v3e; v3e: reclaimed levels count again + pullback from the latest swing high (QCOM) + last higher low with clarity 2 (TWST) + reclaimed level not above price; c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
+RULE_VERSION = "v5-2026-10-26"  # 2026-10-26: v5 zone = candidate level placed to touch the most weekly closes + wick tips (Eyal); 2026-10-24: FROM_ABOVE - a level the price came back to from below is skipped (USB); v4: touch-count zone scoring with recency (his principle) on top of v3e; v3e: reclaimed levels count again + pullback from the latest swing high (QCOM) + last higher low with clarity 2 (TWST) + reclaimed level not above price; c: one-day spike wicks ignored when picking the level (HWC); b: b: FAR_CAP_ATR (no zone > 3 ATR below the close) + retire target-hit / far
 LEARN_DIR = Path(os.environ.get("SRS_DRAWING_LEARN", str(Path(__file__).resolve().parent / "v3d")))  # vendored v3d rule code
 REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
 LONG_W_BARS = 20
-STRUCTURE_EXCLUDE_WEEKS = 8
 # A zone more than this many weekly ATRs below the latest close is not drawn: the obsolete check (report_filters
 # stale_far_atr = 3) would flag it 'far' on arrival, and none of his 37 zone drawings was more than 1.8 ATR below
 # price when drawn (drawing-learn/features.csv close_vs_zt_atr max 1.77). BMO / RY 2026-10-23: 3.25 / 3.63 ATR.
@@ -70,7 +70,24 @@ LAST_HL_MIN_CLARITY = 2
 #   - PROX_W x (ATR from the close down to the zone top) - RECENCY_W x (age of the underlying pivot in years);
 # ties -> daily touches -> newer pivot -> clarity. Weights from a sweep (lookback 52/104/156, PROX 1.5/3, RECENCY 1/3/6):
 # the only set that keeps TWST / QCOM / HWC on his current zones with the best soft match on his old drawings.
-ZONE_SCORING = "touches"   # "touches" | "v3d"
+ZONE_SCORING = "v5"   # "v5" | "touches" (v4) | "v3d"
+# v5 (Eyal 2026-10-26): the zone is either (a) a broken RESISTANCE the price is now retesting from above, or (b) a
+# return to a previous SUPPORT (the v3d/v4 candidate levels: kind 'retest' / 'support'), PLACED so that it touches as
+# many points as possible: weekly closes and wick extremes (highs / lows; one-day spike wicks already cleaned) of the
+# last TOUCH_LOOKBACK_W weeks that lie inside the band +- TOUCH_TOL_ATR x ATR. Each candidate band keeps its width and
+# slides by up to V5_SHIFT_ATR x ATR (V5_STEP_ATR steps) to the position with the most points (a shift must win
+# >= V5_MIN_GAIN points over the pivot band); a shift may not break the level (no weekly low under its new SL since the
+# pivot), lift it above the price, or make it 'from below' / far.
+# Pick = most points - V5_PROX_W x ATR from the close down to the zone top - V5_RECENCY_W x pivot age in years; then
+# the v4 tie-breakers. Weights from a sweep against his 126 own zones (python -m srs_app.zone_eval, 2026-10-26): his
+# zones sit close to the price, so a level 1 ATR nearer must beat ~80 points; larger shifts (0.25 / 0.5 ATR) or a
+# points-first pick (PROX 1-3) matched his drawings far less (9-27 of 126 vs 48).
+V5_SHIFT_ATR = 0.15
+V5_STEP_ATR = 0.05
+V5_PROX_W = 80.0
+V5_RECENCY_W = 24.0
+V5_MIN_GAIN = 8         # a shifted band must win at least this many points over the pivot band
+V5_SELECT = "points"   # sweep knob: "points" (most points) | "touches" (v4 touch runs) for choosing between levels
 TOUCH_TOL_ATR = 0.25
 TOUCH_LOOKBACK_W = 52
 TOUCH_MIN_CLARITY = 2      # sanity: a swing pivot with >= 2 weekly bars on each side
@@ -91,7 +108,7 @@ SQL_READ = {
                 "order by ticker, kind;",
     "labels": "select distinct on (ticker, label) ticker, label, value, asof, until from public.labels "
               "where label = 'not_interesting' order by ticker, label, asof desc, created_at desc;",
-    "feedback": "select ticker, category, created_at, rule_version from public.drawing_feedback order by created_at;",
+    "feedback": "select ticker, category, note, created_at, rule_version from public.drawing_feedback order by created_at;",
 }
 
 _R: Dict[str, Any] = {}
@@ -168,9 +185,9 @@ def valid_levels(t: str, rd: str, reclaim: bool = RECLAIM, last_hl: Optional[boo
     R = _rules()
     V1, V3, V3D, P = R["V1"], R["V3"], R["V3D"], R["P"]
     last_hl = LAST_HL if last_hl is None else last_hl
-    s_min = TOUCH_MIN_CLARITY if ZONE_SCORING == "touches" else P["s_min"]
+    s_min = TOUCH_MIN_CLARITY if ZONE_SCORING in ("touches", "v5") else P["s_min"]
     Pz = dict(P, s_min=s_min)
-    if ZONE_SCORING == "touches":
+    if ZONE_SCORING in ("touches", "v5"):
         last_hl = False  # covered: clarity 2 levels are candidates anyway
     C = V1.ctx(t, rd)
     A = C["atr"]
@@ -246,6 +263,44 @@ def touches(lo: Any, hi: Any, cl: Any, zb: float, zt: float, tol: float) -> tupl
         return 0, -1
     starts = m & ~np.r_[False, m[:-1]]
     return int(starts.sum()), int(np.where(m)[0][-1])
+
+
+def points_in(lo: Any, hi: Any, cl: Any, zb: float, zt: float, tol: float) -> int:
+    """v5: number of points (weekly closes, highs and lows, each counted on its own) inside [zb - tol, zt + tol]."""
+    import numpy as np
+    a, b = zb - tol, zt + tol
+    return int(sum(int(((np.asarray(x) >= a) & (np.asarray(x) <= b)).sum()) for x in (cl, lo, hi)))
+
+
+def place_v5(z: Dict[str, Any], C: Dict[str, Any], w_, last: float, A: float, t: str, rd: str,
+             V3D: Any, P: Dict[str, Any], tol: float) -> Optional[Dict[str, Any]]:
+    """Slide the candidate band (same width) to the position with the most points; returns the placed level (new
+    zb / zt / sl / points / shift_atr) or None when no position keeps the level valid."""
+    import numpy as np
+    zb0, zt0 = float(z["zb"]), float(z["zt"])
+    lo_w, hi_w, cl_w = w_["Low"].values, w_["High"].values, w_["Close"].values
+    # the level's own (wick-capped) lows since the pivot / the reclaim, as valid_levels checks them
+    lr = list(z["lows_rel"])
+    k0 = int(z["reclaim_i"]) - (C["n"] - len(lr)) if z.get("reclaimed") else 0
+    lows_since = np.asarray([zb0 + x * A for x in lr[max(0, k0):]], dtype=float)
+    wc = [float(x) for x in C["c"][-FROM_ABOVE_LOOKBACK_W:]]
+    best = None
+    k = int(round(V5_SHIFT_ATR / V5_STEP_ATR))
+    for j in sorted(range(-k, k + 1), key=abs):  # smallest shift first: ties keep the pivot band
+        s = j * V5_STEP_ATR * A
+        zb, zt = zb0 + s, zt0 + s
+        if zb > last or (last - zt) / A > FAR_CAP_ATR:
+            continue
+        if FROM_ABOVE and _approach(wc, zb, zt, FROM_ABOVE_TOL_ATR * A) == "below":
+            continue
+        e = zt - _rules()["V3"].ENTRY_BELOW_TOP * A
+        sl, src = V3D.sl_d(t, rd, zb, zt, e, *V3D.slp(P))
+        if len(lows_since) and float(np.min(lows_since)) < sl:
+            continue
+        n = points_in(lo_w, hi_w, cl_w, zb, zt, tol)
+        if best is None or n > best["points"] + (V5_MIN_GAIN if best.get("shift_atr") == 0 else 0):
+            best = dict(z, zb=zb, zt=zt, sl=sl, sl_src=src, points=n, shift_atr=round(j * V5_STEP_ATR, 2))
+    return best
 
 
 def _approach(closes: List[float], zb: float, zt: float, tol: float = 0.0) -> str:
@@ -388,8 +443,24 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
         z["weeks_since_touch"] = (nw - 1 - lw) if lw >= 0 else nw
         z["pivot_age_w"] = int(C["n"] - 1 - z["i"])
         z["dist_atr"] = round(max(0.0, (last - z["zt"]) / A), 2)
+    if ZONE_SCORING == "v5":
+        placed = [p for p in (place_v5(z, C, w_, last, A, t, rd, V3D, P, tol) for z in zones) if p is not None]
+        if not placed:
+            return dict(out, has_level=False, reason="no valid level after placing the candidates (v5)")
+        for z in placed:
+            z["touches_w"], lw = touches(w_["Low"].values, w_["High"].values, w_["Close"].values, z["zb"], z["zt"], tol)
+            z["touches_d"], _ = touches(d_["Low"].values, d_["High"].values, d_["Close"].values, z["zb"], z["zt"], tol)
+            z["weeks_since_touch"] = (nw - 1 - lw) if lw >= 0 else nw
+            z["dist_atr"] = round(max(0.0, (last - z["zt"]) / A), 2)
+        zones = placed
     _DEBUG["zones"] = zones
-    if ZONE_SCORING == "touches":
+    if ZONE_SCORING == "v5":
+        def vscore(z):
+            base = z["points"] if V5_SELECT == "points" else z["touches_w"]
+            return (base - V5_PROX_W * max(0.0, (last - z["zt"]) / A) - V5_RECENCY_W * z["pivot_age_w"] / 52.0,
+                    -max(0.0, (last - z["zt"]) / A), -z["pivot_age_w"], z["touches_d"], z["strength"])
+        ch = max(zones, key=vscore)
+    elif ZONE_SCORING == "touches":
         def tscore(z):
             return (z["touches_w"] - PROX_W * max(0.0, (last - z["zt"]) / A) - RECENCY_W * z["pivot_age_w"] / 52.0,
                     z["touches_d"], -z["pivot_age_w"], z["strength"])
@@ -410,7 +481,8 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
     last_week = _monday(datetime.strptime(rd, "%Y-%m-%d").date())
     t_start = last_week + timedelta(days=7)
     why = {
-        "rule": "v4", "branch": ch["kind"], "pivot_date": piv, "breakout_date": bo or None,
+        "rule": "v5" if ZONE_SCORING == "v5" else "v4", "branch": ch["kind"],
+        "points": int(ch["points"]) if "points" in ch else None, "shift_atr": ch.get("shift_atr"), "pivot_date": piv, "breakout_date": bo or None,
         "clarity": int(ch["strength"]), "wick_confirmations": int(ch.get("conf", 0)),
         "sl_src": ch["sl_src"], "sl_wick_low": round(sl, 2) if ch["sl_src"] == "wick_low" else None,
         "atr": round(A, 4), "atr_w": round(Aw, 4), "risk_atr_w": round((en - sl) / Aw, 2),
@@ -419,7 +491,7 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
         "zone_scoring": ZONE_SCORING, "touches_w": int(ch["touches_w"]), "touches_d": int(ch["touches_d"]),
         "weeks_since_touch": int(ch["weeks_since_touch"]), "touch_tol_atr": TOUCH_TOL_ATR,
         "pivot_age_w": int(ch["pivot_age_w"]), "touch_lookback_w": TOUCH_LOOKBACK_W,
-        "alt_levels": [{"zb": round(float(z["zb"]), 2), "zt": round(float(z["zt"]), 2), "touches_w": int(z["touches_w"]),
+        "alt_levels": [{"zb": round(float(z["zb"]), 2), "zt": round(float(z["zt"]), 2), "points": z.get("points"), "touches_w": int(z["touches_w"]),
                         "touches_d": int(z["touches_d"]), "pivot_age_w": int(z["pivot_age_w"])} for z in sorted(zones, key=lambda z: -z["touches_w"])[:4]],
         "reclaim_date": str(w.index[ch["reclaim_i"]].date()) if ch.get("reclaimed") else None,
         "n_valid_levels": len(zones), "price_below_zone": bool(last < zb), "dist_price_to_zone_top_atr": round((last - zt) / A, 2),
@@ -522,6 +594,11 @@ def bot_obsolete(ticker: str, bots: List[Dict[str, Any]], today: str, low_fn=low
     return out
 
 
+# Eyal 2026-10-26: no 'needs drawing' list and no 'structure' feedback any more - the bot draws EVERY eligible stock
+# itself (his edit wins). The only exclusion is the 'לא מתאימה לשיטה' (unfit / not_interesting) mark for its period;
+# old feedback and rejected bot drawings no longer block (redrawn under the current rules).
+
+
 def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any]], labels: Iterable[Dict[str, Any]],
          feedback: Iterable[Dict[str, Any]], today: Optional[str] = None, low_fn=low_since,
          price_fn=close_atr) -> Dict[str, Any]:
@@ -530,9 +607,7 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
     still a candidate (live bot rows of tickers outside the candidate list are only retired)."""
     today = today or date.today().isoformat()
     ni = ni_active(labels, today)
-    cutoff = (datetime.strptime(today, "%Y-%m-%d") - timedelta(weeks=STRUCTURE_EXCLUDE_WEEKS)).isoformat()
-    structure = {str(f["ticker"]).upper() for f in feedback
-                 if f.get("category") == "structure" and str(f.get("created_at") or "") >= cutoff}
+    del feedback  # kept in the signature: feedback no longer excludes (Eyal 2026-10-26)
     by_t: Dict[str, List[Dict[str, Any]]] = {}
     for d in drawings:
         by_t.setdefault(str(d["ticker"]).upper(), []).append(d)
@@ -550,8 +625,6 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
             continue  # his drawing (or an imported TV one) - never touched
         if t in ni:
             skip[t] = "not interesting"; continue
-        if t in structure:
-            skip[t] = f"structure feedback < {STRUCTURE_EXCLUDE_WEEKS}w"; continue
         bots = [d for d in live if d.get("source") == "bot"]
         if bots:
             seen.add(t)
@@ -563,10 +636,8 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
             else:
                 skip[t] = "live bot drawing"
             continue
-        rej = [d for d in rows if d.get("source") == "bot" and d.get("status") == "rejected"]
-        if any(_meta(d).get("rule_version") == RULE_VERSION for d in rej):
-            skip[t] = "rejected under the current rule version"; continue
-        draw.append(t)
+        draw.append(t)  # incl. tickers whose bot drawing was rejected: redrawn under the current rules
+        # (drop_same_as_rejected() skips a result identical to a drawing he rejected)
     # live bot drawings of tickers not handled above (dropped out of the screen, or next to his own drawing): retire only
     for t, rows in by_t.items():
         if t in seen:
@@ -579,6 +650,56 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
             obsolete[t] = [d["id"] for d in bots]
             why[t] = fl
     return {"draw": draw, "obsolete": obsolete, "why_obsolete": why, "skip": skip}
+
+
+def drop_same_as_rejected(results: List[Dict[str, Any]], drawings: Iterable[Dict[str, Any]], tol: float = 0.011):
+    """Results whose zone AND long equal (within tol) a bot drawing he rejected are not proposed again.
+    Returns (kept, dropped tickers)."""
+    rej: Dict[str, List[Dict[str, Any]]] = {}
+    for d in drawings:
+        if d.get("source") == "bot" and d.get("status") == "rejected":
+            rej.setdefault(str(d["ticker"]).upper(), []).append(d)
+    near = lambda a, b: a is not None and b is not None and abs(float(a) - float(b)) <= tol
+    kept, dropped = [], []
+    for r in results:
+        rs = rej.get(str(r["ticker"]).upper(), [])
+        z = any(d.get("kind") == "zone" and near(d.get("zone_top"), r.get("zone_top")) and near(d.get("zone_bottom"), r.get("zone_bottom")) for d in rs)
+        lg = any(d.get("kind") == "long" and near(d.get("entry"), r.get("entry")) and near(d.get("stop"), r.get("stop")) and near(d.get("target"), r.get("target")) for d in rs)
+        (dropped.append(r["ticker"]) if r.get("has_level") and z and lg else kept.append(r))
+    return kept, dropped
+
+
+def redraw_rule(pl: Dict[str, Any], drawings: Iterable[Dict[str, Any]], compute_fn=None, tol: float = 0.011):
+    """Rule change (v5, Eyal 2026-10-26): every ticker kept with a valid live BOT drawing is recomputed; when the
+    current rule gives different zone / long levels the live bot rows are retired (obsolete, why 'rule v5') and the new
+    drawing is inserted. Same levels, or no level under the current rule -> kept. User / TV rows are never touched
+    (plan() never keeps a ticker with one). Returns (results to insert, {ticker: kept reason})."""
+    compute_fn = compute_fn or compute
+    live: Dict[str, List[Dict[str, Any]]] = {}
+    for d in drawings:
+        if d.get("source") == "bot" and d.get("status") in ("active", "approved", "review"):
+            live.setdefault(str(d["ticker"]).upper(), []).append(d)
+    near = lambda a, b: a is not None and b is not None and abs(float(a) - float(b)) <= tol
+    out, kept = [], {}
+    for t in [t for t, why in pl["skip"].items() if why == "live bot drawing"]:
+        r = compute_fn(t)
+        if not r.get("has_level"):
+            kept[t] = "no level under " + RULE_VERSION + ": " + str(r.get("reason"))[:80]
+            continue
+        bots = live.get(t, [])
+        z = [d for d in bots if d.get("kind") == "zone"]
+        lg = [d for d in bots if d.get("kind") == "long"]
+        same = bool(z) and bool(lg) and all(near(d.get("zone_top"), r["zone_top"]) and near(d.get("zone_bottom"), r["zone_bottom"]) for d in z) \
+            and all(near(d.get("entry"), r["entry"]) and near(d.get("stop"), r["stop"]) and near(d.get("target"), r["target"]) for d in lg)
+        if same:
+            kept[t] = "same levels under " + RULE_VERSION
+            continue
+        pl["obsolete"][t] = [d["id"] for d in bots]
+        pl.setdefault("why_obsolete", {})[t] = ["rule " + RULE_VERSION]
+        pl["skip"].pop(t, None)
+        pl["draw"].append(t)
+        out.append(r)
+    return out, kept
 
 
 def emit_sql(results: List[Dict[str, Any]], obsolete: Dict[str, List[str]]) -> List[str]:
@@ -613,6 +734,8 @@ def main() -> None:
     ap.add_argument("--tickers", help="comma list: compute only these (ignores selection)")
     ap.add_argument("--emit-sql", action="store_true")
     ap.add_argument("--out", help="also write the plan + results JSON here")
+    ap.add_argument("--redraw-rule", action="store_true",
+                    help="after a RULE_VERSION change: replace live bot drawings whose levels differ under the current rule")
     a = ap.parse_args()
     if a.print_read_sql:
         for k, v in SQL_READ.items():
@@ -625,6 +748,13 @@ def main() -> None:
         rows = pd.read_csv(a.report).to_dict("records")
         pl = plan(rows, _load_rows(a.drawings_json), _load_rows(a.labels_json), _load_rows(a.feedback_json))
     res = [compute(t) for t in pl["draw"]]
+    if not a.tickers:
+        res, same = drop_same_as_rejected(res, _load_rows(a.drawings_json))
+        pl["skip"].update({t: "same levels as his rejected bot drawing" for t in same})
+        if a.redraw_rule:
+            more, kept = redraw_rule(pl, _load_rows(a.drawings_json))
+            res += more
+            pl["skip"].update(kept)
     if a.out:
         Path(a.out).write_text(json.dumps({"plan": pl, "results": res}, indent=1, default=str))
     if a.emit_sql:
