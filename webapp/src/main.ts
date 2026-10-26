@@ -7,6 +7,8 @@ import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
 import { researchHtml, type Research } from './research';
+import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, matches, type Facts, type Filters, type RevKind } from './filters';
+import { renderRulesHtml } from './rules';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 const api = makeApi();
@@ -23,7 +25,7 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', chip: 'all', sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', f: {} as Filters, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -32,6 +34,13 @@ const S = {
   quotes: new Map<string, Quote>(),
   research: new Map<string, Research>(),
 };
+// old single-select chip (before 2026-10-26) -> the equivalent independent filter
+{ const c = (S.ui as any).chip as string | undefined; delete (S.ui as any).chip; if (c && c !== 'all') applyChip(S.ui.f, c); }
+function applyChip(f: Filters, c: string) {
+  const m: Record<string, string> = { pass: 'st_pass', waiting: 'st_wait', needs_drawing: 'st_need', review: 'st_review', obsolete: 'st_obsolete', hammer: 'hammer', position: 'position', watch: 'starred', mine: 'mine', commands: 'commands' };
+  if (c === 'ni') f.unfit = { on: true, mode: 'only' }; else if (m[c]) f[m[c]] = { ...(f[m[c]] || {}), on: true };
+  if (c === 'watch') f.unfit = { on: true, mode: 'all' }; // the old ★ chip listed starred tickers even when marked unfit
+}
 const saveUi = () => localStorage.setItem(LS, JSON.stringify(S.ui));
 
 // ---------------- helpers ----------------
@@ -54,10 +63,6 @@ const BADGES: Record<string, [string, string]> = {
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
   watch: ['מעקב', 'b-watch'], ni: ['לא מתאימה לשיטה', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
-const CHIPS: [string, string][] = [
-  ['all', 'הכל'], ['pass', 'PASS'], ['waiting', 'ממתינה לסגירה'], ['needs_drawing', 'צריך שרטוט'], ['review', 'לבדיקה'], ['obsolete', 'לא עדכני'],
-  ['hammer', 'פטיש'], ['position', 'פוזיציה'], ['watch', '★ מעקב'], ['mine', 'שרטוטים'], ['commands', 'פקודות'], ['ni', 'לא מתאימות לשיטה'],
-];
 /** WAIT (Eyal 2026-10-23 / 2026-10-24): last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH) -> wait for the next weekly close */
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
@@ -289,14 +294,7 @@ function filtered(): Row[] {
   const q = S.ui.q.trim().toUpperCase();
   let rows = allRows().filter((r) => {
     if (q && !r.ticker.includes(q)) return false;
-    const c = S.ui.chip;
-    if (c === 'ni') return isNi(r.ticker);
-    if (c === 'watch') return isWatched(r.ticker);
-    if (isNi(r.ticker)) return false; // hidden unless the 'לא מעניינות' chip is on
-    if (c === 'all') return true;
-    if (c === 'mine') return userDrawings(r.ticker).length > 0;
-    if (c === 'commands') return S.commands.some((x) => x.ticker === r.ticker);
-    return badgesOf(r).includes(c);
+    return matches(factsOf(r), S.ui.f); // independent filters, logical AND (filters.ts)
   });
   const num = (x: unknown) => (x == null ? -Infinity : +x);
   const s = S.ui.sort;
@@ -320,6 +318,86 @@ function filtered(): Row[] {
   return rows;
 }
 
+// ---------------- per-row facts for the filters (export values + live app values) ----------------
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+const bool = (x: unknown) => (x === true ? true : x === false ? false : null);
+function factsOf(r: Row): Facts {
+  const bs = badgesOf(r), live = liveOf(r), td = today();
+  const ed = typeof r.earnings_date === 'string' ? r.earnings_date.slice(0, 10) : null;
+  const zd = zoneDistOf(r);
+  const f = rowFib(r);
+  const fc = f ? fibConfluence(f, numOrNull(r.fib_atr) ?? numOrNull(r.weekly_atr), numOrNull(r.current_price), liveZoneOf(r.ticker, r)?.top, liveZoneOf(r.ticker, r)?.bottom) : null;
+  const wa = numOrNull(r.weekly_atr);
+  return {
+    technical: bool(r.f_technical),
+    rr: liveRR(r),
+    revD: (r.rev_d as Facts['revD']) || {}, revW: (r.rev_w as Facts['revW']) || {},
+    daysToEarn: ed ? daysBetween(td, ed) : null,
+    unfit: isNi(r.ticker),
+    status: live ? live.status : bs.includes('pass') ? 'PASS' : bs.includes('waiting') ? 'WAIT' : String(r.status || ''),
+    needsDrawing: bs.includes('needs_drawing'), review: bs.includes('review'), obsolete: bs.includes('obsolete'), hammer: bs.includes('hammer'),
+    position: bs.includes('position') || S.positions.some((p) => p.ticker === r.ticker),
+    starred: isWatched(r.ticker), mine: userDrawings(r.ticker).length > 0, commands: S.commands.some((x) => x.ticker === r.ticker),
+    zoneDist: zd ? zd.atr : null,
+    dollarVol: numOrNull(r.dollar_vol_30d),
+    history: bool(r.f_history),
+    tradable: wa == null ? null : wa < maxRiskUsd(),
+    fromAbove: live ? !live.fromBelow : bool(r.f_from_above),
+    noInvHammer: bool(r.f_no_inv_hammer), noRedVol: bool(r.f_no_red_vol_week),
+    smoothWeeks: numOrNull(r.smooth_streak_weeks),
+    sector: (r.sector as string) || null,
+    instOwn: numOrNull(r.inst_own_pct), shortFloat: numOrNull(r.short_float_pct),
+    fib: !!fc && (fc.priceLevel != null || fc.zoneLevels.length > 0),
+    today: td,
+  };
+}
+
+// ---------------- filter panel (Eyal 2026-10-26: each filter on its own, several = AND) ----------------
+function fpanelHtml(): string {
+  const fs = S.ui.f, sectors = [...new Set(S.rows.map((r) => r.sector).filter(Boolean) as string[])].sort();
+  const item = (id: string) => {
+    const d = BY_ID.get(id)!, st = fs[id] || { on: false };
+    if (d.tri) {
+      const m = st.mode || 'hide';
+      return `<div class="fi fi-tri" data-f="${id}"><span class="fl">${d.label}:</span>${(['hide', 'only', 'all'] as const).map((k) => `<button class="seg ${m === k ? 'on' : ''}" data-mode="${k}">${{ hide: 'הסתר', only: 'רק הן', all: 'הצג גם' }[k]}</button>`).join('')}</div>`;
+    }
+    let extra = '';
+    if (d.param) { const x = st.x ?? d.param.def; extra += `<input class="fx" type="number" inputmode="decimal" dir="ltr" min="${d.param.min}" max="${d.param.max}" step="${d.param.step}" value="${x}" aria-label="${esc(d.label)}" />${d.param.unit ? `<span class="fu muted">${d.param.unit}</span>` : ''}`; }
+    if (d.select === 'sector') extra += `<select class="fsel" aria-label="תחום"><option value="">בחר…</option>${sectors.map((x) => `<option ${st.v === x ? 'selected' : ''} value="${esc(x)}">${esc(x)}</option>`).join('')}</select>`;
+    let kinds = '';
+    if (d.kinds) { const ks = st.kinds?.length ? st.kinds : DEF_KINDS; kinds = `<div class="fk">${REV_KINDS.map((k) => `<button class="kd ${ks.includes(k) ? 'on' : ''}" data-k="${k}">${REV_HE[k]}</button>`).join('')}</div>`; }
+    return `<div class="fi ${isActive(id, st) ? 'act' : ''}" data-f="${id}"><label class="ft"><input type="checkbox" ${st.on ? 'checked' : ''} /><span class="fl">${d.label}</span></label>${extra}${kinds}</div>`;
+  };
+  const grp = (g: string, title: string) => `<div class="fg"><div class="fgt">${title}</div>${FILTERS.filter((d) => d.group === g).map((d) => item(d.id)).join('')}</div>`;
+  return grp('main', 'עיקריים') + grp('status', 'סטטוס ואפליקציה') + grp('setup', 'סטאפ ונתונים');
+}
+function bindFpanel() {
+  const fs = S.ui.f, p = $('#fpanel'); if (!p) return;
+  const upd = () => { saveUi(); updateListBody(); updateFHead(); };
+  p.querySelectorAll<HTMLElement>('.fi').forEach((el) => {
+    const id = el.dataset.f!, d = BY_ID.get(id)!;
+    const st = () => (fs[id] ||= { on: false });
+    el.querySelectorAll<HTMLButtonElement>('.seg').forEach((b) => (b.onclick = () => { st().mode = b.dataset.mode as any; st().on = true; el.querySelectorAll('.seg').forEach((x) => x.classList.toggle('on', x === b)); upd(); }));
+    const cb = el.querySelector<HTMLInputElement>('input[type=checkbox]');
+    if (cb) cb.onchange = () => { st().on = cb.checked; el.classList.toggle('act', isActive(id, st())); upd(); };
+    const nx = el.querySelector<HTMLInputElement>('.fx');
+    if (nx) nx.oninput = () => { const v = parseFloat(nx.value); if (!Number.isFinite(v)) return; st().x = v; st().on = true; if (cb) cb.checked = true; el.classList.add('act'); upd(); };
+    const sel = el.querySelector<HTMLSelectElement>('.fsel');
+    if (sel) sel.onchange = () => { st().v = sel.value; st().on = !!sel.value; if (cb) cb.checked = st().on; el.classList.toggle('act', isActive(id, st())); upd(); };
+    el.querySelectorAll<HTMLButtonElement>('.kd').forEach((b) => (b.onclick = () => {
+      const cur = new Set<RevKind>(st().kinds?.length ? st().kinds : DEF_KINDS), k = b.dataset.k as RevKind;
+      if (cur.has(k)) { if (cur.size > 1) cur.delete(k); } else cur.add(k);
+      st().kinds = REV_KINDS.filter((x) => cur.has(x)); st().on = true; if (cb) cb.checked = true; el.classList.add('act');
+      el.querySelectorAll<HTMLElement>('.kd').forEach((x) => x.classList.toggle('on', cur.has(x.dataset.k as RevKind))); upd();
+    }));
+    void d;
+  });
+}
+function updateFHead() {
+  const n = activeCount(S.ui.f), b = $('#ftog'); if (b) b.innerHTML = `סינון${n ? ` <span class="fcount">${n}</span>` : ''} ${S.ui.fOpen ? '▴' : '▾'}`;
+  const c = $('#fclear') as HTMLButtonElement | null; if (c) c.hidden = !n;
+}
+
 // ---------------- routing ----------------
 function route() {
   if (!S.email) return renderLogin();
@@ -327,6 +405,7 @@ function route() {
   if (!S.loaded) { app.innerHTML = '<div class="center muted">טוען…</div>'; return; }
   const m = location.hash.match(/^#\/t\/([^/?]+)/);
   if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
+  else if (location.hash.startsWith('#/rules')) renderRules();
   else renderList();
 }
 window.addEventListener('hashchange', route);
@@ -367,15 +446,15 @@ function renderDenied() {
 function renderList() {
   destroyChart();
   const rows = filtered();
-  const chips = CHIPS.map(([k, t]) => `<button class="chip ${S.ui.chip === k ? 'on' : ''}" data-chip="${k}">${t}</button>`).join('');
   app.innerHTML = `
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
-    <button id="logout" class="ghost small">יציאה</button>
+    <div class="hbtns"><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
     <input id="q" type="search" dir="ltr" placeholder="חיפוש טיקר" value="${esc(S.ui.q)}" autocapitalize="characters" />
-    <div class="chips">${chips}</div>
+    <div class="fhead"><button id="ftog" class="chip ${S.ui.fOpen ? 'on' : ''}" aria-expanded="${!!S.ui.fOpen}"></button><button id="fclear" class="ghost small" hidden>ניקוי הכל</button></div>
+    <div id="fpanel" class="fpanel" ${S.ui.fOpen ? '' : 'hidden'}>${fpanelHtml()}</div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
         ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
@@ -384,11 +463,25 @@ function renderList() {
   <ul class="list">${listInner(rows)}</ul>`;
   const q = $('#q') as HTMLInputElement;
   q.oninput = () => { S.ui.q = q.value; saveUi(); updateListBody(); };
-  app.querySelectorAll<HTMLButtonElement>('.chip').forEach((b) => (b.onclick = () => { S.ui.chip = b.dataset.chip!; saveUi(); renderList(); }));
+  $('#ftog')!.onclick = () => { S.ui.fOpen = !S.ui.fOpen; saveUi(); $('#fpanel')!.hidden = !S.ui.fOpen; $('#ftog')!.classList.toggle('on', S.ui.fOpen); updateFHead(); };
+  $('#fclear')!.onclick = () => { S.ui.f = {}; saveUi(); $('#fpanel')!.innerHTML = fpanelHtml(); bindFpanel(); updateListBody(); updateFHead(); };
+  bindFpanel(); updateFHead();
   ($('#sort') as HTMLSelectElement).onchange = (e) => { S.ui.sort = (e.target as HTMLSelectElement).value; saveUi(); renderList(); };
   $('#logout')!.onclick = () => api.signOut();
   bindRows();
   const y = sessionStorage.getItem('srs-scroll'); if (y) window.scrollTo(0, +y);
+}
+// ---------------- rules page (#/rules) ----------------
+let rulesP: Promise<any> | null = null;
+async function renderRules() {
+  destroyChart();
+  app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">כללים</div><span></span></header><div class="rules center muted">טוען…</div>`;
+  $('#back')!.onclick = () => { location.hash = '#/'; };
+  rulesP ??= fetch(import.meta.env.BASE_URL + 'data/rules.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const j = await rulesP;
+  if (!location.hash.startsWith('#/rules')) return;
+  const el = $('.rules')!; el.className = 'rules';
+  el.innerHTML = renderRulesHtml(j, { maxRisk: maxRiskUsd() });
 }
 function updateListBody() {
   const rows = filtered();
@@ -1161,7 +1254,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

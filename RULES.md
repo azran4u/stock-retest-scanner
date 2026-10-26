@@ -481,3 +481,13 @@ distance to stop / target in % and weekly ATR(14), chips: *near stop* / *near ta
 The daily export (`export_daily_report.py`) calls `positions.refresh()` (yfinance daily bar + weekly ATR) for open positions.
 Alert routine: `/workspace/.venv/bin/python /workspace/stock-screener/positions_check.py` (exit 2 if any flag fires).
 Default target = TP of the user's TradingView drawing (tv_drawings.json) at entry time.
+
+## 17. App: independent list filters + rules page (Eyal 2026-10-26)
+
+- **Filters (app list):** the single-select chip row is replaced by independent filters, **all active filters are ANDed** (`webapp/src/filters.ts`, facts per row in `main.ts factsOf`: export values + live app values). Collapsible panel "סינון" with an active-filter count, "ניקוי הכל", match count; state persists in localStorage `srs-app-v1` (`ui.f`). Search and sort stay.
+  - Main: uptrend (`f_technical`; unknown = fails) · R:R ≥ X (default 2, live R:R of the Long that counts) · daily reversal candle in the last X weeks (default 1) · weekly reversal candle in the last X weeks (default 2) — kinds selectable (hammer / engulfing / strong close / rejection, default hammer + engulfing), **no zone gate**, from export `rev_d` / `rev_w` = `{kind: date}` of the most recent candle of each shape in the last 26 weeks (`report_filters.last_reversals`, `export_data.attach_reversals`) · days to earnings ≥ X (default 14, live from `earnings_date`; unknown = fails) · unfit: hide (default) / only / show too.
+  - Status/app: PASS, WAIT, needs drawing, review, obsolete, last-week hammer, open position, ★, has my drawing, bot commands.
+  - Setup/data: near zone ≤ X weekly ATR (1) · $vol ≥ X M (50) · ≥ 3y history · tradable (weekly ATR < max risk $) · from above · no inverted hammer · no red high-volume week · smooth pullback ≥ N weeks (5) · Fib confluence · sector · inst own ≥ X% (60) / short float ≤ X% (5) — rows without ownership data are **not** filtered out.
+  - Universe = the app's exported rows (candidates: badges / TV / app drawings), not every FinViz row.
+- **Rules page `#/rules` (כללים, link in the list header):** FinViz filters, PASS / WAIT / FAIL, technical, needs drawing, unfit, bot drawing rules, sizing, reversal kinds. Numbers come from `app/data/rules.json` = `python -m srs_app.rules` (also written by `export_data.export`), read from `stock_screen.SCREENER_URL`, `report_filters.CONFIG / CORE_FILTERS / WAIT_FILTERS` and `srs_app.bot_drawings`; Hebrew wording in `webapp/src/rules.ts`.
+- Tests: `webapp/test_filters.mjs`, `webapp/e2e_filters.mjs`, `tests/test_filters_export.py`.

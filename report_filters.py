@@ -431,6 +431,31 @@ def _scan_reversals(bars: Optional[pd.DataFrame], lookback: int,
     return False, "", ""
 
 
+def last_reversals(bars: Optional[pd.DataFrame], lookback: int) -> Dict[str, str]:
+    """{kind: date} of the MOST RECENT candle of each reversal shape (same shapes / thresholds as _scan_reversals,
+    CONFIG reversal_kinds) among the last `lookback` bars, WITHOUT the zone gate; kinds never seen are absent.
+    Used by the app's 'reversal candle within X weeks' filters (Eyal 2026-10-26); bars = completed daily / weekly bars."""
+    out: Dict[str, str] = {}
+    if bars is None or len(bars) < 2:
+        return out
+    atr = ss.atr_series(bars, 14)
+    kinds = [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]
+    n = len(bars)
+    for i in range(n - 1, max(0, n - int(lookback)) - 1, -1):
+        if i < 1 or len(out) == len(kinds):
+            break
+        sh = ssa.weekly_reversal_shapes(
+            float(bars["Open"].iloc[i]), float(bars["High"].iloc[i]),
+            float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i]),
+            float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]),
+            float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan"),
+        )
+        for k in kinds:
+            if k not in out and sh[_KIND_KEY[k]]:
+                out[k] = str(pd.Timestamp(bars.index[i]).date())
+    return out
+
+
 # ---------------------------------------------------------------------------
 # per-row computation
 # ---------------------------------------------------------------------------

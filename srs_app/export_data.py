@@ -50,7 +50,12 @@ INDEX_COLS = [
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
     "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
     "f_no_inv_hammer", "inv_hammer_week_date", "inv_hammer_detail",
+    # independent list filters (Eyal 2026-10-26)
+    "smooth_streak_weeks", "f_smooth_streak",
 ]
+# 'reversal candle within X weeks' filters: the most recent reversal-shape candle (no zone gate) of the last
+# REV_LOOKBACK_WEEKS weeks, daily and weekly (report_filters.last_reversal)
+REV_LOOKBACK_WEEKS = 26
 
 
 def _clean(v: Any) -> Any:
@@ -379,6 +384,34 @@ def attach_week_closes(rows: List[Dict[str, Any]], asof_date: Optional[str] = No
         r["wk_closes_end"] = wk.index[-1].strftime("%Y-%m-%d")
 
 
+def attach_reversals(rows: List[Dict[str, Any]], asof_date: Optional[str] = None, hist: Optional[Dict[str, Any]] = None,
+                     weeks: int = REV_LOOKBACK_WEEKS) -> None:
+    """rev_d (daily bars) / rev_w (completed W-FRI weeks) = {kind: date of the most recent candle of that reversal
+    shape in the last `weeks` weeks} (shapes = RULES.md 'Reversal shapes': hammer / engulfing / strong_close /
+    rejection; no zone gate). The app filters 'reversal candle within X weeks' on the selected kinds."""
+    import sys as _s
+    from datetime import date as _d
+    root = str(Path(__file__).resolve().parent.parent)
+    if root not in _s.path:
+        _s.path.insert(0, root)
+    import report_filters as rf
+    import smooth_support_analysis as ssa
+    hist = hist if hist is not None else dict(pd.read_pickle(HIST_CACHE))
+    rd = _d.fromisoformat(asof_date) if asof_date else _d.today()
+    for r in rows:
+        df = hist.get(r["ticker"])
+        r["rev_d"], r["rev_w"] = {}, {}
+        if df is None or getattr(df, "empty", True):
+            continue
+        try:
+            dd = ssa.completed_daily_bars(ssa.flatten_cols(df), as_of=rf._as_of_ts(rd))
+            wk = rf.completed_weekly(df, rd)
+            r["rev_d"] = rf.last_reversals(dd, weeks * 5)
+            r["rev_w"] = rf.last_reversals(wk, weeks)
+        except Exception as e:  # never block the export
+            print(f"  [reversals] {r['ticker']}: {e}")
+
+
 def export(repo: Path, report: Path | None = None, include_all: bool = False, report_date: str | None = None) -> Path:
     """Write app/data/* under repo. report = latest.csv to read (default repo/historical-reports/latest.csv)."""
     out = repo / "app" / "data"
@@ -408,6 +441,12 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         manual = {}
     attach_fib(rows, fib, manual)
     attach_week_closes(rows, asof_date=report_date)
+    attach_reversals(rows, asof_date=report_date)
+    try:
+        from srs_app.rules import build_rules
+        (out / "rules.json").write_text(json.dumps(build_rules(), ensure_ascii=False, separators=(",", ":")))
+    except Exception as e:  # never block the export
+        print(f"  [app data] rules.json skipped: {e}")
     with_candles = {f.stem for f in (out / "candles").glob("*.json")}
     for r in rows:
         r["has_candles"] = r["ticker"] in with_candles

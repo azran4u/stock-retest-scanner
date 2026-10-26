@@ -34,7 +34,7 @@ await page.evaluate(() => window.scrollTo(0, 4000)); await page.waitForTimeout(4
 ok((await drawn()).length > first.length, 'more mini charts drawn after scrolling');
 // chips still work and redraw
 await page.evaluate(() => window.scrollTo(0, 0));
-await page.click('.chip[data-chip="pass"]'); await page.waitForTimeout(300);
+await page.evaluate(() => window.__srs.setChip('pass')); await page.waitForTimeout(300);
 const np = await page.locator('.row').count();
 ok(np > 0 && np < total && (await drawn()).length > 0, `PASS chip: ${np} rows, mini charts redrawn`);
 // tap row opens chart

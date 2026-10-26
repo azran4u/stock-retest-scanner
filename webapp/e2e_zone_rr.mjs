@@ -70,9 +70,9 @@ ok(await page.locator('.rr-box').count() === 1, 'stock page explains: לא ב-PA
 await page.screenshot({ path: `${OUT}/30_zone_rr_fail.png`, fullPage: true });
 await page.evaluate(() => { location.hash = '#/'; });
 await page.waitForSelector('.list');
-await page.click('.chip[data-chip="pass"]'); await page.waitForTimeout(300);
+await page.evaluate(() => window.__srs.setChip('pass')); await page.waitForTimeout(300);
 ok(await page.locator(`.row[data-t="${setup.t}"]`).count() === 0, 'row left the PASS list');
-await page.click('.chip[data-chip="all"]'); await page.fill('#q', setup.t); await page.waitForTimeout(300);
+await page.evaluate(() => window.__srs.setChip('all')); await page.fill('#q', setup.t); await page.waitForTimeout(300);
 ok(/FAIL · R:R/.test(await page.locator(`.row[data-t="${setup.t}"] .r2`).textContent()), 'list row shows FAIL · R:R x < 2');
 await page.fill('#q', ''); await page.waitForTimeout(200);
 

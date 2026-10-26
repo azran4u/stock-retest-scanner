@@ -242,3 +242,33 @@ body.has-pb .cv { height: calc(100dvh - var(--pb, 0px)); }
 .research .rs-body p { margin: 6px 0; line-height: 1.5; }
 .research .rs-src ul { margin: 4px 0; padding-inline-start: 18px; }
 .research .rs-src a { word-break: break-all; }
+
+/* ---- independent filters panel (2026-10-26) ---- */
+.hbtns { display: flex; gap: 6px; align-items: center; }
+a.btnlike { color: var(--fg); background: var(--bg3); border-radius: 10px; padding: 7px 12px; text-decoration: none; font-size: 14px; min-height: 0; }
+.fhead { display: flex; gap: 8px; align-items: center; }
+.fhead #ftog { flex: 0 0 auto; }
+.fcount { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #fff; color: var(--blue); font-size: 12px; font-weight: 700; text-align: center; }
+.fhead #fclear { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.fpanel { max-height: 58vh; overflow-y: auto; overscroll-behavior: contain; display: grid; gap: 8px; padding: 2px 0 6px; }
+.fg { background: var(--bg2); border-radius: 12px; padding: 8px 10px; display: grid; grid-template-columns: 1fr; gap: 4px; }
+.fgt { font-size: 12px; color: var(--mut); font-weight: 600; }
+.fi { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; padding: 3px 0; }
+.fi.act .fl { color: #fff; font-weight: 600; }
+.ft { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.ft input { width: 18px; height: 18px; margin: 0; accent-color: var(--blue); }
+.fi .fx { width: 72px; padding: 4px 6px; font-size: 16px; border-radius: 8px; }
+.fi .fu { font-size: 12px; }
+.fi .fsel { width: auto; max-width: 60%; padding: 4px 8px; font-size: 14px; }
+.fk { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 5px; padding-inline-start: 25px; }
+.kd, .seg { min-height: 28px; padding: 3px 9px; font-size: 12.5px; border-radius: 14px; background: var(--bg3); }
+.kd.on, .seg.on { background: var(--blue); color: #fff; outline: 0; }
+@media (min-width: 900px) {
+  .fpanel { grid-template-columns: repeat(3, 1fr); max-height: 50vh; align-items: start; }
+}
+/* ---- rules page ---- */
+.rules { max-width: 860px; margin: 0 auto; padding: 10px 14px calc(30px + var(--safe-b)); }
+.rsec { background: var(--bg2); border-radius: 12px; padding: 10px 14px; margin: 10px 0; }
+.rsec h3 { margin: 0 0 6px; font-size: 16px; }
+.rsec ul { margin: 0; padding-inline-start: 20px; } .rsec li { margin: 3px 0; } .rsec p { margin: 4px 0; }
+.rsec a { color: #82b1ff; }

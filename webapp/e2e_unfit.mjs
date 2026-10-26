@@ -50,12 +50,12 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   await page.screenshot({ path: `${OUT}/71_unfit_marked_${name}.png` }); console.log('     shot', `${OUT}/71_unfit_marked_${name}.png`);
   // list: hidden from 'הכל', shown under the chip with the return date
   await page.click('#back'); await page.waitForSelector('.row');
-  await page.click('.chip[data-chip="all"]'); await page.waitForTimeout(200);
+  await page.evaluate(() => window.__srs.setChip('all')); await page.waitForTimeout(200);
   ok(await page.locator(`.row[data-t="${T}"]`).count() === 0, `${name}: hidden from the list`);
-  await page.click('.chip[data-chip="ni"]'); await page.waitForTimeout(200);
+  await page.evaluate(() => window.__srs.setChip('ni')); await page.waitForTimeout(200);
   const rt = await page.locator(`.row[data-t="${T}"]`).textContent();
   ok(rt.includes('לא מתאימה לשיטה') && rt.includes(`חוזרת ב-${dm(add(28))}`), `${name}: under 'לא מתאימות לשיטה' with the return date`);
-  await page.click('.chip[data-chip="all"]');
+  await page.evaluate(() => window.__srs.setChip('all'));
   // return now
   await page.goto(BASE + '?demo=1#/t/' + T); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(400);
   await page.locator('.unfitsec #niOff').click(); await page.waitForTimeout(300);
