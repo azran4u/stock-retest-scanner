@@ -20,9 +20,11 @@ from bs4 import BeautifulSoup
 
 warnings.filterwarnings("ignore")
 
+# Eyal 2026-10-26: "price above SMA200" (ta_sma200_pa) dropped — it removed exactly the retests
+# that dip through the 200-day SMA into the zone (6 of 7 tickers on Roi's 2026-10-26 list).
 SCREENER_URL = (
     "https://finviz.com/screener"
-    "?v=111&f=sh_price_o10,ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker"
+    "?v=111&f=sh_price_o10,ta_sma50_pb&ft=4&o=ticker"
 )
 DOLLAR_VOL_MIN = 50_000_000
 AVG_VOL_DAYS = 30            # dollar vol = 30d avg volume × last close
@@ -187,6 +189,47 @@ def _fv_query(base: str, own: Dict[str, Dict[str, Any]]) -> Optional[int]:
     return total
 
 
+# Partitions used when one query has more rows than ascending + descending paging can reach
+# (2 x FV_PAGE_CAP). Since the SMA200 filter was dropped (2026-10-26) the ETF segment alone is
+# ~3,750 rows. Each level is a set of mutually exclusive filters that together cover the query:
+# price bands replace the base sh_price_o10 filter; average-volume halves are added.
+FV_SPLITS = [
+    ("sh_price_o10", ["sh_price_10to20", "sh_price_20to50", "sh_price_50to100", "sh_price_o100"]),
+    (None, ["sh_avgvol_u50", "sh_avgvol_o50"]),
+    (None, ["sh_avgvol_u100", "sh_avgvol_o100"]),
+]
+
+
+def _fv_with_filter(base: str, replace: Optional[str], filt: str) -> str:
+    if replace:
+        return re.sub(r"(?<=[=,])" + re.escape(replace) + r"(?=[,&]|$)", filt, base)
+    return re.sub(r"([?&]f=)", lambda m: m.group(1) + filt + ",", base)
+
+
+def _fv_collect(base: str, own: Dict[str, Dict[str, Any]], level: int = 0) -> Optional[int]:
+    """Like _fv_query, but splits a query whose total exceeds 2 x FV_PAGE_CAP into FV_SPLITS
+    partitions (recursively), then fills anything still missing from the full query."""
+    _, total = _fv_page(base)
+    if total is None or total <= 2 * FV_PAGE_CAP:
+        return _fv_query(base, own)
+    split = None
+    for lvl in range(level, len(FV_SPLITS)):
+        rep, parts = FV_SPLITS[lvl]
+        if rep is None or re.search(r"(?<=[=,])" + re.escape(rep) + r"(?=[,&]|$)", base):
+            split, level = (rep, parts), lvl
+            break
+    if split is None:
+        return _fv_query(base, own)
+    before = set(own)
+    for filt in split[1]:
+        _fv_collect(_fv_with_filter(base, split[0], filt), own, level + 1)
+    got = len(set(own) - before)
+    if got < total:
+        print(f"[screener] partitions reached {got}/{total}; filling from the full query")
+        _fv_query(base, own)
+    return total
+
+
 def fetch_screener_tickers(max_pages: int = 200) -> List[str]:
     """Always scrape FinViz live — never reuse screener_tickers.json as input.
 
@@ -205,7 +248,7 @@ def fetch_screener_tickers(max_pages: int = 200) -> List[str]:
     if "/screener?" in base:
         totals = []
         for seg in ("/screener/stocks?", "/screener/etf?"):
-            tot = _fv_query(base.replace("/screener?", seg), own)
+            tot = _fv_collect(base.replace("/screener?", seg), own)
             if tot:
                 totals.append(tot)
         total = sum(totals) if totals else None

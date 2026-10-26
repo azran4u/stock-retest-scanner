@@ -19,17 +19,17 @@ Single driver: **Grok Bot** owns TradingView on this desktop (drawings + watchli
 
 ## 1. FinViz base filter (user-maintained)
 
-Start from the FinViz technical screener the user keeps updated. Current screen (user change 2026-10-14):
+Start from the FinViz technical screener the user keeps updated. Current screen (user change 2026-10-26):
 
 - Price: Over $10  
-- Price **above** SMA200  
 - Price **below** SMA50  
+- (Dropped 2026-10-26, Eyal: Price **above** SMA200 (`ta_sma200_pa`). Roi's weekly list of 2026-10-26 showed it removed 6 of 7 retest candidates (BHP, C, MS, CFG, KN, IBKR): a pullback into the zone often dips through the daily 200 SMA. The **technical uptrend check (`f_technical`, §12) is still a must-have**; it is what now guards against downtrending stocks, not the FinViz SMA200 filter.)
 - View / sort: overview, order by ticker  
 - (Dropped 2026-10-14: Institutional ownership > 60% and Short float low — they silently removed stocks/ETFs with missing data. Both values are now collected for every ticker and are optional dashboard filters, see §2.3. Earlier drops: Country USA, Average volume over 100K.)
-- The universe is ~2,170 rows, about two thirds ETFs. FinViz refuses pages past row 1000 without login (HTTP 403), so `fetch_screener_tickers` reads the query ascending + descending, then "stocks only" and "ETF" partitions, and logs `WARNING: N not reached` if anything is still missing.
+- The universe was ~1,900–2,170 rows with the SMA200 filter; without it (2026-10-26) it is **~5,400 rows: ~1,650 stocks + ~3,750 ETFs**. FinViz refuses pages past row 1000 without login (HTTP 403), so `fetch_screener_tickers` reads the stocks and ETF screeners separately; a query over 2,000 rows is split by `_fv_collect` into `FV_SPLITS` partitions (price bands 10–20 / 20–50 / 50–100 / 100+ replacing `sh_price_o10`, then average volume under / over 50K), each read ascending + descending, and anything still missing is filled from the full query. `WARNING: N not reached` is logged if rows are still missing (a few can move across SMA50 during a live session). A full fetch takes ~6 min.
 
 Screener URL (`stock_screen.SCREENER_URL`; pages via `&r=21`, `&r=41`, …):  
-`https://finviz.com/screener?v=111&f=sh_price_o10,ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker` (fetched as the ownership view `v=131` of the same filters; the code never relies on inst-own / short-float filters being in the URL)
+`https://finviz.com/screener?v=111&f=sh_price_o10,ta_sma50_pb&ft=4&o=ticker` (fetched as the ownership view `v=131` of the same filters; the code never relies on inst-own / short-float filters being in the URL)
 
 Do **not** change FinViz filters unless the user asks. If the user tightens the screener, use the new result set.
 
@@ -207,7 +207,7 @@ Artifacts (typical paths on the bot computer):
 - Schedule target: **23:00 Asia/Jerusalem** weekdays (after the US regular session for that day).
 - **Do not scan the same ticker twice on the same calendar day** — track in `/workspace/stock-screener/scanned_today.json`.
 - Routine name: **Daily retest stock screen**.
-- Every routine run starts with `/workspace/ensure_env.sh` (box restarts drop the venv). With the wider FinViz universe (~2,170 tickers since 2026-10-14) the screen takes longer: about 6 min for the FinViz pages, plus the first-run history download; later runs only append the new days.
+- Every routine run starts with `/workspace/ensure_env.sh` (box restarts drop the venv). With the wider FinViz universe (~5,400 tickers since 2026-10-26, SMA200 filter dropped) the screen takes longer: about 6 min for the FinViz pages, plus the first-run history download; later runs only append the new days.
 
 ---
 

@@ -17,7 +17,7 @@ Report table (`table.html`):
 
 | Path | Purpose |
 |------|---------|
-| `stock_screen.py` | FinViz + yfinance screener (`SCREENER_URL` = `https://finviz.com/screener?v=111&f=sh_price_o10,ta_sma200_pa,ta_sma50_pb&ft=4&o=ticker`: price > $10, above SMA200, below SMA50; since 2026-10-14 — inst own / short float are collected per ticker (FinViz v=131 → yfinance) and are optional dashboard filters, not must-haves) |
+| `stock_screen.py` | FinViz + yfinance screener (`SCREENER_URL` = `https://finviz.com/screener?v=111&f=sh_price_o10,ta_sma50_pb&ft=4&o=ticker`: price > $10, below SMA50 (SMA200 dropped 2026-10-26); since 2026-10-14 — inst own / short float are collected per ticker (FinViz v=131 → yfinance) and are optional dashboard filters, not must-haves) |
 | `report_filters.py` | Standalone per-row filters (`f_*`), CONFIG + CLI overrides, cache-only backfill |
 | `export_daily_report.py` | Build `historical-reports/YYYY-MM-DD.csv` (+ `latest.csv`) and refresh `reports.json` |
 | `historical-reports/` | Dated full-universe CSVs (repo source of truth) |
