@@ -75,7 +75,7 @@ def build_rules(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
         "sizing": {"account_usd": SIZING_ACCOUNT_USD, "risk_pct": SIZING_RISK_PCT,
                    "max_risk_usd": round(SIZING_ACCOUNT_USD * SIZING_RISK_PCT / 100, 2)},
         "bot": {
-            "rule_version": bd.RULE_VERSION, "long_w_bars": bd.LONG_W_BARS, "far_cap_atr": bd.FAR_CAP_ATR,
+            "rule_version": bd.RULE_VERSION, "redraw_broken_user": bd.REDRAW_BROKEN_USER, "long_w_bars": bd.LONG_W_BARS, "far_cap_atr": bd.FAR_CAP_ATR,
             "touch_tol_atr": bd.TOUCH_TOL_ATR, "zone_scoring": bd.ZONE_SCORING,
             "touch_lookback_w": bd.TOUCH_LOOKBACK_W, "from_above_lookback_w": bd.FROM_ABOVE_LOOKBACK_W,
             "v5_shift_atr": bd.V5_SHIFT_ATR, "v5_min_gain": bd.V5_MIN_GAIN,

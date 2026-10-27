@@ -283,3 +283,34 @@ def test_redraw_rule_replaces_only_bot_rows_that_differ():
     res, kept = B.redraw_rule(pl, dr, fake)
     assert [r["ticker"] for r in res] == ["DIFF"] and pl["obsolete"] == {"DIFF": ["DIFFzone", "DIFFlong"]}
     assert set(kept) == {"SAME", "NONE"} and pl["draw"] == ["DIFF"] and pl["skip"]["U"] == "not interesting"
+
+
+def test_broken_user_drawing_is_redrawn_with_backup(tmp_path):
+    """Eyal 2026-10-27: a BROKEN drawing of his (any low since it was drawn under its SL; FIX / IESC / JBL / MLI / VMI /
+    WDC) is redrawn by the bot: his rows become 'obsolete' with meta.superseded (restorable), a local backup is
+    written, the new bot rows carry meta.replaced_user_drawing. A valid drawing of his is never touched; with no
+    valid level his broken drawing stays."""
+    rows = [dict(REP, ticker=t) for t in ("HISBROKE", "HISOK", "HISNOLEVEL", "TVBROKE")]
+    dr = [
+        {"id": "u1", "ticker": "HISBROKE", "kind": "long", "source": "user", "status": "active", "stop": 10, "entry": 11, "target": 15, "created_at": "2026-10-01"},
+        {"id": "u2", "ticker": "HISBROKE", "kind": "zone", "source": "user", "status": "active", "zone_top": 11, "zone_bottom": 10.5, "created_at": "2026-10-01"},
+        {"id": "u3", "ticker": "HISOK", "kind": "long", "source": "user", "status": "active", "stop": 10, "created_at": "2026-10-01"},
+        {"id": "u4", "ticker": "HISNOLEVEL", "kind": "long", "source": "user", "status": "active", "stop": 10, "created_at": "2026-10-01"},
+        {"id": "t1", "ticker": "TVBROKE", "kind": "long", "source": "tv", "status": "active", "stop": 10, "created_at": "2026-10-20"},
+    ]
+    lows = {"HISBROKE": 9.0, "HISOK": 10.5, "HISNOLEVEL": 8.0, "TVBROKE": 9.9}
+    p = B.plan(rows, dr, [], [], today="2026-10-27", low_fn=lambda t, since: lows.get(t), price_fn=lambda t: None)
+    assert sorted(p["draw"]) == ["HISBROKE", "HISNOLEVEL", "TVBROKE"] and "HISOK" not in p["obsolete"]
+    assert sorted(p["obsolete"]["HISBROKE"]) == ["u1", "u2"] and p["why_obsolete"]["HISBROKE"] == ["broken (his drawing)"]
+    res = [dict(ticker=t, has_level=True, zone_top=12.0, zone_bottom=11.5, zone_t_start="2026-06-01", entry=11.9, stop=11.0,
+                target=16.0, t_start="2026-11-02", t_end="2027-03-22", why={"branch": "retest", "pivot_date": "2026-06-05", "sl_src": "fit"})
+           for t in ("HISBROKE", "TVBROKE")] + [dict(ticker="HISNOLEVEL", has_level=False, reason="price ran away")]
+    assert B.keep_superseded_with_result(p, res) == ["HISNOLEVEL"]
+    assert "HISNOLEVEL" not in p["obsolete"] and "no valid level" in p["skip"]["HISNOLEVEL"]
+    bp = B.backup_superseded(p["superseded"], "2026-10-27", tmp_path)
+    assert {r["id"] for r in json.loads(bp.read_text())["supabase_rows"]} == {"u1", "u2", "t1"}
+    sql = B.emit_sql(res, p["obsolete"], p["superseded"])
+    sup = [q for q in sql if q.startswith("update")]
+    assert len(sup) == 3 and all("'superseded'" in q and "status = 'obsolete'" in q for q in sup)
+    ins = [q for q in sql if q.startswith("insert") and "'HISBROKE'" in q]
+    assert len(ins) == 2 and all("replaced_user_drawing" in q and "replaced your broken drawing" in q for q in ins)

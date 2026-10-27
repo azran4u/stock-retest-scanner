@@ -82,6 +82,8 @@ ZONE_SCORING = "v5"   # "v5" | "touches" (v4) | "v3d"
 # the v4 tie-breakers. Weights from a sweep against his 126 own zones (python -m srs_app.zone_eval, 2026-10-26): his
 # zones sit close to the price, so a level 1 ATR nearer must beat ~80 points; larger shifts (0.25 / 0.5 ATR) or a
 # points-first pick (PROX 1-3) matched his drawings far less (9-27 of 126 vs 48).
+REDRAW_BROKEN_USER = True  # Eyal 2026-10-27: a broken drawing of his (user / tv) is redrawn by the bot
+BACKUP_DIR = Path("/workspace/backups")
 V5_SHIFT_ATR = 0.15
 V5_STEP_ATR = 0.05
 V5_PROX_W = 80.0
@@ -612,6 +614,7 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
     for d in drawings:
         by_t.setdefault(str(d["ticker"]).upper(), []).append(d)
     draw, obsolete, why, skip = [], {}, {}, {}
+    superseded: Dict[str, List[Dict[str, Any]]] = {}
     seen = set()
     for r in report_rows:
         t = str(r["ticker"]).upper()
@@ -621,10 +624,20 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
             skip[t] = "his own Fib / horizontal lines (user-lines)"; continue
         rows = by_t.get(t, [])
         live = [d for d in rows if d.get("status") in ("active", "approved", "review")]
-        if any(d.get("source") in ("user", "tv") for d in live):
-            continue  # his drawing (or an imported TV one) - never touched
         if t in ni:
             skip[t] = "not interesting"; continue
+        his = [d for d in live if d.get("source") in ("user", "tv")]
+        if his:
+            # Eyal 2026-10-27 ("כדאי לשרטט מחדש - דיברנו שאתה משרטט"): his drawing is never touched while it is valid;
+            # a BROKEN one (a low since it was drawn under its SL) is redrawn by the bot. His rows are kept as
+            # 'obsolete' with meta.superseded (restorable; emit_sql) and backed up to BACKUP_DIR by main().
+            if REDRAW_BROKEN_USER and "broken" in bot_obsolete(t, his, today, low_fn, price_fn, approach_fn=lambda *a: None):
+                seen.add(t)
+                obsolete[t] = [d["id"] for d in live]
+                why[t] = ["broken (his drawing)"]
+                superseded[t] = [d for d in his]
+                draw.append(t)
+            continue  # valid drawing of his (or an imported TV one) - never touched
         bots = [d for d in live if d.get("source") == "bot"]
         if bots:
             seen.add(t)
@@ -649,7 +662,7 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
         if fl:
             obsolete[t] = [d["id"] for d in bots]
             why[t] = fl
-    return {"draw": draw, "obsolete": obsolete, "why_obsolete": why, "skip": skip}
+    return {"draw": draw, "obsolete": obsolete, "why_obsolete": why, "skip": skip, "superseded": superseded}
 
 
 def drop_same_as_rejected(results: List[Dict[str, Any]], drawings: Iterable[Dict[str, Any]], tol: float = 0.011):
@@ -702,16 +715,69 @@ def redraw_rule(pl: Dict[str, Any], drawings: Iterable[Dict[str, Any]], compute_
     return out, kept
 
 
-def emit_sql(results: List[Dict[str, Any]], obsolete: Dict[str, List[str]]) -> List[str]:
+def keep_superseded_with_result(pl: Dict[str, Any], results: List[Dict[str, Any]]) -> List[str]:
+    """His broken drawing is only retired when the bot actually has a new drawing for the ticker; otherwise it stays
+    (still flagged broken by the report). Returns the tickers left untouched."""
+    got = {r["ticker"] for r in results if r.get("has_level")}
+    left = [t for t in list(pl.get("superseded", {})) if t not in got]
+    for t in left:
+        pl["superseded"].pop(t, None)
+        pl["obsolete"].pop(t, None)
+        pl.get("why_obsolete", {}).pop(t, None)
+        pl["skip"][t] = "his drawing is broken but no valid level under " + RULE_VERSION
+    return left
+
+
+def sql_supersede(drawing_id: str, why: str = "broken") -> str:
+    """His row -> obsolete, restorable: meta.superseded = {at, why, by} (restore = status 'active')."""
+    from srs_app.sync import _lit
+    sup = json.dumps({"why": why, "by": "BOT " + RULE_VERSION})
+    return ("update public.drawings set status = 'obsolete', updated_at = now(), meta = coalesce(meta, '{}'::jsonb) || "
+            f"jsonb_build_object('superseded', {_lit(sup)}::jsonb || jsonb_build_object('at', now())) "
+            f"where id = {_lit(drawing_id)} and status in ('active', 'approved', 'review');")
+
+
+def backup_superseded(superseded: Dict[str, List[Dict[str, Any]]], today: Optional[str] = None,
+                      out_dir: Optional[Path] = None) -> Optional[Path]:
+    """Local JSON backup of his rows before the bot replaces them (merged by id into the day's file)."""
+    if not superseded:
+        return None
+    today = today or date.today().isoformat()
+    p = (out_dir or BACKUP_DIR) / f"user_drawings_broken_{today}.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        cur = json.loads(p.read_text())
+    except Exception:
+        cur = {}
+    rows = {str(r.get("id")): r for r in cur.get("supabase_rows", [])}
+    for t, rs in superseded.items():
+        for r in rs:
+            rows[str(r.get("id"))] = r
+    cur.update(_doc=cur.get("_doc") or "His drawings replaced by the bot because they broke (low under SL); in Supabase "
+               "they stay with status 'obsolete' + meta.superseded (restore: status='active', mark the bot rows obsolete).",
+               supabase_rows=list(rows.values()))
+    p.write_text(json.dumps(cur, indent=1, default=str, ensure_ascii=False))
+    return p
+
+
+def emit_sql(results: List[Dict[str, Any]], obsolete: Dict[str, List[str]],
+             superseded: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> List[str]:
     from srs_app.sync import sql_insert_bot_drawing, sql_mark_obsolete
+    superseded = superseded or {}
+    his_ids = {str(d.get("id")) for rs in superseded.values() for d in rs}
     out = []
     for ids in obsolete.values():
-        out += [sql_mark_obsolete(i) for i in ids]
+        out += [sql_supersede(i) if str(i) in his_ids else sql_mark_obsolete(i) for i in ids]
     for r in results:
         if not r.get("has_level"):
             continue
         meta = {"rule_version": RULE_VERSION, "why": r["why"]}
-        note = f"BOT {RULE_VERSION}: {r['why']['branch']} {r['why']['pivot_date']}, SL {r['why']['sl_src']}"
+        if r["ticker"] in superseded:  # bot drawing that replaced a broken drawing of his
+            meta["replaced_user_drawing"] = {"why": "broken", "rows": [
+                {k: d.get(k) for k in ("id", "kind", "source", "zone_top", "zone_bottom", "entry", "stop", "target")}
+                for d in superseded[r["ticker"]]]}
+        note = f"BOT {RULE_VERSION}: {r['why']['branch']} {r['why']['pivot_date']}, SL {r['why']['sl_src']}" + \
+            (" (replaced your broken drawing)" if r["ticker"] in superseded else "")
         out.append(sql_insert_bot_drawing(r["ticker"], "zone", zone_top=r["zone_top"], zone_bottom=r["zone_bottom"],
                                           t_start=r["zone_t_start"], note=note, meta=meta))
         out.append(sql_insert_bot_drawing(r["ticker"], "long", entry=r["entry"], stop=r["stop"], target=r["target"],
@@ -757,8 +823,13 @@ def main() -> None:
             pl["skip"].update(kept)
     if a.out:
         Path(a.out).write_text(json.dumps({"plan": pl, "results": res}, indent=1, default=str))
+    if not a.tickers:
+        keep_superseded_with_result(pl, res)
+        bp = backup_superseded(pl.get("superseded", {}))
+        if bp:
+            print(f"-- backup of his superseded drawings: {bp}", file=sys.stderr)
     if a.emit_sql:
-        print("\n".join(emit_sql(res, pl["obsolete"])))
+        print("\n".join(emit_sql(res, pl["obsolete"], pl.get("superseded"))))
     else:
         for r in res:
             print(r["ticker"], "LEVEL" if r.get("has_level") else "none", {k: r.get(k) for k in
