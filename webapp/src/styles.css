@@ -293,3 +293,52 @@ canvas.calchart.empty { height: 0; aspect-ratio: auto; margin: 0; }
   .callist { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; padding: 0 12px; }
   .calcard { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
 }
+
+/* ---- mobile parity (Eyal 2026-10-27: "the mobile version should have the same capabilities as desktop") ---- */
+/* stock page: section jump chips (all widths) */
+.jump { display: flex; gap: 5px; padding: 6px 8px; border-bottom: 1px solid var(--bg2); overflow-x: auto; scrollbar-width: none; flex: none; }
+.jump::-webkit-scrollbar { display: none; }
+.jump .chip { min-height: 32px; padding: 4px 11px; font-size: 13px; flex: none; }
+/* filters sheet head (mobile only) */
+.fsh-head { display: none; }
+.fbody { display: grid; gap: 8px; }
+@media (min-width: 900px) { .fbody { grid-template-columns: repeat(3, 1fr); align-items: start; } .fpanel { display: block; } }
+/* message-to-bot: floating button (every page) + sheet */
+.fab { position: fixed; left: 14px; bottom: calc(16px + var(--safe-b)); z-index: 35; width: 54px; height: 54px; min-height: 0; padding: 0; border-radius: 50%;
+  font-size: 24px; box-shadow: 0 4px 14px #000a; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; background: var(--bg2); border-radius: 16px 16px 0 0; padding: 10px 12px calc(14px + var(--safe-b));
+  max-height: 80dvh; overflow-y: auto; box-shadow: 0 -100vh 0 100vh rgba(0,0,0,.45), 0 -4px 18px #000a; }
+.sh-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+@media (min-width: 720px) { .sheet { left: auto; right: 16px; bottom: 82px; width: 420px; border-radius: 16px; box-shadow: 0 6px 24px #000c; } }
+
+@media (max-width: 719px) {
+  /* stock page scrolls as one page (was: fixed 100dvh with a ~110px inner panel, so the overview / bot box were out of sight) */
+  .cv, body.has-pb .cv { height: auto; min-height: calc(100dvh - var(--pb, 0px)); }
+  header.top.ch { position: sticky; top: 0; z-index: 6; }
+  body.has-pb header.top.ch { top: var(--pb, 0px); }
+  .chartwrap { height: min(50svh, 430px); min-height: 280px; }
+  .panel { flex: none; overflow: visible; padding-bottom: calc(90px + var(--safe-b)); }
+  .panel section, .panel .research { scroll-margin-top: calc(var(--pb, 0px) + 64px); }
+  .tkb { flex-wrap: wrap; row-gap: 3px; }
+  .indbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .chip.ind { flex: none; }
+  .cmd textarea { min-height: 64px; }
+  .cmd button { min-width: 64px; }
+  .card.dline .acts button { min-height: 36px; }
+  .fbbtns button { min-height: 44px; }
+  /* filters: bottom sheet */
+  .fpanel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; max-height: 78dvh; display: flex; flex-direction: column; padding: 0;
+    background: var(--bg); border-radius: 16px 16px 0 0; border-top: 1px solid var(--bg3); box-shadow: 0 -100vh 0 100vh rgba(0,0,0,.45), 0 -4px 18px #000a; }
+  .fsh-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px; border-bottom: 1px solid var(--bg2); }
+  .fsh-head b { flex: 1; font-size: 16px; }
+  .fbody { overflow-y: auto; overscroll-behavior: contain; padding: 8px 10px calc(16px + var(--safe-b)); }
+  .ft input { width: 22px; height: 22px; }
+  .fi { padding: 5px 0; }
+  .kd { min-height: 32px; }
+  body.fsheet-open .fab { display: none; }
+  /* list header: keep the buttons on one line at 390px */
+  header.top .title { font-size: 18px; min-width: 0; }
+  header.top .title .small { display: block; font-size: 11px; font-weight: 400; }
+  .hbtns a.btnlike, .hbtns button { padding: 6px 9px; font-size: 13px; }
+  .list { padding-bottom: calc(90px + var(--safe-b)); }
+}

@@ -25,7 +25,7 @@ export interface Api {
   loadLabels(): Promise<Label[]>;
   upsertLabel(l: Label): Promise<void>;
   loadCommands(): Promise<Command[]>;
-  addCommand(ticker: string, text: string, kind?: string, payload?: Record<string, any> | null): Promise<Command>;
+  addCommand(ticker: string | null, text: string, kind?: string, payload?: Record<string, any> | null): Promise<Command>;
   addFeedback(f: Feedback): Promise<void>;
   loadWatch(): Promise<Watch[]>;
   addWatch(ticker: string): Promise<void>;
@@ -85,7 +85,7 @@ class SupaApi implements Api {
   async loadCommands() {
     return check(await this.sb.from('commands').select('*').order('created_at', { ascending: false }).limit(500)) as Command[];
   }
-  async addCommand(ticker: string, text: string, kind = 'command', payload: Record<string, any> | null = null) {
+  async addCommand(ticker: string | null, text: string, kind = 'command', payload: Record<string, any> | null = null) {
     return check(await this.sb.from('commands').insert({ ticker, text, kind, payload }).select().single()) as Command;
   }
   async addFeedback(f: Feedback) { check(await this.sb.from('drawing_feedback').insert(f)); }
@@ -162,7 +162,7 @@ class MemApi implements Api {
   async loadCommands() { return [...this.commands]; }
   feedback: Feedback[] = [];
   async addFeedback(f: Feedback) { this.feedback.push({ ...f }); }
-  async addCommand(ticker: string, text: string, kind = 'command', payload: Record<string, any> | null = null) {
+  async addCommand(ticker: string | null, text: string, kind = 'command', payload: Record<string, any> | null = null) {
     const c: Command = { id: this.seq++, ticker, text, status: 'pending', reply: null, created_at: new Date().toISOString(), done_at: null, kind, payload };
     this.commands.unshift(c); this.emit('commands', 'INSERT', c, null); return c;
   }

@@ -410,10 +410,12 @@ function bindFpanel() {
 function updateFHead() {
   const n = activeCount(S.ui.f), b = $('#ftog'); if (b) b.innerHTML = `סינון${n ? ` <span class="fcount">${n}</span>` : ''} ${S.ui.fOpen ? '▴' : '▾'}`;
   const c = $('#fclear') as HTMLButtonElement | null; if (c) c.hidden = !n;
+  const c2 = $('#fclear2') as HTMLButtonElement | null; if (c2) c2.hidden = !n;
 }
 
 // ---------------- routing ----------------
 function route() {
+  syncBotFab();
   if (!S.email) return renderLogin();
   if (S.email.toLowerCase() !== OWNER_EMAIL) return renderDenied();
   if (!S.loaded) { app.innerHTML = '<div class="center muted">טוען…</div>'; return; }
@@ -469,7 +471,10 @@ function renderList() {
   <div class="filters">
     <input id="q" type="search" dir="ltr" placeholder="חיפוש טיקר" value="${esc(S.ui.q)}" autocapitalize="characters" />
     <div class="fhead"><button id="ftog" class="chip ${S.ui.fOpen ? 'on' : ''}" aria-expanded="${!!S.ui.fOpen}"></button><button id="fclear" class="ghost small" hidden>ניקוי הכל</button></div>
-    <div id="fpanel" class="fpanel" ${S.ui.fOpen ? '' : 'hidden'}>${fpanelHtml()}</div>
+    <div id="fpanel" class="fpanel" ${S.ui.fOpen ? '' : 'hidden'}>
+      <div class="fsh-head"><b>סינון</b><button id="fclear2" class="ghost small">ניקוי הכל</button><button id="fdone" class="primary small">הצג <span id="fdn">${rows.length}</span> מניות</button></div>
+      <div id="fbody" class="fbody">${fpanelHtml()}</div>
+    </div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
         ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
@@ -478,8 +483,12 @@ function renderList() {
   <ul class="list">${listInner(rows)}</ul>`;
   const q = $('#q') as HTMLInputElement;
   q.oninput = () => { S.ui.q = q.value; saveUi(); updateListBody(); };
-  $('#ftog')!.onclick = () => { S.ui.fOpen = !S.ui.fOpen; saveUi(); $('#fpanel')!.hidden = !S.ui.fOpen; $('#ftog')!.classList.toggle('on', S.ui.fOpen); updateFHead(); };
-  $('#fclear')!.onclick = () => { S.ui.f = {}; saveUi(); $('#fpanel')!.innerHTML = fpanelHtml(); bindFpanel(); updateListBody(); updateFHead(); };
+  const setFOpen = (o: boolean) => { S.ui.fOpen = o; saveUi(); $('#fpanel')!.hidden = !o; $('#ftog')!.classList.toggle('on', o); document.body.classList.toggle('fsheet-open', o); updateFHead(); };
+  $('#ftog')!.onclick = () => setFOpen(!S.ui.fOpen);
+  $('#fdone')!.onclick = () => setFOpen(false);
+  const clearF = () => { S.ui.f = {}; saveUi(); $('#fbody')!.innerHTML = fpanelHtml(); bindFpanel(); updateListBody(); updateFHead(); };
+  $('#fclear')!.onclick = clearF; $('#fclear2')!.onclick = clearF;
+  document.body.classList.toggle('fsheet-open', !!S.ui.fOpen);
   bindFpanel(); updateFHead();
   ($('#sort') as HTMLSelectElement).onchange = (e) => { S.ui.sort = (e.target as HTMLSelectElement).value; saveUi(); renderList(); };
   $('#logout')!.onclick = () => api.signOut();
@@ -536,6 +545,7 @@ function updateListBody() {
   const rows = filtered();
   $('.list')!.innerHTML = listInner(rows);
   $('.sortrow .small')!.textContent = `${rows.length} מניות`;
+  const fdn = $('#fdn'); if (fdn) fdn.textContent = String(rows.length);
   bindRows();
 }
 function listInner(rows: Row[]) {
@@ -705,6 +715,7 @@ function shell() {
       <button id="addLong">+ לונג</button>
     </div>
     <div class="indbar" id="indbar">${indChipsHtml()}</div>
+    <nav class="jump" id="jump" aria-label="מעבר לחלק בעמוד">${JUMPS.map(([k, l]) => `<button class="chip jmp" data-jump="${k}">${l}</button>`).join('')}</nav>
     <div id="hint" class="hint" hidden></div>
     <div class="panel" id="panel"></div>
   </div>`;
@@ -738,7 +749,20 @@ function shell() {
   $('#addZone')!.onclick = () => startTap('zone');
   $('#addLong')!.onclick = () => startTap('long');
   bindIndChips();
+  app.querySelectorAll<HTMLButtonElement>('[data-jump]').forEach((b) => (b.onclick = () => jumpTo(b.dataset.jump!)));
   swipe($('#chhead')!); swipe($('#panel')!); swipe($('#tools')!);
+}
+
+// ---------------- stock page section jumps (Eyal 2026-10-27, mobile: the overview / bot box were below the fold) ----------------
+const JUMPS: [string, string][] = [['research', 'סקירה'], ['secDraw', 'שרטוטים'], ['secCmd', '💬 פקודה לבוט'], ['secFib', 'פיבונאצי'], ['secUnfit', 'לא מתאימה'], ['secNote', 'הערה'], ['secData', 'נתונים']];
+function jumpTo(id: string) {
+  const el = document.getElementById(id); if (!el) return;
+  if (el instanceof HTMLDetailsElement) el.open = true;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (id === 'secCmd') setTimeout(() => ($('#cmd') as HTMLTextAreaElement | null)?.focus({ preventScroll: true }), 350);
+}
+function syncJumps() {
+  app.querySelectorAll<HTMLButtonElement>('[data-jump]').forEach((b) => { b.hidden = !document.getElementById(b.dataset.jump!); });
 }
 
 // ---------------- indicators on the chart (Eyal 2026-10-24): daily SMA 50/100/150/200 + Fibonacci ----------------
@@ -846,11 +870,11 @@ function fibPanelHtml(r: Row | undefined): string {
   const f = fibOfCur() ?? (m ? { ...m, atr_w: numOrNull(r?.fib_atr), manual: true }
     : r && rowFib(r) ? { ...rowFib(r)!, low_date: String(r.fib_low_date || ''), high_date: String(r.fib_high_date || ''), atr_w: numOrNull(r.fib_atr), manual: false } : null);
   const btns = `<div class="muted small fibhow">${S.ui.fib ? 'למיקום: גרור על הגרף את הקו העליון או התחתון של הפיבונאצי (גם מהצד, ליד המחיר) או את הנקודות. בשחרור הוא נצמד לפתיל הקרוב.' : ''}</div>${m ? '<div class="acts fibacts"><button id="fibAuto" class="ghost">אפס לאוטומטי</button></div>' : ''}`;
-  if (!f) return `<section class="fibbox"><h3>פיבונאצי</h3><div class="muted small">אין עדיין שפל ושיא ברורים בגרף השבועי. אפשר למקם ידנית.</div>${btns}</section>`;
+  if (!f) return `<section class="fibbox" id="secFib"><h3>פיבונאצי</h3><div class="muted small">אין עדיין שפל ושיא ברורים בגרף השבועי. אפשר למקם ידנית.</div>${btns}</section>`;
   const px = curBars ? curBars.daily[curBars.daily.length - 1]?.close : numOrNull(r?.current_price);
   const txt = fibText(f, f.atr_w, px, liveZoneOf(t, r));
   const lv = FIB_KEY.map((x) => `<span><b dir="ltr">${x}</b> <span dir="ltr">${fibPrice(f, x).toFixed(2)}</span></span>`).join('');
-  return `<section class="fibbox" data-fib-low="${f.low}" data-fib-high="${f.high}" data-fib-manual="${f.manual ? 1 : 0}"><h3>פיבונאצי <span class="badge ${f.manual ? 'b-fibm' : ''}">${f.manual ? 'ידני' : 'אוטומטי'}</span></h3>
+  return `<section class="fibbox" id="secFib" data-fib-low="${f.low}" data-fib-high="${f.high}" data-fib-manual="${f.manual ? 1 : 0}"><h3>פיבונאצי <span class="badge ${f.manual ? 'b-fibm' : ''}">${f.manual ? 'ידני' : 'אוטומטי'}</span></h3>
     <div class="small">מהשפל <bdi dir="ltr">${f.low.toFixed(2)}</bdi> (${ddmm(f.low_date)}/${f.low_date.slice(2, 4)}) לשיא <bdi dir="ltr">${f.high.toFixed(2)}</bdi> (${ddmm(f.high_date)}/${f.high_date.slice(2, 4)})</div>
     <div class="fiblv small">${lv}</div>
     <div class="small fibconf">${txt || '<span class="muted">המחיר והאזור לא מתלכדים עם 0.382 / 0.5 / 0.618.</span>'}</div>
@@ -1127,32 +1151,33 @@ function renderPanel() {
   p.innerHTML = `
     ${r ? liveBoxHtml(r) : ''}
     ${r && waitLong(r) ? `<section class="wait-box"><h3>אזהרה על הנר השבועי האחרון (מידע בלבד)</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
-    <section class="drawsec">
+    <section class="drawsec" id="secDraw">
       ${r ? statusLineHtml(r) : ''}
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
     ${researchHtml(S.research.get(t), S.ui.researchOpen !== false)}
     ${fibPanelHtml(r)}
-    <section class="unfitsec">
+    <section class="unfitsec" id="secUnfit">
       <h3>לא מתאימה לשיטה</h3>
       ${unfitHtml(t)}
     </section>
-    <section>
+    <section id="secNote">
       <h3>הערה</h3>
       <textarea id="note" rows="2" placeholder="הערה חופשית">${esc(note?.value || '')}</textarea>
     </section>
-    <section>
-      <h3>פקודה לבוט</h3>
+    <section id="secCmd">
+      <h3>פקודה לבוט <span class="muted small">(${esc(t)})</span></h3>
       <div class="cmd"><textarea id="cmd" rows="2" placeholder="למשל: תשרטט אזור חדש, תבדוק דוחות…"></textarea><button id="sendCmd" class="primary">שלח</button></div>
       <ul class="cmds">${cmds.map((c) => `<li><span class="badge ${c.status === 'done' ? 'b-pass' : c.status === 'error' ? 'b-obs' : 'b-review'}">${{ pending: 'ממתין', done: 'בוצע', error: 'שגיאה' }[c.status]}</span> ${esc(c.text)}${c.reply ? `<div class="reply">${esc(c.reply)}</div>` : ''}</li>`).join('')}</ul>
     </section>
-    ${r ? `<section><h3>נתוני סריקה</h3><div class="kv small" dir="ltr">
+    ${r ? `<section id="secData"><h3>נתוני סריקה</h3><div class="kv small" dir="ltr">
       status ${esc(liveOf(r)?.status ?? r.status)}${liveOf(r) && liveOf(r)!.status !== r.status ? ` (export ${esc(r.status)})` : ''} · R:R ${fmt(liveRR(r))} · zone dist ${fmt(r.tv_zone_dist_atr, 1)} ATR · wATR ${fmt(r.weekly_atr)}<br/>
       ${r.earnings_none ? '<span dir="rtl">אין דוחות</span>' : `earnings ${earnShort(r).replace(/^earn /, '') || '?'}`} ${r.tv_stale ? `· stale: ${esc(r.tv_stale)}` : ''}<br/>
       ${r.badges.includes('hammer') ? `${esc(r.last_week_reversal_kind)} E ${fmt(r.hammer_entry)} SL ${fmt(r.hammer_sl)} TP ${fmt(r.hammer_tp)} R:R ${fmt(r.hammer_rr)} calm ${r.hammer_calm_weeks ?? '?'}w` : ''}
       ${r.tradingview_url ? `<br/><a href="${esc(r.tradingview_url)}" target="_blank" rel="noopener">TradingView ↗</a>` : ''}</div></section>` : ''}
     <div class="spacer"></div>`;
+  syncJumps();
   const rs = $('#research', p) as HTMLDetailsElement | null; if (rs) rs.ontoggle = () => { S.ui.researchOpen = rs.open; saveUi(); };
   const fa = $('#fibAuto', p); if (fa) fa.onclick = () => { if (S.ticker) saveFibManual(S.ticker, null); };
 
@@ -1193,6 +1218,40 @@ function renderPanel() {
   };
 }
 
+// ---------------- message to the bot from any page (Eyal 2026-10-27: "can't send a message to the bot" on mobile) ----------------
+// Floating 💬 button on every page. On a stock page it jumps to that stock's 'פקודה לבוט' box; elsewhere it opens a sheet
+// for a general message (commands row with ticker = null, same table / trigger as the per-stock box).
+const botFab = document.createElement('button');
+botFab.id = 'botFab'; botFab.className = 'fab primary'; botFab.setAttribute('aria-label', 'הודעה לבוט'); botFab.textContent = '💬'; botFab.hidden = true;
+const botSheet = document.createElement('div');
+botSheet.id = 'botSheet'; botSheet.className = 'sheet'; botSheet.hidden = true;
+document.body.append(botFab, botSheet);
+function syncBotFab() {
+  const ok = !!S.email && S.email.toLowerCase() === OWNER_EMAIL && S.loaded;
+  botFab.hidden = !ok; if (!ok || location.hash.startsWith('#/t/')) botSheet.hidden = true;
+}
+function botListHtml() {
+  const cs = S.commands.filter((c) => !c.ticker).slice(0, 8);
+  return cs.map((c) => `<li><span class="badge ${c.status === 'done' ? 'b-pass' : c.status === 'error' ? 'b-obs' : 'b-review'}">${{ pending: 'ממתין', done: 'בוצע', error: 'שגיאה' }[c.status]}</span> ${esc(c.text)}${c.reply ? `<div class="reply">${esc(c.reply)}</div>` : ''}</li>`).join('')
+    || '<li class="muted small">אין עדיין הודעות כלליות. הודעה על מניה מסוימת: מעמוד המניה.</li>';
+}
+function openBotSheet() {
+  botSheet.innerHTML = `<div class="sh-head"><b>הודעה לבוט</b><button id="botClose" class="ghost small" aria-label="סגור">✕</button></div>
+    <div class="cmd"><textarea id="gcmd" rows="3" placeholder="למשל: תעדכן את הכללים, תבדוק את כל המניות שבמעקב…"></textarea><button id="gsend" class="primary">שלח</button></div>
+    <ul class="cmds" id="gcmds">${botListHtml()}</ul>`;
+  botSheet.hidden = false;
+  $('#botClose', botSheet)!.onclick = () => { botSheet.hidden = true; };
+  $('#gsend', botSheet)!.onclick = async () => {
+    const el = $('#gcmd', botSheet) as HTMLTextAreaElement; const txt = el.value.trim(); if (!txt) return;
+    const c = await guard(api.addCommand(null, txt), 'נשלח לבוט');
+    if (c) { el.value = ''; if (!S.commands.some((x) => x.id === c.id)) S.commands.unshift(c); $('#gcmds', botSheet)!.innerHTML = botListHtml(); }
+  };
+}
+botFab.onclick = () => {
+  if (cv && S.ticker && document.getElementById('secCmd')) { jumpTo('secCmd'); return; }
+  if (botSheet.hidden) openBotSheet(); else botSheet.hidden = true;
+};
+
 // ---------------- realtime ----------------
 function onChange(table: Table, ev: string, row: any, old: any) {
   if (table === 'positions') { loadPositions(); return; }
@@ -1207,6 +1266,7 @@ function onChange(table: Table, ev: string, row: any, old: any) {
     if (ev === 'DELETE') S.commands = S.commands.filter((c) => c.id !== old?.id);
     else if (row) { const i = S.commands.findIndex((c) => c.id === row.id); if (i >= 0) S.commands[i] = row; else S.commands.unshift(row); }
   }
+  if (table === 'commands' && !botSheet.hidden) { const g = $('#gcmds', botSheet); if (g) g.innerHTML = botListHtml(); }
   if (cv && S.ticker) { renderHeader(); syncChart(); if (table === 'labels') applyIndicators(); renderPanel(); }
   else if (!location.hash.startsWith('#/t/') && $('.list')) updateListBody();
 }
