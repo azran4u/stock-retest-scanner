@@ -694,6 +694,7 @@ function rowHtml(r: Row) {
     ${fibRowHtml(r)}
     <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', earnShort(r)].filter(Boolean).join(' · ')}</div>
     ${r.earnings_none ? '<div class="r3 small muted earn-none">אין דוחות</div>' : ''}
+    ${r.data_dup_of ? `<div class="r3 small wait-why dupwarn">⚠ נתוני המחיר זהים ל-<bdi>${esc(r.data_dup_of)}</bdi>, ייתכן שהגרף שגוי</div>` : ''}
     ${waitShort(r) ? `<div class="r3 small wait-why">${esc(waitShort(r))}</div>` : ''}
   </li>`;
 }
@@ -1168,6 +1169,7 @@ function renderPanel() {
   const note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
+    ${r?.data_dup_of ? `<section class="wait-box dupwarn"><div class="small">⚠ נתוני המחיר של המניה זהים ל-<bdi>${esc(r.data_dup_of)}</bdi>, ייתכן שהגרף והשרטוט מחושבים על נתונים שגויים. הבוט יבדוק.</div></section>` : ''}
     ${r ? liveBoxHtml(r) : ''}
     ${r && waitLong(r) ? `<section class="wait-box"><h3>אזהרה על הנר השבועי האחרון (מידע בלבד)</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section class="drawsec" id="secDraw">

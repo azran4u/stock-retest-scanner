@@ -122,6 +122,8 @@ export interface Row {
   tradingview_url?: string | null;
   /** TradingView 'EXCHANGE:SYMBOL' (export, srs_app/tv_symbols.py) */
   tv_symbol?: string | null;
+  /** export duplicate-series guard (srs_app/series_guard.py): ticker whose price series is identical */
+  data_dup_of?: string | null;
   [k: string]: unknown;
 }
 

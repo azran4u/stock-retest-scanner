@@ -476,6 +476,16 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] manual fib anchors skipped: {e}")
         manual = {}
     attach_fib(rows, fib, manual)
+    try:  # duplicate price-series guard (Eyal 2026-10-27, AVDE vs SCZ), srs_app/series_guard.py
+        from srs_app.series_guard import flag_duplicates
+        ser = {}
+        for r in rows:
+            f = out / "candles" / f"{r['ticker']}.json"
+            if f.exists():
+                ser[r["ticker"]] = [(b[0], b[4]) for b in json.loads(f.read_text()).get("d", [])]
+        flag_duplicates(rows, ser)
+    except Exception as e:  # never block the export
+        print(f"  [app data] duplicate-series check skipped: {e}")
     attach_week_closes(rows, asof_date=report_date)
     attach_reversals(rows, asof_date=report_date)
     try:
