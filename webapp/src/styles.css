@@ -342,3 +342,10 @@ canvas.calchart.empty { height: 0; aspect-ratio: auto; margin: 0; }
   .hbtns a.btnlike, .hbtns button { padding: 6px 9px; font-size: 13px; }
   .list { padding-bottom: calc(90px + var(--safe-b)); }
 }
+
+/* copy TradingView symbol (Eyal 2026-10-27) */
+button.cpy { background: transparent; min-height: 32px; min-width: 32px; padding: 0 4px; font-size: 15px; opacity: .75; line-height: 1; }
+button.cpy:active { opacity: 1; transform: scale(.92); }
+.tk button.cpy { vertical-align: middle; }
+.sortrow .cpyall { min-height: 32px; padding: 4px 8px; font-size: 13px; white-space: nowrap; }
+.copybox textarea { font-size: 16px; }

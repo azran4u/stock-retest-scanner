@@ -458,6 +458,13 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     nsec = attach_sectors(rows)
     if nsec:
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
+    try:  # TradingView symbol for the app copy button (Eyal 2026-10-27), srs_app/tv_symbols.py
+        from srs_app.tv_symbols import attach_tv_symbols
+        ntv = attach_tv_symbols(rows)
+        if ntv:
+            print(f"  [app data] TradingView symbols looked up for {ntv} tickers")
+    except Exception as e:  # never block the export
+        print(f"  [app data] tv symbols skipped: {e}")
     fib: Dict[str, Dict[str, Any]] = {}
     calib = calibration_tickers(out)  # trend-calibration page: candles + spark (+ weekly EMA30), no list rows
     n = export_candles(tickers + [t for t in calib if t not in set(tickers)], out, fetch_missing=list(watch) + calib,

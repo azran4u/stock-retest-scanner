@@ -120,6 +120,8 @@ export interface Row {
   tv_sl?: number | null;
   tv_tp?: number | null;
   tradingview_url?: string | null;
+  /** TradingView 'EXCHANGE:SYMBOL' (export, srs_app/tv_symbols.py) */
+  tv_symbol?: string | null;
   [k: string]: unknown;
 }
 

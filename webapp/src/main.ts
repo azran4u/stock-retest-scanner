@@ -7,6 +7,7 @@ import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
 import { researchHtml, type Research } from './research';
+import { tvSymbol, tvList, copyText } from './tvsym';
 import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, matches, type Facts, type Filters, type RevKind } from './filters';
 import { renderRulesHtml } from './rules';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
@@ -413,6 +414,20 @@ function updateFHead() {
   const c2 = $('#fclear2') as HTMLButtonElement | null; if (c2) c2.hidden = !n;
 }
 
+// ---------------- copy TradingView symbol (Eyal 2026-10-27) ----------------
+let copyBox: HTMLElement | null = null;
+async function doCopy(text: string, okMsg?: string) {
+  if (!text) return;
+  if (await copyText(text)) { toast(okMsg || `הועתק: ${text}`); return; }
+  // clipboard blocked: show the text selected so a long-press / Ctrl+C copies it
+  copyBox?.remove();
+  copyBox = document.createElement('div'); copyBox.className = 'sheet copybox';
+  copyBox.innerHTML = `<div class="sh-head"><b>העתק ידנית</b><button class="ghost small" aria-label="סגור">✕</button></div><textarea readonly dir="ltr" rows="3"></textarea>`;
+  document.body.appendChild(copyBox);
+  const ta = copyBox.querySelector('textarea')!; ta.value = text; ta.focus(); ta.select();
+  copyBox.querySelector('button')!.onclick = () => { copyBox?.remove(); copyBox = null; };
+}
+
 // ---------------- routing ----------------
 function route() {
   syncBotFab();
@@ -475,7 +490,7 @@ function renderList() {
       <div class="fsh-head"><b>סינון</b><button id="fclear2" class="ghost small">ניקוי הכל</button><button id="fdone" class="primary small">הצג <span id="fdn">${rows.length}</span> מניות</button></div>
       <div id="fbody" class="fbody">${fpanelHtml()}</div>
     </div>
-    <div class="sortrow"><span class="muted small">${rows.length} מניות</span>
+    <div class="sortrow"><span class="muted small">${rows.length} מניות</span><button id="copyList" class="ghost small cpyall" title="העתק את הרשימה המסוננת כסימולים של TradingView">📋 העתק ל-TV</button>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
         ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select></label></div>
@@ -492,6 +507,7 @@ function renderList() {
   bindFpanel(); updateFHead();
   ($('#sort') as HTMLSelectElement).onchange = (e) => { S.ui.sort = (e.target as HTMLSelectElement).value; saveUi(); renderList(); };
   $('#logout')!.onclick = () => api.signOut();
+  $('#copyList')!.onclick = () => { const rs = filtered(); if (rs.length) doCopy(tvList(rs), `הועתקו ${rs.length} סימולים ל-TradingView`); };
   bindRows();
   const y = sessionStorage.getItem('srs-scroll'); if (y) window.scrollTo(0, +y);
 }
@@ -652,6 +668,7 @@ function bindRows() {
   const aw = $('#addWatch') as HTMLButtonElement | null;
   if (aw) aw.onclick = async () => { const t = aw.dataset.t!; await toggleWatch(t); S.ui.q = ''; saveUi(); location.hash = '#/t/' + t; };
   app.querySelectorAll<HTMLButtonElement>('.row .star').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleWatch(b.dataset.star!); }));
+  app.querySelectorAll<HTMLButtonElement>('.row .cpy').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); doCopy(b.dataset.copy!); }));
   app.querySelectorAll<HTMLElement>('.row').forEach((li) => (li.onclick = () => {
     sessionStorage.setItem('srs-scroll', String(window.scrollY));
     location.hash = '#/t/' + li.dataset.t;
@@ -668,7 +685,7 @@ function rowHtml(r: Row) {
     isNi(r.ticker) && latestLabel(r.ticker, 'not_interesting')?.until ? `<span class="muted small">חוזרת ב-${ddmm(latestLabel(r.ticker, 'not_interesting')!.until)}</span>` : '',
   ].join('');
   return `<li class="row" data-t="${esc(r.ticker)}">
-    <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
+    <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b><button class="ghost cpy" data-copy="${esc(tvSymbol(r))}" aria-label="העתק ל-TradingView" title="${esc(tvSymbol(r))}">📋</button></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     ${secHtml(r)}
@@ -701,7 +718,7 @@ function shell() {
   <div class="cv">
     <header class="top ch" id="chhead">
       <button id="back" class="ghost icon" aria-label="חזרה">→</button>
-      <div class="tk"><b id="tk" dir="ltr"></b> <span id="tkpx" class="muted small" dir="ltr"></span><div id="tkb" class="tkb"></div></div>
+      <div class="tk"><b id="tk" dir="ltr"></b><button id="tkCopy" class="ghost cpy" aria-label="העתק ל-TradingView">📋</button> <span id="tkpx" class="muted small" dir="ltr"></span><div id="tkb" class="tkb"></div></div>
       <button id="star" class="ghost icon star" aria-label="מעקב">☆</button>
       <button id="niBtn" class="ghost small nib" aria-label="לא מעניינת">🚫</button>
       <button id="prev" class="ghost icon" aria-label="הקודם">‹</button>
@@ -742,6 +759,7 @@ function shell() {
   });
   $('#back')!.onclick = () => { location.hash = '#/'; };
   $('#star')!.onclick = () => S.ticker && toggleWatch(S.ticker);
+  $('#tkCopy')!.onclick = (e) => { e.stopPropagation(); doCopy(($('#tkCopy') as HTMLElement).dataset.copy || ''); };
   $('#niBtn')!.onclick = () => { if (!S.ticker) return; unfitOpen = !unfitOpen; renderUnfitPop(); };
   $('#prev')!.onclick = () => go(-1);
   $('#next')!.onclick = () => go(1);
@@ -924,6 +942,7 @@ function renderHeader() {
   const t = S.ticker; if (!t) return;
   const r = S.byT.get(t) || allRows().find((x) => x.ticker === t) || { ticker: t, status: '', badges: [] };
   $('#tk')!.textContent = t;
+  const cp = $('#tkCopy')!; cp.dataset.copy = tvSymbol(r as Row); cp.title = cp.dataset.copy;
   $('#tkpx')!.textContent = r.current_price != null ? fmt(r.current_price) : '';
   $('#tkb')!.innerHTML = badgesOf(r as Row).filter((b) => b !== 'watch').map(badgeHtml).join('');
   const st = $('#star')!; st.textContent = isWatched(t) ? '★' : '☆'; st.classList.toggle('on', isWatched(t));

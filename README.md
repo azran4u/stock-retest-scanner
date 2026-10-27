@@ -304,3 +304,5 @@ select ticker, until from (
 ```
 
 **Not interesting = excluded, data still computed:** `export_daily_report.py` drops active not-interesting tickers (from `app_state.json`, checked against the report date) from `grok_needs_drawing_target` and `grok_review_target`; all report columns are still computed for them. Bot-drawing generation and review prompts must skip them too (`sync.not_interesting_from_state()`).
+
+**Copy TradingView symbol (Eyal 2026-10-27):** 📋 next to the ticker (list card + stock page header) copies `EXCHANGE:SYMBOL`; "📋 העתק ל-TV" next to the row count copies the filtered list comma-separated. Symbol = export `tv_symbol` from TradingView's own scanner (`srs_app/tv_symbols.py`, primary US listing, no OTC; NYSE Arca ETFs = `AMEX:`, Cboe BZX = `CBOE:`, class shares with a dot, e.g. `NYSE:BRK.B`; cache `/workspace/cache/tv_symbols.json` 30d / misses 3d), fallback = exchange in `tradingview_url`, else the bare ticker (`webapp/src/tvsym.ts`). Clipboard blocked -> the text is shown selected. Tests: `tests/test_tv_symbols.py`, `webapp/test_tvsym.mjs`, `webapp/e2e_copy_tv.mjs`.
