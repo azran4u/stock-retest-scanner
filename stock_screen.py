@@ -923,7 +923,11 @@ def _apply_tv_rr_gate(ticker: str, out: Dict[str, Any], short: Optional[float],
 
 
 def _local_today() -> date:
-    """Return today's calendar date in the user's Asia/Jerusalem timezone."""
+    """Return today's calendar date in the user's Asia/Jerusalem timezone (SRS_ASOF_DATE=YYYY-MM-DD overrides it,
+    for re-running a missed night, e.g. the 2026-10-27 run re-done on 10-28)."""
+    v = os.environ.get("SRS_ASOF_DATE")
+    if v:
+        return date.fromisoformat(v[:10])
     try:
         return datetime.now(ZoneInfo("Asia/Jerusalem")).date()
     except Exception:
