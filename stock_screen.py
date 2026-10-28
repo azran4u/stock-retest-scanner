@@ -50,6 +50,15 @@ EARN_NEAR_DAYS = 30          # ... and daily (EARN_NEAR_REFRESH_HOURS) when it i
 EARN_NEAR_REFRESH_HOURS = 20
 EARN_MAX_AHEAD_DAYS = 190    # a source date further out than this is not a plausible "next" earnings date
                              # (190: semiannual reporters still get a date)
+# 2026-10-28 hang (nightly 2026-10-27 stalled for hours inside yfinance get_earnings_dates -> curl_cffi perform on
+# ETFs that answer 'No fundamentals data found' 404): every Yahoo lookup and every ticker's whole earnings lookup
+# now run under a wall-clock bound, funds skip Yahoo, and the negative answers are cached.
+YAHOO_CALL_TIMEOUT_S = 45     # one Yahoo/yfinance earnings lookup (all its HTTP calls) per ticker
+EARN_TICKER_TIMEOUT_S = 150   # one ticker's whole lookup (TradingView + Yahoo + Nasdaq)
+FUND_MISS_TTL_DAYS = 30       # ETF / fund with no date anywhere: "no earnings" cached this long (not re-asked nightly)
+YAHOO_NOFUND_TTL_DAYS = 30    # Yahoo said "No fundamentals data found": Yahoo is not asked again for this long
+FUND_TYPES_TTL_DAYS = 30      # TradingView scanner type cache (cache/fund_types.json)
+FUND_QUOTE_TYPES = {"ETF", "MUTUALFUND", "CLOSEDENDFUND", "MONEYMARKET", "INDEX"}
 CACHE_DIR = Path("/workspace/cache")
 OUT_CSV = Path("/workspace/stock_screen_results.csv")
 OUT_TXT = Path("/workspace/stock_screen_results.txt")
@@ -1007,6 +1016,108 @@ import threading as _threading
 _TV_STATE = _threading.local()  # .rate_limited from the last TV scrape on this thread
 
 
+def _bounded_call(fn, timeout_s: float, *args, **kwargs):
+    """fn(*args, **kwargs) with a hard wall-clock bound: it runs in a daemon thread; if it has not returned after
+    timeout_s a TimeoutError is raised and the caller moves on (the stuck thread is abandoned and cannot keep the
+    process alive). Exceptions from fn are re-raised. Socket/curl timeouts alone did not bound the 2026-10-27 run."""
+    box: Dict[str, Any] = {}
+
+    def run():
+        try:
+            box["r"] = fn(*args, **kwargs)
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the caller
+            box["e"] = exc
+
+    name = getattr(fn, "__name__", "call")
+    th = _threading.Thread(target=run, daemon=True, name=f"bounded-{name}")
+    th.start()
+    th.join(timeout_s)
+    if th.is_alive():
+        raise TimeoutError(f"{name} timed out after {timeout_s:.0f}s")
+    if "e" in box:
+        raise box["e"]
+    return box.get("r")
+
+
+def _iso_age_days(v: Any) -> Optional[float]:
+    try:
+        ts = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=ZoneInfo("UTC"))
+        return (datetime.now(ZoneInfo("UTC")) - ts).total_seconds() / 86400.0
+    except Exception:
+        return None
+
+
+def _fund_types_path() -> Path:
+    return CACHE_DIR / "fund_types.json"
+
+
+def load_fund_types() -> Dict[str, Dict[str, Any]]:
+    try:
+        return json.loads(_fund_types_path().read_text())
+    except Exception:
+        return {}
+
+
+def prefetch_fund_types(tickers: List[str], post=None, batch: int = 400) -> Dict[str, Dict[str, Any]]:
+    """TradingView scanner `type` / `subtype` per ticker (fund/etf, fund/closedend, stock/common, dr ...) in bulk,
+    cached FUND_TYPES_TTL_DAYS in cache/fund_types.json. One request per `batch` tickers, 30 s timeout each; any
+    failure just leaves tickers unknown (they are then treated as stocks)."""
+    cache = load_fund_types()
+    need = sorted({t.strip().upper() for t in tickers
+                   if (_iso_age_days((cache.get(t.strip().upper()) or {}).get("fetched")) or 1e9) >= FUND_TYPES_TTL_DAYS})
+    if not need:
+        return cache
+    if post is None:
+        post = lambda body: requests.post("https://scanner.tradingview.com/america/scan", json=body, timeout=30,  # noqa: E731
+                                          headers={"User-Agent": UA}).json()
+    now = datetime.now(ZoneInfo("UTC")).replace(microsecond=0).isoformat()
+    got = 0
+    for i in range(0, len(need), batch):
+        part = need[i:i + batch]
+        names = [t.replace("-", ".") for t in part]
+        body = {"filter": [{"left": "name", "operation": "in_range", "right": names}],
+                "columns": ["name", "type", "subtype", "is_primary"], "range": [0, len(names) * 4]}
+        try:
+            res = _bounded_call(post, 60, body) or {}
+        except Exception as exc:
+            print(f"  [fund types] scanner failed: {exc}", flush=True)
+            continue
+        best: Dict[str, Tuple[bool, str, str]] = {}
+        for d in res.get("data") or []:
+            name, typ, sub, prim = (list(d.get("d") or []) + [None] * 4)[:4]
+            k = str(name or "").upper().replace(".", "-")
+            if k and (k not in best or (prim and not best[k][0])):
+                best[k] = (bool(prim), str(typ or ""), str(sub or ""))
+        for t in part:
+            b = best.get(t) or best.get(t.replace(".", "-"))
+            cache[t] = {"type": b[1] if b else None, "subtype": b[2] if b else None, "fetched": now}
+            got += 1 if b else 0
+    try:
+        _fund_types_path().write_text(json.dumps(cache))
+    except Exception as exc:
+        print(f"  [fund types] cache write failed: {exc}", flush=True)
+    print(f"  [fund types] {got}/{len(need)} typed via TradingView scanner", flush=True)
+    return cache
+
+
+def is_fund(ticker: str) -> bool:
+    """ETF / closed-end / mutual fund (no earnings): TradingView scanner type 'fund' (cache/fund_types.json), else
+    the cached yfinance quoteType (cache/yfown_T.json), else an earlier earn cache verdict. Cache-only, no network."""
+    t = ticker.strip().upper()
+    ft = load_fund_types().get(t) or {}
+    if ft.get("type"):
+        return ft.get("type") == "fund"
+    try:
+        q = json.loads((CACHE_DIR / f"yfown_{t}.json").read_text()).get("quote_type")
+        if q:
+            return str(q).upper() in FUND_QUOTE_TYPES
+    except Exception:
+        pass
+    return bool((_load_earn_cache(t) or {}).get("fund"))
+
+
 def _tv_ticker_candidates(ticker: str) -> List[str]:
     """TradingView path tickers: prefer BRK-B → BRK.B, also try original."""
     raw = ticker.strip().upper()
@@ -1069,7 +1180,8 @@ def earn_cache_lookup(ticker: str, today: Optional[date] = None,
             return "fetch", None
         ttl_h = EARN_NEAR_REFRESH_HOURS if (d - today).days <= EARN_NEAR_DAYS else EARN_REFRESH_DAYS * 24
         return ("hit", d) if (age_h is not None and 0 <= age_h < ttl_h) else ("stale", d)
-    if age_h is not None and age_h < EARN_MISS_TTL_HOURS:
+    miss_ttl_h = FUND_MISS_TTL_DAYS * 24 if data.get("fund") else EARN_MISS_TTL_HOURS
+    if age_h is not None and age_h < miss_ttl_h:
         return "recent_miss", None
     return "fetch", None
 
@@ -1170,7 +1282,7 @@ def parse_nasdaq_earnings(d: Dict[str, Any]) -> Tuple[Optional[date], bool]:
 
 def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str,
                      error: Optional[str] = None, sources: Optional[Dict[str, Optional[str]]] = None,
-                     last_date: Optional[str] = None) -> None:
+                     last_date: Optional[str] = None, extra: Optional[Dict[str, Any]] = None) -> None:
     """Store the absolute next earnings DATE (YYYY-MM-DD) — never days-to-earnings.
     sources = every provider's answer of this fetch ({"tradingview": "2026-11-04", "get_earnings_dates": ...})."""
     payload = {
@@ -1184,6 +1296,8 @@ def _save_earn_cache(ticker: str, earnings_date: Optional[str], source: str,
         payload["last_earnings_date"] = last_date  # latest already-reported date seen (earnings_state)
     if error:
         payload["error"] = error[:300]
+    if extra:
+        payload.update({k: v for k, v in extra.items() if v is not None})
     try:
         _earn_cache_path(ticker).write_text(json.dumps(payload))
     except Exception as exc:
@@ -1285,10 +1399,33 @@ def _yahoo_next_earnings(
 ) -> Tuple[Optional[date], str, List[str]]:
     """Fallback: next unreported earnings via yfinance APIs. `past` (if given) collects already-reported dates
     seen in the answers (earnings_state: a company with a past report is never 'no earnings')."""
+    import logging
     import yfinance as yf
 
     errors: List[str] = []
     yf_ticker = yf.Ticker(ticker)
+    sym = ticker.strip().upper()
+
+    class _NoFund(logging.Handler):  # yfinance only LOGS the 404 'No fundamentals data found' (no exception)
+        def emit(self, record):
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return
+            if "No fundamentals data found" in msg and sym in msg.upper():
+                errors.append("yahoo: no fundamentals data found (404)")
+
+    h = _NoFund(level=logging.DEBUG)
+    lg = logging.getLogger("yfinance")
+    lg.addHandler(h)
+    try:
+        return _yahoo_lookup(yf_ticker, today, past, errors)
+    finally:
+        lg.removeHandler(h)
+
+
+def _yahoo_lookup(yf_ticker: Any, today: date, past: Optional[List[date]], errors: List[str]
+                  ) -> Tuple[Optional[date], str, List[str]]:
 
     for method_name in ("get_earnings_dates",):
         method = getattr(yf_ticker, method_name, None)
@@ -1346,6 +1483,7 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     errors: List[str] = []
 
     past: List[date] = []
+    _extra: Dict[str, Any] = {}
 
     def _last() -> Optional[str]:
         prev = _load_earn_cache(ticker) or {}
@@ -1363,7 +1501,8 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
             sources: Optional[Dict[str, Optional[str]]] = None) -> Dict[str, Any]:
         days = int((next_date - today).days)
         if not cached:
-            _save_earn_cache(ticker, next_date.isoformat(), source, sources=sources, last_date=_last())
+            _save_earn_cache(ticker, next_date.isoformat(), source, sources=sources, last_date=_last(),
+                             extra=_extra.get("v"))
         return {
             "earnings_date": next_date.isoformat(),
             "days_to_earnings": days,
@@ -1387,6 +1526,9 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
             "earnings_error": prev.get("error") or "recent miss (cached)",
         }
 
+    prev_cache = _load_earn_cache(ticker) or {}
+    fund = is_fund(ticker)
+
     # Primary: TradingView (cached exchange from FinViz / resolve_exchange)
     try:
         exchange = resolve_exchange(ticker)
@@ -1403,13 +1545,34 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     except Exception as exc:
         errors.append(f"tradingview: {exc}")
 
-    # Yahoo / yfinance: always asked too (a provider's projected date can be later than the confirmed one)
-    try:
-        yf_date, yf_source, yf_errors = _yahoo_next_earnings(ticker, today, past=past)
-        errors.extend(yf_errors)
-        cands[yf_source if yf_date is not None else "yahoo"] = yf_date
-    except Exception as exc:
-        errors.append(f"yfinance: {exc}")
+    # Yahoo / yfinance: asked too (a provider's projected date can be later than the confirmed one) - except for
+    # funds (no earnings; Yahoo answers 404 'No fundamentals data found' and its scrape hung the 2026-10-27 run) and
+    # tickers where Yahoo said 'no fundamentals' within YAHOO_NOFUND_TTL_DAYS. Always wall-clock bounded.
+    nofund_at = prev_cache.get("yahoo_nofund_at")
+    if fund:
+        cands["yahoo"] = None
+        errors.append("yahoo skipped: fund")
+    elif nofund_at and (_iso_age_days(nofund_at) or 1e9) < YAHOO_NOFUND_TTL_DAYS:
+        cands["yahoo"] = None
+        errors.append("yahoo skipped: no fundamentals (cached)")
+    else:
+        nofund_at = None
+        yf_past: List[date] = []  # private list: an abandoned (timed-out) thread must not touch `past` later
+        try:
+            yf_date, yf_source, yf_errors = _bounded_call(_yahoo_next_earnings, YAHOO_CALL_TIMEOUT_S,
+                                                          ticker, today, past=yf_past)
+            past.extend(yf_past)
+            errors.extend(yf_errors)
+            cands[yf_source if yf_date is not None else "yahoo"] = yf_date
+            if yf_date is None and any("no fundamentals data found" in str(e).lower() for e in yf_errors):
+                nofund_at = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        except TimeoutError as exc:
+            errors.append(f"yfinance: {exc}")
+            cands["yahoo"] = None
+        except Exception as exc:
+            errors.append(f"yfinance: {exc}")
+    extra = {"fund": True if fund else None, "yahoo_nofund_at": nofund_at}
+    _extra["v"] = extra
 
     confirmed: set = set()
     try:  # Nasdaq (Zacks): tells company-confirmed dates apart from algorithmic estimates
@@ -1438,7 +1601,8 @@ def get_next_earnings(ticker: str, today: Optional[date] = None, force: bool = F
     if getattr(_TV_STATE, "rate_limited", False):
         err = ("tradingview rate-limited; " + err).strip("; ")  # not cached: retry next run
     else:
-        _save_earn_cache(ticker, None, "miss", error=err, last_date=_last())  # retried after EARN_MISS_TTL_HOURS
+        # retried after EARN_MISS_TTL_HOURS (funds: FUND_MISS_TTL_DAYS) - earnings_state 'none' = passes the gate
+        _save_earn_cache(ticker, None, "miss", error=err, last_date=_last(), extra=extra)
     return {
         "earnings_date": None,
         "days_to_earnings": None,
@@ -1509,7 +1673,7 @@ def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
     out: Dict[str, Dict[str, Any]] = {}
     for i, ticker in enumerate(eligible, start=1):
         try:
-            info = get_next_earnings(ticker, today=today)
+            info = _bounded_call(get_next_earnings, EARN_TICKER_TIMEOUT_S, ticker, today=today)
         except Exception as exc:
             info = {
                 "earnings_date": None,
@@ -1522,7 +1686,8 @@ def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
         out[ticker] = info
         print(
             f"[earnings {i}/{len(eligible)}] {ticker}: "
-            f"{info.get('days_to_earnings') if info.get('earnings_known') else 'unknown'}"
+            f"{info.get('days_to_earnings') if info.get('earnings_known') else 'unknown'}",
+            flush=True,
         )
     return out
 
@@ -1868,7 +2033,7 @@ def write_universe_data(tickers: List[str], eligible: Optional[set] = None) -> D
             out[t] = rec  # fails $vol / history anyway: skip the (slow) earnings lookup
             continue
         try:
-            e = get_next_earnings(t, today=today)
+            e = _bounded_call(get_next_earnings, EARN_TICKER_TIMEOUT_S, t, today=today)
             rec["earnings_date"] = e.get("earnings_date")
             rec["earnings_source"] = e.get("earnings_source")
         except Exception as exc:
@@ -1884,6 +2049,12 @@ def write_universe_data(tickers: List[str], eligible: Optional[set] = None) -> D
 
 
 def main():
+    try:  # the log is a file: line-buffer it so a stall is visible where it happens (2026-10-27 the log lagged hours)
+        import sys
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     print("=== Fetching FinViz screener tickers ===")
     tickers = fetch_screener_tickers()
     print(f"Total tickers: {len(tickers)}")
@@ -1928,6 +2099,10 @@ def main():
         })
     pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
 
+    try:  # ETFs / funds skip the Yahoo earnings lookup (bulk TradingView scanner types, cached 30 days)
+        prefetch_fund_types([r["ticker"] for r in results])
+    except Exception as exc:
+        print(f"  [fund types] prefetch failed: {exc}")
     write_verify_outputs(results)
     eligible = {r["ticker"] for r in results
                 if (r.get("detail") or {}).get("weekly_bars", 0) and (r.get("detail") or {}).get("weekly_bars", 0) >= MIN_WEEKLY_BARS
