@@ -160,3 +160,34 @@ def test_verify_loop_bounds_each_ticker(env, monkeypatch):
     out = ss._enrich_verify_earnings(res)
     assert time.monotonic() - t0 < 2
     assert all(not v["earnings_known"] and "timed out" in v["earnings_error"] for v in out.values())
+
+
+def test_earnings_history_hang_is_bounded_and_funds_skip(env, monkeypatch):
+    """report_filters.earnings_history (hammer calm weeks) had the same unbounded yfinance scrape (export 2026-10-28)."""
+    import report_filters as rf
+    d, ans, calls = env
+    monkeypatch.setattr(rf, "EARN_HIST_CALL_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(rf, "_EARN_HIST_TIMEOUTS", [0])
+
+    class T:
+        def __init__(self, t):
+            calls["yf"] += 1
+
+        def get_earnings_dates(self, limit=16):
+            FOREVER.wait(60)
+
+    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=T))
+    t0 = time.monotonic()
+    dates, note = rf.earnings_history("XYZ")
+    assert time.monotonic() - t0 < 2 and dates is None and "timed out" in note and calls["yf"] == 1
+    (d / "fund_types.json").write_text(json.dumps({"QQQ": {"type": "fund", "fetched": datetime.now(timezone.utc).isoformat()}}))
+    dates, note = rf.earnings_history("QQQ")
+    assert calls["yf"] == 1 and dates is None and note == "fund: no earnings"
+    assert json.loads((d / "earnhist_QQQ.json").read_text())["fund"] is True
+    for t in ("A1", "A2"):
+        rf.earnings_history(t)
+    assert calls["yf"] == 3
+    t0 = time.monotonic()
+    dates, note = rf.earnings_history("A3")   # breaker open after 3 consecutive timeouts: no call
+    assert calls["yf"] == 3 and "skipped" in note and time.monotonic() - t0 < 0.1
+    assert not (d / "earnhist_A3.json").exists()

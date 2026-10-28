@@ -329,6 +329,9 @@ HAMMER_SL_ATR_BUFFER = 0.05   # hammer SL = hammer week low - 0.05 x weekly ATR(
 HAMMER_TP_LOOKBACK_WEEKS = 52  # TP = highest weekly body (open/close) in the 52 weeks before the hammer
 HAMMER_CALM_CAP = 104
 EARN_HIST_TTL_DAYS = 30
+EARN_HIST_BREAKER = 3          # after this many consecutive timeouts Yahoo is not asked again this run
+_EARN_HIST_TIMEOUTS = [0]
+EARN_HIST_CALL_TIMEOUT_S = 25  # one yfinance get_earnings_dates call (2026-10-28: Yahoo scrape hung / ~60 s per ticker)
 
 
 def earnings_history(ticker: str) -> Tuple[Optional[List[str]], str]:
@@ -337,27 +340,47 @@ def earnings_history(ticker: str) -> Tuple[Optional[List[str]], str]:
     cf = ss.CACHE_DIR / f"earnhist_{ticker}.json"
     try:
         c = json.loads(cf.read_text()) if cf.exists() else None
-        ttl = EARN_HIST_TTL_DAYS if c and c.get("dates") else 1  # failures retried after a day
+        ttl = EARN_HIST_TTL_DAYS if c and (c.get("dates") or c.get("fund")) else 1  # failures retried after a day
         if c and (pd.Timestamp.utcnow().tz_localize(None) - pd.Timestamp(c["fetched_at"])).days < ttl:
             return c.get("dates"), c.get("note", "")
     except Exception:
         pass
     dates, note = None, ""
     import time as _time
-    for attempt in range(2):
+    if ss.is_fund(ticker):  # ETFs / funds have no earnings; Yahoo 404s and its scrape can hang (2026-10-28)
+        note = "fund: no earnings"
+        ttl_fund = True
+    else:
+        ttl_fund = False
+
+    def _fetch():
+        import yfinance as yf
+        return yf.Ticker(ticker.replace(".", "-")).get_earnings_dates(limit=16)
+
+    if not ttl_fund and _EARN_HIST_TIMEOUTS[0] >= EARN_HIST_BREAKER:
+        return None, "earnings history error: Yahoo timing out this run (skipped)"  # not cached: next run retries
+    for attempt in range(0 if ttl_fund else 2):
         try:
-            import yfinance as yf
-            df = yf.Ticker(ticker.replace(".", "-")).get_earnings_dates(limit=16)
+            df = ss._bounded_call(_fetch, EARN_HIST_CALL_TIMEOUT_S)  # wall-clock bound (2026-10-28 export stall)
+            _EARN_HIST_TIMEOUTS[0] = 0
             if df is not None and len(df):
                 dates = sorted({str(pd.Timestamp(x).date()) for x in df.index})
                 note = ""
                 break
             note = "no earnings dates from yfinance"
+        except TimeoutError as e:
+            _EARN_HIST_TIMEOUTS[0] += 1
+            note = f"earnings history error: {str(e)[:80]}"
+            break  # a timeout is not retried in the same run (cached as a failure, retried after a day)
         except Exception as e:
             note = f"earnings history error: {str(e)[:80]}"
+            if "timed out" in str(e).lower():  # curl (28) timeout inside yfinance counts too
+                _EARN_HIST_TIMEOUTS[0] += 1
+                break
         _time.sleep(2)
     try:
-        cf.write_text(json.dumps({"fetched_at": str(pd.Timestamp.utcnow().tz_localize(None)), "dates": dates, "note": note}))
+        cf.write_text(json.dumps({"fetched_at": str(pd.Timestamp.utcnow().tz_localize(None)), "dates": dates, "note": note,
+                                  **({"fund": True} if ttl_fund else {})}))
     except Exception:
         pass
     return dates, note
