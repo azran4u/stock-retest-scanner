@@ -26,6 +26,21 @@ export interface ChartCallbacks {
   /** live while dragging (the Fib lines follow before the drop is saved) */
   onFibMove?(which: 'low' | 'high', time: string): void;
 }
+/** One earnings report marker (Eyal 2026-10-28). d = report date; future = the next known date (est = estimated). */
+export interface EarnMark { d: string; t: 'bmo' | 'amc' | null; e: number | null; a: number | null; s: number | null; future?: boolean; est?: boolean }
+const ddmmyyyy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+export function earnTip(m: EarnMark): string {
+  const tm = m.t === 'bmo' ? 'לפני הפתיחה' : m.t === 'amc' ? 'אחרי הסגירה' : '';
+  const head = `<b>${m.future ? 'דוח הבא' : 'דוח'} <bdi dir="ltr">${ddmmyyyy(m.d)}</bdi></b>${m.future && m.est ? ' (משוער)' : ''}${tm ? ' · ' + tm : ''}`;
+  let eps = '';
+  if (m.a != null && m.e != null) {
+    const beat = m.a > m.e ? 'עקפה' : m.a < m.e ? 'פספסה' : 'בדיוק בצפי';
+    eps = `<div><bdi dir="ltr">EPS ${m.a.toFixed(2)}</bdi> מול צפי <bdi dir="ltr">${m.e.toFixed(2)}</bdi> · <span class="${m.a >= m.e ? 'up' : 'dn'}">${beat}${m.s != null ? ` <bdi dir="ltr">(${m.s > 0 ? '+' : ''}${m.s.toFixed(1)}%)</bdi>` : ''}</span></div>`;
+  } else if (m.a != null) eps = `<div><bdi dir="ltr">EPS ${m.a.toFixed(2)}</bdi> (אין צפי)</div>`;
+  else if (m.e != null) eps = `<div>צפי <bdi dir="ltr">EPS ${m.e.toFixed(2)}</bdi></div>`;
+  else if (!m.future) eps = '<div class="muted">אין נתוני EPS</div>';
+  return head + eps;
+}
 export interface FibEdit { low: { time: string; price: number } | null; high: { time: string; price: number } | null }
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -44,6 +59,9 @@ export class ChartView {
   editable = true;
   weekly = true;
   private atrEl: HTMLDivElement;
+  private tipEl: HTMLDivElement;
+  earnings: EarnMark[] = [];
+  private earnTipIdx: number | null = null;
   private atrVal: number | null = null;
   private dragging: { id: string; key: HandleKey } | null = null;
   private lastKey = '';
@@ -79,11 +97,28 @@ export class ChartView {
     this.atrEl.className = 'atrw';
     this.atrEl.hidden = true;
     host.appendChild(this.atrEl);
+    this.tipEl = document.createElement('div');
+    this.tipEl.className = 'etip';
+    this.tipEl.hidden = true;
+    this.tipEl.dir = 'rtl';
+    host.appendChild(this.tipEl);
+    // earnings markers: hover (mouse) shows the details; tap toggles them (touch); tap elsewhere closes
+    this.svg.addEventListener('pointerover', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const g = (e.target as Element).closest('g.earn') as SVGGElement | null;
+      if (g) this.showEarnTip(+g.dataset.i!);
+    });
+    // (the overlay is re-rendered while hovering, so pointerout can land on a detached node: track moves on the host)
+    host.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && this.earnTipIdx != null && !(e.target as Element).closest?.('g.earn')) this.showEarnTip(null);
+    });
+    host.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && this.earnTipIdx != null) this.showEarnTip(null); });
     this.svg.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     // own tap detection (lightweight-charts swallows quick 2nd taps as double-tap)
     let down: { x: number; y: number; t: number } | null = null;
     host.addEventListener('pointerdown', (e) => {
-      down = (e.target as Element).closest('g.h, g.tag, g.fh') ? null : { x: e.clientX, y: e.clientY, t: Date.now() };
+      if (!(e.target as Element).closest('g.earn') && this.earnTipIdx != null) this.showEarnTip(null);
+      down = (e.target as Element).closest('g.h, g.tag, g.fh, g.earn') ? null : { x: e.clientX, y: e.clientY, t: Date.now() };
     }, true);
     host.addEventListener('pointerup', (e) => {
       if (!down || this.dragging) return;
@@ -146,6 +181,30 @@ export class ChartView {
     this.fibAnchorS = this.chart.addSeries(LineSeries, { color: 'rgba(178,181,190,.55)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
     if (f.lowTime < f.highTime) this.fibAnchorS.setData([{ time: f.lowTime as Time, value: f.low }, { time: f.highTime as Time, value: f.high }]);
     if (fit) this.fitLevels();
+  }
+
+  /** Earnings report markers (past + next); [] hides them. */
+  setEarnings(ms: EarnMark[]) {
+    this.earnings = ms.slice().sort((a, b) => (a.d < b.d ? -1 : 1));
+    this.showEarnTip(null);
+    this.lastKey = '';
+  }
+  private showEarnTip(i: number | null) {
+    this.earnTipIdx = i;
+    const m = i == null ? null : this.earnings[i];
+    if (!m) { this.tipEl.hidden = true; this.earnTipIdx = null; this.lastKey = ''; return; }
+    this.tipEl.innerHTML = earnTip(m);
+    this.tipEl.hidden = false;
+    this.lastKey = '';
+    this.placeEarnTip();
+  }
+  private placeEarnTip() {
+    const i = this.earnTipIdx; if (i == null || this.tipEl.hidden) return;
+    const m = this.earnings[i]; let x = m ? this.X(m.d) : null;
+    if (m?.future && x != null && x > this.paneW() - 10) x = this.paneW() - 12;
+    if (x == null) { this.tipEl.hidden = true; return; }
+    const W = this.paneW(), H = this.paneH(), w = this.tipEl.offsetWidth, h = this.tipEl.offsetHeight;
+    Object.assign(this.tipEl.style, { left: Math.max(4, Math.min(W - w - 4, x - w / 2)) + 'px', top: Math.max(4, H - 26 - h) + 'px' });
   }
 
   /** Weekly ATR shown in the bottom-right corner (always weekly, whatever the timeframe). */
@@ -270,7 +329,7 @@ export class ChartView {
     const lr = this.chart.timeScale().getVisibleLogicalRange();
     const key = [lr?.from, lr?.to, this.Y(this.bars[this.bars.length - 1].close), this.Y((this.bars[this.bars.length - 1].close) * 1.1),
       this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings), this.dragging?.key, this.atrVal,
-      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag].join('|');
+      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag, this.earnings.length, this.earnings[0]?.d, this.earnTipIdx, this.weekly].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.render();
@@ -414,7 +473,33 @@ export class ChartView {
           `<text x="${x}" y="${yPx}" text-anchor="middle" direction="ltr" style="font-size:11px">${a.price.toFixed(2)}</text></g>`);
       }
     }
-    this.svg.innerHTML = s + guide + handles.join('');
+    this.svg.innerHTML = this.earnMarkersSvg(W, H) + s + guide + handles.join('');
+    this.placeEarnTip();
+  }
+
+  /** 'E' badges along the bottom of the price pane: filled (green = beat, red = miss, grey = no EPS) on the candle /
+   *  week of each past report, hollow dashed on the next known date in the future area. */
+  private earnMarkersSvg(W: number, H: number): string {
+    if (!this.earnings.length || !this.bars.length) return '';
+    const y = H - 12;
+    let out = '', nextSvg = '';
+    this.earnings.forEach((m, i) => {
+      let x = this.X(m.d);
+      // the next report beyond the visible future area: pinned to the right edge with an arrow (still tappable)
+      const pinned = !!m.future && x != null && x > W - 10;
+      if (pinned) x = W - 12;
+      if (x == null || x < -8 || x > W + 8) return;
+      const col = m.future ? '#f7c948' : m.a != null && m.e != null ? (m.a >= m.e ? '#26a69a' : '#ef5350') : '#787b86';
+      const on = this.earnTipIdx === i;
+      const svg = `<g class="earn${m.future ? ' next' : ''}${pinned ? ' pinned' : ''}${on ? ' on' : ''}" data-i="${i}" data-d="${m.d}"><circle cx="${x}" cy="${y}" r="15" fill="transparent"/>` +
+        (on ? `<line x1="${x}" x2="${x}" y1="0" y2="${y - 8}" stroke="${col}" stroke-width="1" stroke-dasharray="3 3" stroke-opacity=".7"/>` : '') +
+        (m.future
+          ? `<circle cx="${x}" cy="${y}" r="7.5" fill="#131722" stroke="${col}" stroke-width="1.5" stroke-dasharray="2.5 1.5"/><text x="${x}" y="${y + 3.5}" text-anchor="middle" class="et" style="fill:${col}">E</text>` +
+            (pinned ? `<path d="M${x + 9} ${y - 4} L${x + 12.5} ${y} L${x + 9} ${y + 4}" fill="none" stroke="${col}" stroke-width="1.5"/>` : '')
+          : `<circle cx="${x}" cy="${y}" r="7.5" fill="${col}" stroke="#131722" stroke-width="1"/><text x="${x}" y="${y + 3.5}" text-anchor="middle" class="et">E</text>`) + '</g>';
+      if (m.future) nextSvg += svg; else out += svg;
+    });
+    return nextSvg + out; // past reports painted last: on top of a pinned next marker they overlap
   }
 
   /** TP / Entry / SL price labels on a long. Each label tries a few slots (inside the box next to its edge, the other
@@ -496,6 +581,8 @@ export class ChartView {
   // ---- interaction ----
   private onPointerDown(e: PointerEvent) {
     const t = e.target as Element;
+    const eg = t.closest('g.earn') as SVGGElement | null;
+    if (eg) { e.stopPropagation(); const i = +eg.dataset.i!; this.showEarnTip(e.pointerType === 'mouse' || this.earnTipIdx !== i ? i : null); return; }
     const fh = t.closest('g.fh') as SVGGElement | null;
     if (fh && this.fibEdit) {
       e.preventDefault(); e.stopPropagation();

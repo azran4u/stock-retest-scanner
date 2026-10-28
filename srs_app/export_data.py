@@ -4,6 +4,7 @@ Writes, relative to the repo root:
   app/data/index.json          candidate list (badges + key levels) from historical-reports/latest.csv
   app/data/tv_drawings.json    read-only TradingView drawings (source 'tv') from /workspace/stock-screener/tv_drawings.json
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
+  app/data/earnings.json       past + next earnings report dates per ticker (chart 'E' markers, srs_app/earnings_marks.py)
   app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) OHLC candles per exported ticker, 1 byte/value
 
 Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
@@ -486,6 +487,17 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         flag_duplicates(rows, ser)
     except Exception as e:  # never block the export
         print(f"  [app data] duplicate-series check skipped: {e}")
+    try:  # past (and next) earnings report dates for the chart 'E' markers (Eyal 2026-10-28), srs_app/earnings_marks.py
+        from srs_app.earnings_marks import build as build_earn
+        import stock_screen as ss
+        cands = sorted({f.stem for f in (out / "candles").glob("*.json")})
+        since = (datetime.now() - timedelta(days=int(365.25 * YEARS))).strftime("%Y-%m-%d")
+        em = build_earn(rows, cands, ss.CACHE_DIR, ss.is_fund, since=since, bounded=ss._bounded_call)
+        (out / "earnings.json").write_text(json.dumps(em, separators=(",", ":")))
+        print(f"  [app data] earnings markers: {len(em)} of {len(cands)} tickers "
+              f"({sum(1 for v in em.values() if v.get('p'))} with past dates)")
+    except Exception as e:  # never block the export
+        print(f"  [app data] earnings markers skipped: {e}")
     attach_week_closes(rows, asof_date=report_date)
     attach_reversals(rows, asof_date=report_date)
     try:

@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
-import { atr, decodeSpark, loadDaily, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { atr, decodeSpark, loadDaily, loadEarnings, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -27,7 +27,7 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', f: {} as Filters, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', f: {} as Filters, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, earn: true as boolean, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -789,7 +789,8 @@ function syncJumps() {
 function indChipsHtml(): string {
   const ma: number[] = S.ui.ma || [];
   const all = SMA_PERIODS.every((n) => ma.includes(n));
-  return SMA_PERIODS.map((n) => `<button class="chip ind ${ma.includes(n) ? 'on' : ''}" data-ma="${n}"><i style="background:${SMA_COLORS[n]}"></i><span dir="ltr">MA${n}</span></button>`).join('')
+  return `<button class="chip ind earnchip ${S.ui.earn ? 'on' : ''}" data-earn="1" title="תאריכי דוחות על הגרף"><i class="eico">E</i>דוחות</button>`
+    + SMA_PERIODS.map((n) => `<button class="chip ind ${ma.includes(n) ? 'on' : ''}" data-ma="${n}"><i style="background:${SMA_COLORS[n]}"></i><span dir="ltr">MA${n}</span></button>`).join('')
     + `<button class="chip ind ${all ? 'on' : ''}" data-ma="all">כל הממוצעים</button>`
     + `<button class="chip ind fibchip ${S.ui.fib ? 'on' : ''}" data-fib="1">פיבונאצי</button>`;
 }
@@ -804,6 +805,8 @@ function bindIndChips() {
   }));
   const fb = bar.querySelector<HTMLButtonElement>('[data-fib]');
   if (fb) fb.onclick = () => { S.ui.fib = !S.ui.fib; saveUi(); bindIndChips(); applyIndicators(); renderPanel(); };
+  const eb = bar.querySelector<HTMLButtonElement>('[data-earn]');
+  if (eb) eb.onclick = () => { S.ui.earn = !S.ui.earn; saveUi(); bindIndChips(); applyEarnings(); };
 }
 let curFib: { t: string; f: Fib | null } | null = null;
 function fibAuto(): Fib | null {
@@ -870,6 +873,19 @@ async function onFibPick(which: 'low' | 'high', barTime: string) {
   await saveFibManual(t, { low: low.price, low_date: low.date, high: high.price, high_date: high.date });
 }
 const mondayOfIso = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
+// ---------------- earnings report markers (Eyal 2026-10-28: "add markers on the chart with the past report dates") ----------------
+// 'E' badge at the bottom of the chart on the candle (daily) / week (weekly) of each past report, hollow badge on the next
+// known date in the future area; hover / tap shows the date, BMO / AMC and EPS vs estimate. Toggle "דוחות" (on by default).
+async function applyEarnings() {
+  const t = S.ticker; if (!cv || !t) return;
+  if (!S.ui.earn) { cv.setEarnings([]); return; }
+  const all = await loadEarnings();
+  if (!cv || S.ticker !== t) return;
+  const m = all[t];
+  if (!m) { cv.setEarnings([]); return; }
+  cv.setEarnings([...m.p.map((x) => ({ ...x, future: false })),
+    ...(m.n ? [{ d: m.n, t: m.nt ?? null, e: m.nest ?? null, a: null, s: null, future: true, est: !!m.ne }] : [])]);
+}
 function applyIndicators() {
   if (!cv || !curBars) return;
   const weekly = S.ui.tf === 'W', daily = curBars.daily;
@@ -882,6 +898,7 @@ function applyIndicators() {
   cv.setFib(f ? { low: f.low, high: f.high, lowTime: tm(f.low_date), highTime: tm(f.high_date) } : null);
   // Eyal 2026-10-24: no edit button - whenever the Fib is shown its two end lines (and end dots) are grabbed directly
   cv.setFibEdit(f ? { low: { time: tm(f.low_date), price: f.low }, high: { time: tm(f.high_date), price: f.high } } : null);
+  void applyEarnings();
 }
 function fibPanelHtml(r: Row | undefined): string {
   const t = S.ticker; if (!t) return '';

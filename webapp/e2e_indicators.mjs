@@ -18,7 +18,7 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   await page.goto(BASE + '?demo=1#/t/' + T);
   await page.waitForSelector('#chart canvas'); await page.waitForTimeout(600);
-  ok(await page.locator('#indbar .chip.ind').count() === 6, `${name}: 6 indicator chips (MA50/100/150/200, כל הממוצעים, פיבונאצי)`);
+  ok(await page.locator('#indbar .chip.ind:not(.earnchip)').count() === 6, `${name}: 6 indicator chips (MA50/100/150/200, כל הממוצעים, פיבונאצי) + דוחות (e2e_earnings)`);
   let st = await state(page);
   ok(st.mas.length === 0 && st.fib.length === 0, `${name}: off by default`);
   if (name === 'iphone_390') {

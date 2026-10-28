@@ -74,6 +74,13 @@ header.ch { position: static; padding: calc(4px + var(--safe-t)) 4px 4px; }
 .chartwrap { height: 52dvh; min-height: 260px; flex: none; position: relative; touch-action: none; }
 .overlay { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; z-index: 3; }
 .overlay g.h, .overlay g.tag, .overlay g.fh { pointer-events: all; cursor: grab; touch-action: none; }
+.overlay g.earn { pointer-events: all; cursor: pointer; }
+.overlay g.earn text.et { font-size: 9.5px; font-weight: 700; fill: #fff; }
+.overlay g.earn.on circle:nth-of-type(2), .overlay g.earn:hover circle:nth-of-type(2) { filter: drop-shadow(0 0 3px rgba(255,255,255,.8)); }
+.etip { position: absolute; z-index: 4; pointer-events: none; background: rgba(30,34,45,.96); border: 1px solid #363a45; border-radius: 6px; padding: 5px 8px; font: 12px/1.45 -apple-system, Arial, sans-serif; color: #d1d4dc; max-width: 260px; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.etip .up { color: #26a69a; } .etip .dn { color: #ef5350; } .etip .muted { color: #787b86; }
+.chip.earnchip .eico { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: #787b86; color: #fff; font: 700 9px/1 Arial, sans-serif; font-style: normal; margin-inline-end: 4px; }
+.chip.earnchip.on .eico { background: #26a69a; }
 .overlay text { fill: #fff; font-size: 11px; font-family: -apple-system, Arial, sans-serif; }
 .tools { display: flex; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--bg2); border-bottom: 1px solid var(--bg2); }
 .tools > button { flex: 1; }

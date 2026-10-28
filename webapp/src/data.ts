@@ -33,6 +33,17 @@ export function loadSpark(): Promise<Record<string, Spark>> {
   return sparkP;
 }
 
+/** Past + next earnings report dates per ticker (export_data -> srs_app/earnings_marks.py; Eyal 2026-10-28 chart 'E' markers).
+ *  p = past reports oldest first: d date, t 'bmo' | 'amc' | null, e EPS estimate, a reported EPS, s surprise % (null = unknown).
+ *  n = next report date (ne = estimated), nt / nest = its timing / EPS estimate when Yahoo has them. Funds are absent. */
+export interface EarnPast { d: string; t: 'bmo' | 'amc' | null; e: number | null; a: number | null; s: number | null }
+export interface EarnMarks { p: EarnPast[]; n: string | null; ne?: boolean; nt?: 'bmo' | 'amc' | null; nest?: number | null; src?: string }
+let earnP: Promise<Record<string, EarnMarks>> | null = null;
+export function loadEarnings(): Promise<Record<string, EarnMarks>> {
+  earnP ??= fetch(BASE + 'earnings.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return earnP;
+}
+
 export function loadDaily(t: string): Promise<Bar[]> {
   let p = candleCache.get(t);
   if (!p) {
