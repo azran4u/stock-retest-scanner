@@ -528,7 +528,11 @@ def main() -> None:
     ap.add_argument("--date", default=None, help="report date label (default: newest in reports.json)")
     ap.add_argument("--all", action="store_true", help="export every FinViz row, not just candidates")
     a = ap.parse_args()
-    export(Path(a.repo), Path(a.report) if a.report else None, a.all, a.date)
+    out = export(Path(a.repo), Path(a.report) if a.report else None, a.all, a.date)
+    if not os.environ.get("SRS_NO_UPLOAD"):  # private Supabase Storage bucket 'app-data' (srs_app/publish_data.py)
+        from srs_app import publish_data
+
+        print("app data upload:", publish_data.publish(out, quiet=True))
 
 
 if __name__ == "__main__":

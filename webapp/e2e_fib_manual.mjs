@@ -1,4 +1,5 @@
 // Manual Fibonacci anchors (Eyal 2026-10-24): no edit button - drag the Fib end lines directly (also from the price-axis
+// (desktop runs use ?nosplit=1: the single-page layout; the wide-screen split view is covered by e2e_split.mjs)
 // label) or the end dots, with real mouse / touch events; snap to the nearest wick, persistence, reset to automatic, confluence text. Demo mode. Usage: node e2e_fib_manual.mjs [baseURL] [outDir] [ticker]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -24,7 +25,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(BASE + '?demo=1#/t/' + T);
+  await page.goto(BASE + '?demo=1&nosplit=1#/t/' + T);
   await page.waitForSelector('#chart canvas'); await page.waitForTimeout(700);
   const auto = await box(page);
   ok(!auto.manual && /אוטומטי/.test(auto.txt), `${name}: automatic anchor ${auto.low} -> ${auto.high}`);
@@ -121,7 +122,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
     const fl = await page.locator(`.row[data-t="${T}"] .fibline`).count() ? await page.locator(`.row[data-t="${T}"] .fibline`).textContent() : '(no confluence line)';
     console.log('     list card:', fl);
     ok(fl === '(no confluence line)' || fl.includes('(ידני)'), 'list card line marked (ידני)');
-    await page.fill('#q', ''); await page.goto(BASE + '?demo=1#/t/' + T); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(600);
+    await page.fill('#q', ''); await page.goto(BASE + '?demo=1&nosplit=1#/t/' + T); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(600);
   }
   // reset to automatic
   await page.click('#fibAuto'); await page.waitForTimeout(400);

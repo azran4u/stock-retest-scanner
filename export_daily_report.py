@@ -26,6 +26,7 @@ Also writes the Grok watchlist target (status=PASS) to
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import re
 from pathlib import Path
@@ -485,6 +486,16 @@ def main() -> None:
         _app_export.export(Path("/workspace/publish-stock-retest-scanner"), Path(paths["latest"]), report_date=args.date)
     except Exception as e:  # never block the report
         print(f"  [app data] skipped: {e}")
+
+    if not os.environ.get("SRS_NO_UPLOAD"):  # app data -> private Supabase Storage bucket (Eyal 2026-10-30: data is private)
+        try:
+            from srs_app import publish_data as _pub  # noqa: E402
+
+            r = _pub.publish(Path("/workspace/publish-stock-retest-scanner/app/data"), quiet=True)
+            print(f"  app data upload: {r['uploaded']}/{r['changed']} changed of {r['files']} files, {r['deleted']} deleted"
+                  + (f", FAILED {len(r['failed'])}: {r['failed'][:3]}" if r['failed'] else ""))
+        except Exception as e:  # never block the report; rerun: python -m srs_app.publish_data
+            print(f"  [app data upload] FAILED: {e}")
 
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())

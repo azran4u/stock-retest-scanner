@@ -1,4 +1,5 @@
 // Open positions bar (Eyal 2026-10-24): values vs formula, price-source fallback + labels, sticky on scroll (list +
+// (desktop runs use ?nosplit=1: the single-page layout; the wide-screen split view is covered by e2e_split.mjs)
 // stock page), tap -> stock page, collapse persisted, real CNBC quote from the browser (CORS). Demo mode with MADE-UP
 // positions injected (nothing real in the repo). Usage: node e2e_positions.mjs [baseURL] [outDir]
 import { chromium } from 'playwright';
@@ -34,7 +35,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && !/net::ERR_FAILED|Failed to load resource/.test(m.text()) && errors.push(m.text()));
-  await page.goto(BASE + '?demo=1#/');
+  await page.goto(BASE + '?demo=1&nosplit=1#/');
   await page.waitForSelector('.row'); await page.waitForSelector('#posbar .pb-row'); await page.waitForTimeout(400);
   let b = await bar(page);
   ok(b && b.rows.length === 2 && !b.rows.some((r) => r.t === 'OLD'), `${name}: bar shows the 2 open positions (closed one hidden)`);
@@ -94,7 +95,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
 {
   const ctx = await browser.newContext();
   await ctx.addInitScript((p) => { window.__demoPositions = p; }, POS);
-  const page = await ctx.newPage(); await page.goto(BASE + '?demo=1#/'); await page.waitForSelector('#posbar .pb-row'); await page.waitForTimeout(2500);
+  const page = await ctx.newPage(); await page.goto(BASE + '?demo=1&nosplit=1#/'); await page.waitForSelector('#posbar .pb-row'); await page.waitForTimeout(2500);
   const q = await page.evaluate(() => [...window.__srs.S.quotes.entries()].map(([t, q]) => `${t} ${q.src} ${q.price} ${q.at || q.date}`));
   const src = await page.locator('#posbar .pb-src').textContent();
   ok(q.length === 2 && q.every((s) => / cnbc /.test(s)), `real CNBC quotes in the browser: ${q.join(' | ')} -> "${src}"`);

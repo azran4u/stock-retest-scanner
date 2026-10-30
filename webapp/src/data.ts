@@ -1,16 +1,22 @@
 import type { Bar, Row, TvDrawing } from './types';
 
 const BASE = import.meta.env.BASE_URL + 'data/';
+/** Where the data files come from (Eyal 2026-10-30, private data): the logged-in app reads the private Supabase Storage
+ *  bucket 'app-data' (api.ts dataFetch, owner-only policy); demo mode / tests read the local build's data/ folder. */
+export type DataFetcher = (path: string) => Promise<Response>;
+let fetcher: DataFetcher = (path) => fetch(BASE + path, { cache: 'no-cache' });
+export function setDataFetcher(f: DataFetcher) { fetcher = f; }
+export const fetchData = (path: string) => fetcher(path);
 const candleCache = new Map<string, Promise<Bar[]>>();
 
 export async function loadIndex(): Promise<{ rows: Row[]; report_date: string | null; generated_at: string }> {
-  const r = await fetch(BASE + 'index.json', { cache: 'no-cache' });
+  const r = await fetcher('index.json');
   if (!r.ok) throw new Error('index.json ' + r.status);
   return r.json();
 }
 
 export async function loadTv(): Promise<Record<string, TvDrawing>> {
-  const r = await fetch(BASE + 'tv_drawings.json', { cache: 'no-cache' });
+  const r = await fetcher('tv_drawings.json');
   return r.ok ? r.json() : {};
 }
 
@@ -29,7 +35,7 @@ export function decodeSpark(sp: Spark): SparkBars {
 }
 let sparkP: Promise<Record<string, Spark>> | null = null;
 export function loadSpark(): Promise<Record<string, Spark>> {
-  sparkP ??= fetch(BASE + 'spark.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  sparkP ??= fetcher('spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
   return sparkP;
 }
 
@@ -40,14 +46,14 @@ export interface EarnPast { d: string; t: 'bmo' | 'amc' | null; e: number | null
 export interface EarnMarks { p: EarnPast[]; n: string | null; ne?: boolean; nt?: 'bmo' | 'amc' | null; nest?: number | null; src?: string }
 let earnP: Promise<Record<string, EarnMarks>> | null = null;
 export function loadEarnings(): Promise<Record<string, EarnMarks>> {
-  earnP ??= fetch(BASE + 'earnings.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  earnP ??= fetcher('earnings.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
   return earnP;
 }
 
 export function loadDaily(t: string): Promise<Bar[]> {
   let p = candleCache.get(t);
   if (!p) {
-    p = fetch(BASE + 'candles/' + encodeURIComponent(t) + '.json')
+    p = fetcher('candles/' + encodeURIComponent(t) + '.json')
       .then((r) => { if (!r.ok) throw new Error('no candles for ' + t); return r.json(); })
       .then((j: { d: [string, number, number, number, number, number][] }) =>
         j.d.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume })));

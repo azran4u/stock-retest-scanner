@@ -1,4 +1,5 @@
 // Copy the TradingView symbol (Eyal 2026-10-27): 📋 next to the ticker on the stock page header and on every list card
+// (desktop runs use ?nosplit=1: the single-page layout; the wide-screen split view is covered by e2e_split.mjs)
 // copies 'EXCHANGE:SYMBOL' (export tv_symbol) with a toast 'הועתק: …'; '📋 העתק ל-TV' copies the filtered list as a
 // comma-separated list; when the Clipboard API is missing the text is shown selected in a sheet. Desktop + iPhone.
 // Usage: node e2e_copy_tv.mjs [baseURL] [outDir]
@@ -18,7 +19,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   page.on('pageerror', (e) => errors.push(e.message));
   const click = (sel) => (mobile ? page.locator(sel).first().tap() : page.locator(sel).first().click());
   const clip = () => page.evaluate(() => navigator.clipboard.readText());
-  await page.goto(BASE + '?demo=1'); await page.waitForSelector('.row .cpy');
+  await page.goto(BASE + '?demo=1&nosplit=1'); await page.waitForSelector('.row .cpy');
   const idx = await page.evaluate(() => Object.fromEntries(window.__srs.S.rows.map((r) => [r.ticker, r.tv_symbol])));
   const row = await page.locator('.row').first().getAttribute('data-t');
   const want = idx[row];
@@ -36,7 +37,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   await page.fill('#q', '');
   // stock page header: SNX (NYSE) and a class share / ETF when present
   for (const t of ['SNX', 'SPY', 'MOG-A'].filter((x) => idx[x])) {
-    await page.goto(BASE + '?demo=1#/t/' + t); await page.waitForSelector('#tkCopy'); await page.waitForTimeout(400);
+    await page.goto(BASE + '?demo=1&nosplit=1#/t/' + t); await page.waitForSelector('#tkCopy'); await page.waitForTimeout(400);
     await click('#tkCopy'); await page.waitForTimeout(250);
     ok(await clip() === idx[t], `${name}: stock page ${t} 📋 -> ${idx[t]}`);
     if (mobile && t === 'SNX') await page.screenshot({ path: `${OUT}/11_snx_copy_toast.png` });
@@ -49,7 +50,7 @@ for (const [name, vp, mobile] of [['desktop_1440', { width: 1440, height: 900 },
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await ctx.addInitScript(() => { Object.defineProperty(navigator, 'clipboard', { value: undefined }); document.execCommand = () => false; });
   const page = await ctx.newPage(); page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(BASE + '?demo=1#/t/SNX'); await page.waitForSelector('#tkCopy'); await page.waitForTimeout(300);
+  await page.goto(BASE + '?demo=1&nosplit=1#/t/SNX'); await page.waitForSelector('#tkCopy'); await page.waitForTimeout(300);
   await page.locator('#tkCopy').tap(); await page.waitForTimeout(200);
   const sel = await page.evaluate(() => { const ta = document.querySelector('.copybox textarea'); return ta && { v: ta.value, s: ta.selectionStart, e: ta.selectionEnd }; });
   ok(sel && sel.v === 'NYSE:SNX' && sel.s === 0 && sel.e === 8, `fallback: text shown selected (${JSON.stringify(sel)})`);

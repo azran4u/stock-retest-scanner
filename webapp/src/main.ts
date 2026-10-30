@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS } from './chart';
-import { atr, decodeSpark, loadDaily, loadEarnings, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -10,10 +10,15 @@ import { researchHtml, type Research } from './research';
 import { tvSymbol, tvList, copyText } from './tvsym';
 import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, matches, type Facts, type Filters, type RevKind } from './filters';
 import { renderRulesHtml } from './rules';
+import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
+// OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
+// Supabase client clears the URL
+const authErr = (() => { const q = new URLSearchParams(location.hash.replace(/^#/, '') + '&' + location.search.replace(/^\?/, '')); return q.get('error_description') || q.get('error') || ''; })();
 const api = makeApi();
+if (api.dataFetch) setDataFetcher((p) => api.dataFetch!(p));
 const app = document.getElementById('app')!;
 const LS = 'srs-app-v1';
 
@@ -27,7 +32,7 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', f: {} as Filters, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, earn: true as boolean, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', f: {} as Filters, list: 'all' as string, lastT: null as string | null, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, earn: true as boolean, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -35,6 +40,7 @@ const S = {
   positions: [] as Position[],
   quotes: new Map<string, Quote>(),
   research: new Map<string, Research>(),
+  lists: [] as StockList[],
 };
 // old single-select chip (before 2026-10-26) -> the equivalent independent filter
 { const c = (S.ui as any).chip as string | undefined; delete (S.ui as any).chip; if (c && c !== 'all') applyChip(S.ui.f, c); }
@@ -232,7 +238,7 @@ function bindUnfit(root: ParentNode, t: string) {
 }
 function refreshViews() {
   if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
-  else if ($('.list')) updateListBody();
+  if ($('.list')) updateListBody();
 }
 function latestLabel(t: string, label: string): Label | undefined {
   let best: Label | undefined;
@@ -295,9 +301,16 @@ function fibRowHtml(r: Row): string {
 
 function filtered(): Row[] {
   const q = S.ui.q.trim().toUpperCase();
-  let rows = allRows().filter((r) => {
+  const list = curList(), fs = effectiveFilters(list, S.ui.f);
+  let base = allRows();
+  if (list.kind === 'static') {
+    const want = new Set(list.tickers);
+    base = base.filter((r) => want.has(r.ticker));
+    for (const t of list.tickers) if (!base.some((r) => r.ticker === t)) base.push({ ticker: t, status: 'LIST', badges: ['nodata'], has_candles: false });
+  }
+  let rows = base.filter((r) => {
     if (q && !r.ticker.includes(q)) return false;
-    return matches(factsOf(r), S.ui.f); // independent filters, logical AND (filters.ts)
+    return matches(factsOf(r), fs); // list criteria + independent filters, logical AND (filters.ts, lists.ts)
   });
   const num = (x: unknown) => (x == null ? -Infinity : +x);
   const s = S.ui.sort;
@@ -414,6 +427,142 @@ function updateFHead() {
   const c2 = $('#fclear2') as HTMLButtonElement | null; if (c2) c2.hidden = !n;
 }
 
+// ---------------- stock lists (Eyal 2026-10-30): built-in + his own static / dynamic lists, switchable ----------------
+const allLists = (): StockList[] => [...BUILTIN_LISTS, ...sortLists(S.lists)];
+function curList(): StockList { return allLists().find((l) => l.id === S.ui.list) || BUILTIN_LISTS[0]; }
+function listBarHtml(): string {
+  const opt = (l: StockList) => `<option value="${esc(l.id)}" ${l.id === curList().id ? 'selected' : ''}>${esc(l.name)}${l.builtin ? '' : l.kind === 'static' ? ` (${l.tickers.length})` : ' 🔎'}</option>`;
+  const mine = sortLists(S.lists);
+  return `<div class="listbar"><label class="sortlab grow"><span>רשימה:</span><select id="listSel" aria-label="רשימה">
+      <optgroup label="קבועות">${BUILTIN_LISTS.map(opt).join('')}</optgroup>
+      ${mine.length ? `<optgroup label="הרשימות שלי">${mine.map(opt).join('')}</optgroup>` : ''}
+    </select></label><button id="listMgr" class="ghost small btnlike" aria-label="ניהול רשימות">רשימות ✎</button></div>`;
+}
+function bindListBar() {
+  const sel = $('#listSel') as HTMLSelectElement | null;
+  if (sel) sel.onchange = () => switchList(sel.value);
+  const mg = $('#listMgr'); if (mg) mg.onclick = () => openListSheet();
+}
+function switchList(id: string) {
+  S.ui.list = id; saveUi();
+  const sel = $('#listSel') as HTMLSelectElement | null; if (sel && sel.value !== id) sel.value = id;
+  updateListBody();
+  if (layout === 'split' && S.ticker && !navList().includes(S.ticker)) { const f = navList()[0]; if (f) location.replace('#/t/' + encodeURIComponent(f)); }
+}
+/** Supabase table (owner-only RLS) is the source of truth; localStorage keeps a copy. Lists made while the table was
+ *  unreachable (local only) are pushed up on the next load (migration). */
+async function loadLists() {
+  const local = loadLocalLists();
+  try {
+    const remote = await api.loadLists();
+    const missing = local.filter((l) => !remote.some((r) => r.id === l.id));
+    for (const l of missing) { try { await api.saveList(l); remote.push(l); } catch { /* keep local */ } }
+    S.lists = remote;
+  } catch { S.lists = local; }
+  saveLocalLists(S.lists);
+}
+async function persistList(l: StockList, ok?: string) {
+  const i = S.lists.findIndex((x) => x.id === l.id); if (i >= 0) S.lists[i] = l; else S.lists.push(l);
+  saveLocalLists(S.lists);
+  await guard(api.saveList(l), ok);
+}
+async function removeList(id: string) {
+  S.lists = S.lists.filter((l) => l.id !== id); saveLocalLists(S.lists);
+  if (S.ui.list === id) S.ui.list = 'all';
+  saveUi();
+  await guard(api.deleteList(id), 'הרשימה נמחקה');
+}
+function newList(name: string, kind: 'static' | 'dynamic', tickers: string[] = [], f: Filters | null = null): StockList {
+  const pos = S.lists.reduce((m, l) => Math.max(m, l.pos), 0) + 1;
+  return { id: crypto.randomUUID(), name: name.trim() || (kind === 'static' ? 'רשימה חדשה' : 'חיפוש שמור'), kind, tickers, criteria: kind === 'dynamic' ? { f: f || {} } : null, pos, created_at: new Date().toISOString() };
+}
+const activeOnly = (fs: Filters): Filters => Object.fromEntries(Object.entries(fs).filter(([id, s]) => isActive(id, s)));
+function onListChange(ev: string, row: any, old: any) {
+  if (ev === 'DELETE') S.lists = S.lists.filter((l) => l.id !== old?.id);
+  else if (row?.id) {
+    const l: StockList = { id: row.id, name: row.name, kind: row.kind === 'dynamic' ? 'dynamic' : 'static', tickers: row.tickers || [], criteria: row.criteria || null, pos: +row.pos || 0, created_at: row.created_at, updated_at: row.updated_at };
+    const i = S.lists.findIndex((x) => x.id === l.id); if (i >= 0) S.lists[i] = l; else S.lists.push(l);
+  }
+  saveLocalLists(S.lists);
+  afterListsChanged();
+}
+function afterListsChanged() {
+  if (!allLists().some((l) => l.id === S.ui.list)) { S.ui.list = 'all'; saveUi(); }
+  const bar = $('.listbar'); if (bar) { bar.outerHTML = listBarHtml(); bindListBar(); }
+  if ($('.list')) updateListBody();
+  if (cv && S.ticker) renderHeader();
+  if (!listSheet.hidden) renderListSheet();
+}
+const fsummary = (fs: Filters) => {
+  const ids = Object.keys(activeOnly(fs));
+  return ids.length ? ids.map((id) => { const d = BY_ID.get(id); const s = fs[id]; return d ? `${d.label}${d.param ? ' ' + (s.x ?? d.param.def) : ''}${d.select ? ' ' + (s.v || '') : ''}${d.tri ? ' (' + ({ hide: 'הסתר', only: 'רק הן', all: 'הצג גם' } as any)[s.mode || 'hide'] + ')' : ''}` : id; }).join(' · ') : 'ללא תנאים';
+};
+// manager sheet: switch, create (static / from the current filters), rename, delete, add / remove tickers
+const listSheet = document.createElement('div');
+listSheet.id = 'listSheet'; listSheet.className = 'sheet listsheet'; listSheet.hidden = true;
+document.body.append(listSheet);
+function openListSheet() { renderListSheet(); listSheet.hidden = false; }
+function renderListSheet() {
+  const cur = curList(), panel = activeOnly(S.ui.f), np = Object.keys(panel).length;
+  const item = (l: StockList) => `<li class="lsi ${l.id === cur.id ? 'cur' : ''}" data-lid="${esc(l.id)}">
+      <div class="row2"><button class="ghost lsgo" data-go="${esc(l.id)}">${l.id === cur.id ? '●' : '○'}</button>
+        ${l.builtin ? `<b class="grow">${esc(l.name)}</b><span class="badge">קבועה</span>`
+          : `<input class="grow lsname" value="${esc(l.name)}" aria-label="שם הרשימה" /><span class="badge ${l.kind === 'static' ? 'b-mine' : 'b-review'}">${l.kind === 'static' ? 'סטטית' : 'חיפוש'}</span><button class="ghost small lsdel" aria-label="מחק רשימה" title="מחק רשימה">🗑</button>`}</div>
+      ${l.kind === 'dynamic' && !l.builtin ? `<div class="muted small">${esc(fsummary(l.criteria?.f || {}))}</div>` : ''}
+      ${l.kind === 'static' ? `<div class="lstk">${l.tickers.map((t) => `<span class="badge tkb2"><bdi dir="ltr">${esc(t)}</bdi><button class="ghost lsrm" data-rm="${esc(t)}" aria-label="הסר ${esc(t)}">✕</button></span>`).join('') || '<span class="muted small">ריקה</span>'}</div>
+        <div class="row2"><input class="grow lsadd" dir="ltr" placeholder="הוסף טיקרים: AAPL, MSFT" autocapitalize="characters" /><button class="small lsaddb">הוסף</button></div>` : ''}
+      ${l.kind === 'dynamic' && !l.builtin && l.id === cur.id && np ? `<button class="small lsupd">עדכן את התנאים לפי הסינון הנוכחי (${np})</button>` : ''}
+    </li>`;
+  listSheet.innerHTML = `<div class="sh-head"><b>רשימות</b><button id="lsClose" class="ghost small" aria-label="סגור">✕</button></div>
+    <ul class="lslist">${allLists().map(item).join('')}</ul>
+    <div class="lsnew">
+      <div class="row2"><input id="lsNewName" class="grow" placeholder="שם לרשימה חדשה" /></div>
+      <div class="row2"><button id="lsNewStatic" class="primary small grow">+ רשימה סטטית</button>
+        <button id="lsNewDyn" class="small grow" ${np ? '' : 'disabled'} title="שמירת הסינון הפעיל כחיפוש">+ חיפוש מהסינון הנוכחי${np ? ` (${np})` : ''}</button></div>
+      ${np ? `<div class="muted small">הסינון הנוכחי: ${esc(fsummary(panel))}${cur.kind === 'dynamic' && !cur.builtin ? '' : cur.id !== 'all' ? ` · בתוך "${esc(cur.name)}"` : ''}</div>` : '<div class="muted small">לחיפוש שמור: הפעל סינון ברשימה, ואז "חיפוש מהסינון הנוכחי".</div>'}
+    </div>`;
+  $('#lsClose', listSheet)!.onclick = () => { listSheet.hidden = true; };
+  listSheet.querySelectorAll<HTMLElement>('.lsi').forEach((li) => {
+    const id = li.dataset.lid!, l = () => S.lists.find((x) => x.id === id);
+    $('.lsgo', li)!.onclick = () => { switchList(id); renderListSheet(); };
+    const nm = $('.lsname', li) as HTMLInputElement | null;
+    if (nm) nm.onchange = () => { const x = l(); const v = nm.value.trim(); if (!x || !v || v === x.name) return; persistList({ ...x, name: v }, 'השם עודכן').then(afterListsChanged); };
+    const del = $('.lsdel', li); if (del) del.onclick = () => { const x = l(); if (!x || !confirm(`למחוק את הרשימה "${x.name}"?`)) return; removeList(id).then(afterListsChanged); afterListsChanged(); };
+    li.querySelectorAll<HTMLButtonElement>('.lsrm').forEach((b) => (b.onclick = () => { const x = l(); if (!x) return; persistList({ ...x, tickers: x.tickers.filter((t) => t !== b.dataset.rm) }).then(afterListsChanged); afterListsChanged(); }));
+    const add = $('.lsadd', li) as HTMLInputElement | null, addB = $('.lsaddb', li);
+    const doAdd = () => { const x = l(); const ts = parseTickers(add?.value || ''); if (!x || !ts.length) return; persistList({ ...x, tickers: [...x.tickers, ...ts.filter((t) => !x.tickers.includes(t))] }, `נוספו ${ts.length}`).then(afterListsChanged); afterListsChanged(); };
+    if (addB) addB.onclick = doAdd;
+    if (add) add.onkeydown = (e) => { if (e.key === 'Enter') doAdd(); };
+    const upd = $('.lsupd', li); if (upd) upd.onclick = () => { const x = l(); if (!x) return; const f = effectiveFilters(x, S.ui.f); S.ui.f = {}; saveUi(); persistList({ ...x, criteria: { f } }, 'התנאים עודכנו').then(afterListsChanged); refreshFilterPanel(); afterListsChanged(); };
+  });
+  const nameOf = () => ($('#lsNewName', listSheet) as HTMLInputElement).value;
+  $('#lsNewStatic', listSheet)!.onclick = () => { const l = newList(nameOf(), 'static'); persistList(l, 'נוצרה רשימה').then(afterListsChanged); S.ui.list = l.id; saveUi(); afterListsChanged(); };
+  $('#lsNewDyn', listSheet)!.onclick = () => {
+    // the saved search = the current list's criteria + the active filters, then the panel is cleared (no double filter)
+    const l = newList(nameOf(), 'dynamic', [], effectiveFilters(curList(), S.ui.f));
+    S.ui.f = {}; S.ui.list = l.id; saveUi(); persistList(l, 'החיפוש נשמר').then(afterListsChanged); refreshFilterPanel(); afterListsChanged();
+  };
+}
+function refreshFilterPanel() { const fb = $('#fbody'); if (fb) { fb.innerHTML = fpanelHtml(); bindFpanel(); } updateFHead(); }
+// stock page: add / remove the open stock in his static lists
+let listsPopOpen = false;
+function renderListsPop() {
+  const p = $('#listsPop'); if (!p) return;
+  p.hidden = !listsPopOpen || !S.ticker;
+  if (p.hidden) return;
+  const t = S.ticker!, st = sortLists(S.lists).filter((l) => l.kind === 'static');
+  p.innerHTML = `<div class="row2"><b>רשימות של <bdi dir="ltr">${esc(t)}</bdi></b><button id="lpClose" class="ghost small" aria-label="סגור">✕</button></div>
+    ${st.map((l) => `<label class="ft lpi"><input type="checkbox" data-lid="${esc(l.id)}" ${l.tickers.includes(t) ? 'checked' : ''}/><span>${esc(l.name)}</span> <span class="muted small">(${l.tickers.length})</span></label>`).join('') || '<div class="muted small">אין עדיין רשימות סטטיות.</div>'}
+    <div class="row2"><input id="lpNew" class="grow" placeholder="רשימה חדשה עם ${esc(t)}" /><button id="lpNewB" class="small">צור</button></div>`;
+  $('#lpClose', p)!.onclick = () => { listsPopOpen = false; renderListsPop(); };
+  p.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((cb) => (cb.onchange = () => {
+    const x = S.lists.find((l) => l.id === cb.dataset.lid); if (!x) return;
+    const tickers = cb.checked ? [...x.tickers.filter((y) => y !== t), t] : x.tickers.filter((y) => y !== t);
+    persistList({ ...x, tickers }, cb.checked ? `נוספה ל-${x.name}` : `הוסרה מ-${x.name}`).then(afterListsChanged); afterListsChanged();
+  }));
+  $('#lpNewB', p)!.onclick = () => { const l = newList(($('#lpNew', p) as HTMLInputElement).value, 'static', [t]); persistList(l, `נוצרה "${l.name}"`).then(afterListsChanged); afterListsChanged(); };
+}
+
 // ---------------- copy TradingView symbol (Eyal 2026-10-27) ----------------
 let copyBox: HTMLElement | null = null;
 async function doCopy(text: string, okMsg?: string) {
@@ -435,12 +584,50 @@ function route() {
   if (S.email.toLowerCase() !== OWNER_EMAIL) return renderDenied();
   if (!S.loaded) { app.innerHTML = '<div class="center muted">טוען…</div>'; return; }
   const m = location.hash.match(/^#\/t\/([^/?]+)/);
+  if (location.hash.startsWith('#/rules')) { layout = null; renderRules(); return; }
+  if (location.hash.startsWith('#/calibrate')) { layout = null; renderCalibrate(); return; }
+  if (isWide()) {
+    splitShell();
+    if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
+    else {
+      const l = navList(), pick = S.ui.lastT && l.includes(S.ui.lastT) ? S.ui.lastT : l[0];
+      if (pick) { location.replace('#/t/' + encodeURIComponent(pick)); return; }
+      destroyChart(); S.ticker = null;
+      $('#main')!.innerHTML = '<div class="center muted">בחר מניה מהרשימה</div>';
+    }
+    markSel();
+    return;
+  }
+  if (layout === 'split') { destroyChart(); layout = null; }
   if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
-  else if (location.hash.startsWith('#/rules')) renderRules();
-  else if (location.hash.startsWith('#/calibrate')) renderCalibrate();
   else renderList();
 }
 window.addEventListener('hashchange', route);
+
+// ---------------- wide screens: list on the right + selected stock (Eyal 2026-10-30, iPad / laptop) ----------------
+// >= 740px (iPad mini portrait and up): master-detail. The side list is the same list as on the phone (search, filters,
+// lists, sort, star, copy to TV); the main area is the full stock page. Phones keep the list -> stock page flow.
+const WIDE_MQ = window.matchMedia('(min-width: 740px)');
+const isWide = () => WIDE_MQ.matches && !new URLSearchParams(location.search).has('nosplit');
+let layout: 'split' | 'single' | null = null;
+function splitShell() {
+  if (layout === 'split' && $('#side') && $('#main')) return;
+  destroyChart();
+  app.innerHTML = '<div class="split"><aside id="side" class="side" aria-label="רשימת מניות"></aside><main id="main" class="smain"></main></div>';
+  layout = 'split';
+  renderList($<HTMLElement>('#side')!);
+}
+/** highlight the open stock in the side list and keep it in view */
+function markSel() {
+  const side = $('#side'); if (!side) return;
+  let hit: HTMLElement | null = null;
+  side.querySelectorAll<HTMLElement>('.row').forEach((li) => { const on = li.dataset.t === S.ticker; li.classList.toggle('sel', on); if (on) hit = li; });
+  if (hit) {
+    const lst = $('.list', side) as HTMLElement | null, h = hit as HTMLElement;
+    if (lst) { const a = h.offsetTop - lst.offsetTop, b = a + h.offsetHeight; if (a < lst.scrollTop || b > lst.scrollTop + lst.clientHeight) lst.scrollTop = Math.max(0, a - 40); }
+  }
+}
+WIDE_MQ.addEventListener('change', () => { if (!S.loaded) return; destroyChart(); layout = null; route(); });
 
 // ---------------- login ----------------
 function renderLogin() {
@@ -449,7 +636,10 @@ function renderLogin() {
   <div class="login">
     <div class="logo">📈</div>
     <h1>Retest Scanner</h1>
-    <p class="muted">כניסה עם קישור או קוד שנשלח במייל</p>
+    <button id="google" class="big gbtn" hidden><svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>התחבר עם Google</span></button>
+    <p class="muted small" id="gnote" hidden>רק החשבון <bdi dir="ltr">${esc(OWNER_EMAIL)}</bdi> מורשה.</p>
+    ${authErr ? `<p class="autherr small" id="authErr">הכניסה נכשלה: ${esc(/restricted|database error/i.test(authErr) ? 'החשבון הזה לא מורשה' : authErr)}</p>` : ''}
+    <p class="muted" id="emnote">כניסה עם קישור או קוד שנשלח במייל</p>
     <input id="em" type="email" inputmode="email" autocomplete="email" dir="ltr" value="${esc(localStorage.getItem('srs-email') || OWNER_EMAIL)}" />
     <button id="send" class="primary big">שלח קישור התחברות</button>
     <div id="codebox" class="codebox" hidden>
@@ -458,6 +648,12 @@ function renderLogin() {
       <button id="verify" class="primary big">אמת קוד</button>
     </div>
   </div>`;
+  // Google (Eyal 2026-10-30): shown once the project's Google provider is on; the email code stays as a fallback
+  api.googleEnabled().then((on) => {
+    const g = $('#google') as HTMLButtonElement | null; if (!g || !on) return;
+    g.hidden = false; $('#gnote')!.hidden = false; $('#emnote')!.textContent = 'או כניסה עם קישור / קוד במייל';
+    g.onclick = () => guard(api.signInGoogle());
+  });
   $('#send')!.onclick = async () => {
     const em = ($('#em') as HTMLInputElement).value.trim();
     localStorage.setItem('srs-email', em);
@@ -475,15 +671,18 @@ function renderDenied() {
 }
 
 // ---------------- list ----------------
-function renderList() {
-  destroyChart();
+function renderList(root?: HTMLElement) {
+  const split = layout === 'split' && !!$('#side');
+  const host = root || (split ? $('#side')! : app);
+  if (!split) { destroyChart(); layout = 'single'; }
   const rows = filtered();
-  app.innerHTML = `
+  host.innerHTML = `
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
     <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
+    ${listBarHtml()}
     <input id="q" type="search" dir="ltr" placeholder="חיפוש טיקר" value="${esc(S.ui.q)}" autocapitalize="characters" />
     <div class="fhead"><button id="ftog" class="chip ${S.ui.fOpen ? 'on' : ''}" aria-expanded="${!!S.ui.fOpen}"></button><button id="fclear" class="ghost small" hidden>ניקוי הכל</button></div>
     <div id="fpanel" class="fpanel" ${S.ui.fOpen ? '' : 'hidden'}>
@@ -505,10 +704,12 @@ function renderList() {
   $('#fclear')!.onclick = clearF; $('#fclear2')!.onclick = clearF;
   document.body.classList.toggle('fsheet-open', !!S.ui.fOpen);
   bindFpanel(); updateFHead();
-  ($('#sort') as HTMLSelectElement).onchange = (e) => { S.ui.sort = (e.target as HTMLSelectElement).value; saveUi(); renderList(); };
+  ($('#sort') as HTMLSelectElement).onchange = (e) => { S.ui.sort = (e.target as HTMLSelectElement).value; saveUi(); renderList(); markSel(); };
+  bindListBar();
   $('#logout')!.onclick = () => api.signOut();
   $('#copyList')!.onclick = () => { const rs = filtered(); if (rs.length) doCopy(tvList(rs), `הועתקו ${rs.length} סימולים ל-TradingView`); };
   bindRows();
+  if (split) { markSel(); return; }
   const y = sessionStorage.getItem('srs-scroll'); if (y) window.scrollTo(0, +y);
 }
 // ---------------- rules page (#/rules) ----------------
@@ -517,7 +718,7 @@ async function renderRules() {
   destroyChart();
   app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">כללים</div><span></span></header><div class="rules center muted">טוען…</div>`;
   $('#back')!.onclick = () => { location.hash = '#/'; };
-  rulesP ??= fetch(import.meta.env.BASE_URL + 'data/rules.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  rulesP ??= fetchData('rules.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   const j = await rulesP;
   if (!location.hash.startsWith('#/rules')) return;
   const el = $('.rules')!; el.className = 'rules';
@@ -530,7 +731,7 @@ async function renderCalibrate() {
   destroyChart();
   app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">כיול מגמה</div><span></span></header><div class="cal center muted">טוען…</div>`;
   $('#back')!.onclick = () => { location.hash = '#/'; };
-  calP ??= fetch(import.meta.env.BASE_URL + 'data/calibration.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  calP ??= fetchData('calibration.json').then((r) => (r.ok ? r.json() : [])).catch(() => []);
   const [rows, sp] = await Promise.all([calP, loadSpark()]);
   if (!location.hash.startsWith('#/calibrate')) return;
   const el = $('.cal')!; el.className = 'cal';
@@ -563,6 +764,7 @@ function updateListBody() {
   $('.sortrow .small')!.textContent = `${rows.length} מניות`;
   const fdn = $('#fdn'); if (fdn) fdn.textContent = String(rows.length);
   bindRows();
+  markSel();
 }
 function listInner(rows: Row[]) {
   const q = normT(S.ui.q);
@@ -715,17 +917,21 @@ function neighbor(dir: 1 | -1): string | null {
 function go(dir: 1 | -1) { const t = neighbor(dir); if (t) location.replace('#/t/' + t); else toast(dir > 0 ? 'סוף הרשימה' : 'תחילת הרשימה'); }
 
 function shell() {
-  app.innerHTML = `
+  const host = layout === 'split' && $('#main') ? $('#main')! : app;
+  if (host === app) layout = 'single';
+  host.innerHTML = `
   <div class="cv">
     <header class="top ch" id="chhead">
       <button id="back" class="ghost icon" aria-label="חזרה">→</button>
       <div class="tk"><b id="tk" dir="ltr"></b><button id="tkCopy" class="ghost cpy" aria-label="העתק ל-TradingView">📋</button> <span id="tkpx" class="muted small" dir="ltr"></span><div id="tkb" class="tkb"></div></div>
       <button id="star" class="ghost icon star" aria-label="מעקב">☆</button>
       <button id="niBtn" class="ghost small nib" aria-label="לא מעניינת">🚫</button>
+      <button id="listsBtn" class="ghost small lsb" aria-label="הוסף לרשימה" title="הוסף לרשימה">📂</button>
       <button id="prev" class="ghost icon" aria-label="הקודם">‹</button>
       <button id="next" class="ghost icon" aria-label="הבא">›</button>
     </header>
     <div id="unfitPop" class="unfitpop" hidden></div>
+    <div id="listsPop" class="unfitpop listspop" hidden></div>
     <div id="chart" class="chartwrap" dir="ltr"><div id="nodata" class="nodata" hidden>אין עדיין נתוני נרות למניה הזו.<br/>הם יתווספו בריצה הלילית הבאה.</div></div>
     <div class="tools" id="tools">
       <div class="seg"><button data-tf="W">שבועי</button><button data-tf="D">יומי</button></div>
@@ -762,6 +968,7 @@ function shell() {
   $('#star')!.onclick = () => S.ticker && toggleWatch(S.ticker);
   $('#tkCopy')!.onclick = (e) => { e.stopPropagation(); doCopy(($('#tkCopy') as HTMLElement).dataset.copy || ''); };
   $('#niBtn')!.onclick = () => { if (!S.ticker) return; unfitOpen = !unfitOpen; renderUnfitPop(); };
+  $('#listsBtn')!.onclick = () => { if (!S.ticker) return; listsPopOpen = !listsPopOpen; renderListsPop(); };
   $('#prev')!.onclick = () => go(-1);
   $('#next')!.onclick = () => go(1);
   app.querySelectorAll<HTMLButtonElement>('[data-tf]').forEach((b) => (b.onclick = () => { S.ui.tf = b.dataset.tf as 'W' | 'D'; saveUi(); applyBars(); }));
@@ -929,8 +1136,10 @@ function swipe(el: HTMLElement) {
 async function openTicker(t: string) {
   const first = !cv;
   if (first) shell();
-  if (S.ticker !== t) { S.selected = null; S.tap = null; }
+  if (S.ticker !== t) { S.selected = null; S.tap = null; listsPopOpen = false; }
   S.ticker = t;
+  if (S.ui.lastT !== t) { S.ui.lastT = t; saveUi(); }
+  markSel();
   renderHeader(); renderHint(); renderPanel();
   ($('#nodata') as HTMLElement).hidden = true;
   const seq = ++loadSeq;
@@ -965,7 +1174,8 @@ function renderHeader() {
   $('#tkb')!.innerHTML = badgesOf(r as Row).filter((b) => b !== 'watch').map(badgeHtml).join('');
   const st = $('#star')!; st.textContent = isWatched(t) ? '★' : '☆'; st.classList.toggle('on', isWatched(t));
   $('#niBtn')!.classList.toggle('on', isNi(t));
-  renderUnfitPop();
+  $('#listsBtn')?.classList.toggle('on', S.lists.some((l) => l.kind === 'static' && l.tickers.includes(t)));
+  renderUnfitPop(); renderListsPop();
 }
 
 function applyBars() {
@@ -1128,7 +1338,7 @@ async function followZone(z: Drawing) {
 /** Re-render whatever shows status / R:R after a drawing change. */
 function refreshLive() {
   if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
-  else if ($('.list')) updateListBody();
+  if ($('.list')) updateListBody();
 }
 
 // ---------------- panel ----------------
@@ -1305,8 +1515,9 @@ function onChange(table: Table, ev: string, row: any, old: any) {
     else if (row) { const i = S.commands.findIndex((c) => c.id === row.id); if (i >= 0) S.commands[i] = row; else S.commands.unshift(row); }
   }
   if (table === 'commands' && !botSheet.hidden) { const g = $('#gcmds', botSheet); if (g) g.innerHTML = botListHtml(); }
+  if (table === 'stock_lists') { onListChange(ev, row, old); return; }
   if (cv && S.ticker) { renderHeader(); syncChart(); if (table === 'labels') applyIndicators(); renderPanel(); }
-  else if (!location.hash.startsWith('#/t/') && $('.list')) updateListBody();
+  if ($('.list')) updateListBody();
 }
 
 // ---------------- boot ----------------
@@ -1318,6 +1529,7 @@ async function loadAll() {
   S.rows = idx.rows; S.byT = new Map(idx.rows.map((r) => [r.ticker, r])); S.reportDate = idx.report_date;
   S.watch = new Map(ws.map((w) => [w.ticker, w])); S.drawings = new Map(ds.map((d) => [d.id, d])); S.labels = ls; S.commands = cs;
   S.loaded = true;
+  await loadLists();
   loadPositions();
   loadResearch();
 }

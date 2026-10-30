@@ -356,3 +356,48 @@ button.cpy:active { opacity: 1; transform: scale(.92); }
 .tk button.cpy { vertical-align: middle; }
 .sortrow .cpyall { min-height: 32px; padding: 4px 8px; font-size: 13px; white-space: nowrap; }
 .copybox textarea { font-size: 16px; }
+
+/* ---- Google sign-in (Eyal 2026-10-30) ---- */
+button.gbtn { display: flex; align-items: center; justify-content: center; gap: 10px; background: #fff; color: #1f1f1f; font-weight: 600; }
+.autherr { color: #ff8a87; margin: 0; }
+
+/* ---- stock lists (Eyal 2026-10-30) ---- */
+.listbar { display: flex; align-items: center; gap: 8px; }
+.listbar .grow { flex: 1; min-width: 0; }
+.listbar select { width: 100%; padding: 6px 10px; font-size: 15px; }
+.listbar .btnlike { white-space: nowrap; min-height: 34px; padding: 4px 10px; }
+.grow { flex: 1; min-width: 0; }
+.lslist { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lsi { background: var(--bg); border-radius: 12px; padding: 8px 10px; border: 1px solid transparent; }
+.lsi.cur { border-color: var(--blue); }
+.lsi .row2 { margin-bottom: 4px; }
+.lsi input { padding: 6px 10px; font-size: 15px; }
+.lsgo { min-width: 36px; min-height: 36px; padding: 0 6px; color: #5b8cff; }
+.lstk { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 6px; }
+.tkb2 { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; padding: 1px 2px 1px 8px; }
+.tkb2 button { min-height: 22px; min-width: 22px; padding: 0 4px; font-size: 11px; color: var(--mut); }
+.lsnew { border-top: 1px solid var(--bg3); padding-top: 10px; }
+.lsnew button:disabled { opacity: .5; }
+.lsb { font-size: 17px; opacity: .6; min-width: 40px; }
+.lsb.on { opacity: 1; outline: 0; background: rgba(41,98,255,.25); }
+.listspop .lpi { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.listspop .lpi input { width: 20px; height: 20px; }
+.listsheet { max-height: 85dvh; }
+
+/* ---- wide screens (>= 740px: iPad / laptop): list on the right, selected stock on the rest (Eyal 2026-10-30) ---- */
+.split { display: flex; flex-direction: row; height: calc(100dvh - var(--pb, 0px)); overflow: hidden; }
+.side { flex: none; width: clamp(290px, 32vw, 400px); display: flex; flex-direction: column; min-height: 0; border-inline-end: 1px solid var(--bg3); background: var(--bg); }
+.side header.top, body.has-pb .side header.top { position: static; padding-top: 6px; }
+.side .filters, body.has-pb .side .filters { position: static; max-width: none; margin: 0; flex: none; }
+.side .list { flex: 1; min-height: 0; overflow-y: auto; display: block; padding: 6px 8px 30px; max-width: none; margin: 0; overscroll-behavior: contain; }
+.side .row { margin-bottom: 6px; }
+.side .row.sel { background: var(--bg2); border-color: var(--blue); box-shadow: inset -3px 0 0 var(--blue); }
+.side canvas.spark { aspect-ratio: 3.2 / 1; }
+.side .fbody { grid-template-columns: 1fr; }
+.side .fpanel { max-height: 45vh; overflow-y: auto; }
+.side header.top .title { font-size: 17px; }
+.side .hbtns a.btnlike, .side .hbtns button { padding: 6px 8px; font-size: 13px; }
+.smain { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.smain .cv, body.has-pb .smain .cv { height: 100%; }
+.smain > .center { margin: auto; }
+.split #back { display: none; }

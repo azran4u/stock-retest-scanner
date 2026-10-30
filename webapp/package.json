@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:site": "tsc --noEmit && SRS_BASE=/ SRS_OUT=../dist vite build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

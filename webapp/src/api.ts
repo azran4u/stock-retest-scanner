@@ -3,12 +3,13 @@ import { createClient, type SupabaseClient, type Session } from '@supabase/supab
 import type { Command, Drawing, Feedback, Label, TvDrawing, Watch } from './types';
 import { normPosition, type Position } from './positions';
 import type { Research } from './research';
+import type { StockList } from './lists';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
 export const OWNER_EMAIL = 'azran4u@gmail.com';
 
-export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist' | 'positions';
+export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist' | 'positions' | 'stock_lists';
 export type ChangeFn = (table: Table, event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) => void;
 
 export interface Api {
@@ -18,6 +19,15 @@ export interface Api {
   sendLink(email: string): Promise<void>;
   verifyCode(email: string, code: string): Promise<void>;
   signOut(): Promise<void>;
+  /** data file (index.json, candles/T.json ...) from the private bucket 'app-data'; demo: undefined (local data/) */
+  dataFetch?(path: string): Promise<Response>;
+  /** Google sign-in (Eyal 2026-10-30). Shown only when the project's Google provider is on (auth settings), or ?google=1 */
+  googleEnabled(): Promise<boolean>;
+  signInGoogle(): Promise<void>;
+  /** his own stock lists (table stock_lists, owner-only RLS) */
+  loadLists(): Promise<StockList[]>;
+  saveList(l: StockList): Promise<void>;
+  deleteList(id: string): Promise<void>;
   loadDrawings(): Promise<Drawing[]>;
   insertDrawing(d: Partial<Drawing>): Promise<Drawing>;
   updateDrawing(id: string, patch: Partial<Drawing>): Promise<void>;
@@ -65,6 +75,39 @@ class SupaApi implements Api {
     check(await this.sb.auth.verifyOtp({ email, token: code.trim(), type: 'email' }));
   }
   async signOut() { await this.sb.auth.signOut(); }
+  async dataFetch(path: string) {
+    const { data } = await this.sb.auth.getSession();
+    const tok = data.session?.access_token;
+    if (tok) {
+      try {
+        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/authenticated/app-data/${path}`, { headers: { Authorization: 'Bearer ' + tok, apikey: SUPABASE_KEY }, cache: 'no-cache' });
+        if (r.ok) return r;
+      } catch { /* network: fall through */ }
+    }
+    // transition only: the static copy on the old host (removed once the repo is private)
+    return fetch(import.meta.env.BASE_URL + 'data/' + path, { cache: 'no-cache' });
+  }
+  async googleEnabled() {
+    if (new URLSearchParams(location.search).has('google')) return true;
+    try {
+      const r = await fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } });
+      return !!(await r.json())?.external?.google;
+    } catch { return false; }
+  }
+  async signInGoogle() {
+    // only the owner account is allowed: login_hint pre-selects it; the server rejects any other new user
+    // (trigger srs_owner_only_signup on auth.users) and RLS on every table checks the JWT email.
+    const redirectTo = location.origin + import.meta.env.BASE_URL;
+    check(await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, queryParams: { login_hint: OWNER_EMAIL, prompt: 'select_account' } } }) as any);
+  }
+  async loadLists() {
+    return (check(await this.sb.from('stock_lists').select('*').order('pos').order('created_at')) as any[]).map(normList);
+  }
+  async saveList(l: StockList) {
+    const { builtin: _b, ...row } = l;
+    check(await this.sb.from('stock_lists').upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: 'id' }));
+  }
+  async deleteList(id: string) { check(await this.sb.from('stock_lists').delete().eq('id', id)); }
   async loadDrawings() {
     return check(await this.sb.from('drawings').select('*').not('status', 'in', '(obsolete,deleted)').order('created_at')) as Drawing[];
   }
@@ -100,7 +143,7 @@ class SupaApi implements Api {
   }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
-    for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions'] as Table[]) {
+    for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions', 'stock_lists'] as Table[]) {
       ch.on('postgres_changes' as any, { event: '*', schema: 'public', table: t },
         (p: any) => fn(t, p.eventType, p.new, p.old));
     }
@@ -125,6 +168,16 @@ class MemApi implements Api {
   async sendLink(_e: string) { /* demo */ }
   async verifyCode(email: string) { this.email = email; this.authFns.forEach((f) => f(email)); }
   async signOut() { this.email = null; this.authFns.forEach((f) => f(null)); }
+  async googleEnabled() { return new URLSearchParams(location.search).has('google'); }
+  async signInGoogle() { this.email = OWNER_EMAIL; this.authFns.forEach((f) => f(OWNER_EMAIL)); }
+  lists: StockList[] = [];
+  async loadLists() { return this.lists.map((l) => ({ ...l, tickers: [...l.tickers] })); }
+  async saveList(l: StockList) {
+    const i = this.lists.findIndex((x) => x.id === l.id), row = { ...l, tickers: [...l.tickers], updated_at: new Date().toISOString() };
+    if (i >= 0) this.lists[i] = row; else this.lists.push({ ...row, created_at: row.updated_at });
+    this.emit('stock_lists', i >= 0 ? 'UPDATE' : 'INSERT', { ...row }, null);
+  }
+  async deleteList(id: string) { this.lists = this.lists.filter((l) => l.id !== id); this.emit('stock_lists', 'DELETE', null, { id }); }
   emit(t: Table, e: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) { this.changeFns.forEach((f) => f(t, e, row, old)); }
   async loadDrawings() { return this.drawings.filter((d) => d.status !== 'deleted' && d.status !== 'obsolete').map((d) => ({ ...d })); }
   async insertDrawing(d: Partial<Drawing>) {
@@ -172,6 +225,9 @@ class MemApi implements Api {
   async loadResearch() { return [...(((window as any).__demoResearch || []) as Research[])]; }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }
 }
+
+const normList = (r: any): StockList => ({ id: r.id, name: r.name, kind: r.kind === 'dynamic' ? 'dynamic' : 'static', tickers: Array.isArray(r.tickers) ? r.tickers : [],
+  criteria: r.criteria || null, pos: +r.pos || 0, created_at: r.created_at, updated_at: r.updated_at });
 
 export function makeApi(): Api {
   const q = new URLSearchParams(location.search);
