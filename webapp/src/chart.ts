@@ -21,10 +21,13 @@ export interface ChartCallbacks {
   onDragMove(d: Drawing): void;
   onDragEnd(id: string, patch: Partial<Drawing>): void;
   onTap(price: number, date: string): void;
-  /** Fib edit mode: an anchor handle was dragged onto the bar at `time` (bar time of the current timeframe). */
-  onFibDrop?(which: 'low' | 'high', time: string): void;
+  /** Fib edit: an anchor handle / end line was dropped at bar time `time` (current timeframe) and price `price`, exactly
+   *  where it was released (no snapping, Eyal 2026-10-30). */
+  onFibDrop?(which: 'low' | 'high', time: string, price: number): void;
   /** live while dragging (the Fib lines follow before the drop is saved) */
-  onFibMove?(which: 'low' | 'high', time: string): void;
+  onFibMove?(which: 'low' | 'high', time: string, price: number): void;
+  /** Fib drawing tool (startFibDraw): live preview from the first anchor to the pointer */
+  onFibDraft?(a: FibPt, b: FibPt): void;
 }
 /** One earnings report marker (Eyal 2026-10-28). d = report date; future = the next known date (est = estimated). */
 export interface EarnMark { d: string; t: 'bmo' | 'amc' | null; e: number | null; a: number | null; s: number | null; future?: boolean; est?: boolean }
@@ -41,6 +44,7 @@ export function earnTip(m: EarnMark): string {
   else if (!m.future) eps = '<div class="muted">אין נתוני EPS</div>';
   return head + eps;
 }
+export interface FibPt { time: string; price: number }
 export interface FibEdit { low: { time: string; price: number } | null; high: { time: string; price: number } | null }
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -113,6 +117,10 @@ export class ChartView {
       if (e.pointerType === 'mouse' && this.earnTipIdx != null && !(e.target as Element).closest?.('g.earn')) this.showEarnTip(null);
     });
     host.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse' && this.earnTipIdx != null) this.showEarnTip(null); });
+    // Fib drawing tool (Eyal 2026-10-30, like TradingView): press = first anchor (the low), drag, release = second anchor
+    // (the target); a click without dragging sets the first anchor and the next click the second. Raw price / time of
+    // the pointer, no snapping. While the tool is on the chart does not pan / zoom (touch: no page scroll either).
+    host.addEventListener('pointerdown', (e) => this.onFibDrawDown(e), true);
     this.svg.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     // own tap detection (lightweight-charts swallows quick 2nd taps as double-tap)
     let down: { x: number; y: number; t: number } | null = null;
@@ -143,9 +151,62 @@ export class ChartView {
   private fibAnchorS: ISeriesApi<'Line'> | null = null;
   private legendEl: HTMLDivElement | null = null;
   private extraLevels: number[] = [];
-  /** Fib edit mode (Eyal 2026-10-24): draggable anchor handles that snap to the wick of the candle under the pointer. */
+  /** Fib edit mode (Eyal 2026-10-24; no snapping since 2026-10-30): draggable anchor handles + end lines. */
   fibEdit: FibEdit | null = null;
   private fibDrag: 'low' | 'high' | null = null;
+  private fibDraw: { onDone: (a: FibPt, b: FibPt) => void; a: FibPt | null } | null = null;
+  get fibDrawing() { return !!this.fibDraw; }
+  /** Fib drawing tool on: the next press on the chart sets the first anchor, the release (or next click) the second. */
+  startFibDraw(onDone: (a: FibPt, b: FibPt) => void) {
+    this.fibDraw = { onDone, a: null };
+    this.host.classList.add('fibdrawmode');
+    this.chart.applyOptions({ handleScroll: false, handleScale: false });
+    this.lastKey = '';
+  }
+  cancelFibDraw() {
+    if (!this.fibDraw) return;
+    this.fibDraw = null;
+    this.host.classList.remove('fibdrawmode');
+    this.chart.applyOptions({ handleScroll: true, handleScale: true });
+    this.lastKey = '';
+  }
+  /** raw chart point under a client position (null outside the price pane) */
+  private ptAt(clientX: number, clientY: number, clamp = false): FibPt | null {
+    const r = this.host.getBoundingClientRect();
+    let x = clientX - r.left, y = clientY - r.top;
+    if (clamp) { x = Math.max(0, Math.min(this.paneW() - 1, x)); y = Math.max(0, Math.min(this.paneH() - 1, y)); }
+    else if (x < 0 || y < 0 || x > this.paneW() || y > this.paneH()) return null;
+    const price = this.priceAt(y), time = this.dateAt(x);
+    return price == null || !time ? null : { time, price };
+  }
+  private onFibDrawDown(e: PointerEvent) {
+    const fd = this.fibDraw; if (!fd) return;
+    const p0 = this.ptAt(e.clientX, e.clientY); if (!p0) return; // price / time axis: ignore
+    e.preventDefault(); e.stopImmediatePropagation();
+    const x0 = e.clientX, y0 = e.clientY;
+    const first = !fd.a;
+    if (first) fd.a = p0;
+    let last: FibPt = p0;
+    const move = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const p = this.ptAt(ev.clientX, ev.clientY, true); if (!p || !fd.a) return;
+      last = p; this.cb.onFibDraft?.(fd.a, p);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', up, true);
+      ev.stopImmediatePropagation();
+      const p = this.ptAt(ev.clientX, ev.clientY, true) ?? last;
+      const dragged = Math.hypot(ev.clientX - x0, ev.clientY - y0) > 6;
+      if (first && !dragged) return; // a click: first anchor set, wait for the second click
+      const a = fd.a!;
+      this.cancelFibDraw();
+      if (a.price === p.price) return;
+      fd.onDone(a, p);
+    };
+    window.addEventListener('pointermove', move, { passive: false, capture: true });
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
+  }
   setFibEdit(e: FibEdit | null) { if (this.fibDrag) return; this.fibEdit = e ? JSON.parse(JSON.stringify(e)) : null; this.lastKey = ''; }
   /** Moving averages to show: [{n, color, data}] (data already in the timeframe's bar times); [] hides all. */
   setMAs(mas: { n: number; color: string; data: { time: string; value: number }[] }[]) {
@@ -557,27 +618,6 @@ export class ChartView {
     return out;
   }
 
-  /** Candle whose wick is nearest to the pointer (screen px): |Δy| to its low (low end) / high (high end) + wx·|Δx|
-   *  (wx 0.15 when dragging a whole line, mostly vertical, often from the price axis; 1 for an end dot). Only visible
-   *  candles that keep low before / below high. */
-  snapFib(which: 'low' | 'high', x: number, y: number, wx: number): Bar | null {
-    const n = this.bars.length, other = this.fibEdit?.[which === 'low' ? 'high' : 'low'];
-    if (!n) return null;
-    const lr = this.chart.timeScale().getVisibleLogicalRange();
-    const i0 = Math.max(0, Math.floor(lr?.from ?? 0)), i1 = Math.min(n - 1, Math.ceil(lr?.to ?? n - 1));
-    const xc = Math.max(0, Math.min(this.paneW(), x));
-    let best: Bar | null = null, bs = Infinity;
-    for (let i = i0; i <= i1; i++) {
-      const b = this.bars[i], p = which === 'low' ? b.low : b.high;
-      if (other && (which === 'low' ? !(b.time < other.time && p < other.price) : !(b.time > other.time && p > other.price))) continue;
-      const yy = this.Y(p), xx = this.chart.timeScale().logicalToCoordinate(i as any);
-      if (yy == null || xx == null) continue;
-      const sc = Math.abs(yy - y) + wx * Math.abs(xx - xc);
-      if (sc < bs) { bs = sc; best = b; }
-    }
-    return best;
-  }
-
   // ---- interaction ----
   private onPointerDown(e: PointerEvent) {
     const t = e.target as Element;
@@ -591,15 +631,13 @@ export class ChartView {
       this.fibDrag = which;
       this.host.classList.add('fibdragging');
       this.chart.applyOptions({ handleScroll: false, handleScale: false });
-      const rect = this.host.getBoundingClientRect();
-      const n = this.bars.length;
       const move = (ev: PointerEvent) => {
         ev.preventDefault();
-        if (!n || !this.fibEdit) return;
-        const b = this.snapFib(which, ev.clientX - rect.left, ev.clientY - rect.top, isLine ? 0.15 : 1);
-        if (!b) return;
-        this.fibEdit[which] = { time: b.time, price: which === 'low' ? b.low : b.high }; // snap to the wick
-        this.cb.onFibMove?.(which, b.time);
+        const cur = this.fibEdit?.[which]; if (!cur) return;
+        const p = this.ptAt(ev.clientX, ev.clientY, true); if (!p) return;
+        // exactly where the pointer is (no snapping); an end line dragged from the side only changes the price
+        this.fibEdit![which] = { time: isLine ? cur.time : p.time, price: p.price };
+        this.cb.onFibMove?.(which, this.fibEdit![which]!.time, p.price);
         this.lastKey = '';
       };
       const up = () => {
@@ -608,7 +646,7 @@ export class ChartView {
         this.fibDrag = null; this.lastKey = '';
         this.host.classList.remove('fibdragging');
         const a = this.fibEdit?.[which];
-        if (a) this.cb.onFibDrop?.(which, a.time);
+        if (a) this.cb.onFibDrop?.(which, a.time, a.price);
       };
       window.addEventListener('pointermove', move, { passive: false });
       window.addEventListener('pointerup', up);

@@ -937,6 +937,7 @@ function shell() {
       <div class="seg"><button data-tf="W">שבועי</button><button data-tf="D">יומי</button></div>
       <button id="addZone">+ אזור</button>
       <button id="addLong">+ לונג</button>
+      <button id="addFib" title="פיבונאצי: לחץ על השפל וגרור עד היעד">+ פיבו</button>
     </div>
     <div class="indbar" id="indbar">${indChipsHtml()}</div>
     <nav class="jump" id="jump" aria-label="מעבר לחלק בעמוד">${JUMPS.map(([k, l]) => `<button class="chip jmp" data-jump="${k}">${l}</button>`).join('')}</nav>
@@ -954,14 +955,19 @@ function shell() {
       if (d?.kind === 'zone') await followZone(d);
     },
     onTap: (price, date) => onChartTap(price, date),
-    onFibDrop: (which, time) => onFibPick(which, time),
-    onFibMove: (which, time) => {           // lines follow the handle while dragging (saved on release)
-      const p = snapWick(time, which), f = fibOfCur(); if (!p || !f || !cv) return;
-      const lo = which === 'low' ? { d: p.date, v: p.price } : { d: f.low_date, v: f.low };
-      const hi = which === 'high' ? { d: p.date, v: p.price } : { d: f.high_date, v: f.high };
-      if (hi.d <= lo.d || hi.v <= lo.v) return;
+    onFibDrop: (which, time, price) => onFibPick(which, time, price),
+    onFibMove: (which, time, price) => {    // lines follow the handle while dragging (saved on release)
+      const f = fibOfCur(); if (!f || !cv) return;
+      const lo = which === 'low' ? { d: time, v: price } : { d: f.low_date, v: f.low };
+      const hi = which === 'high' ? { d: time, v: price } : { d: f.high_date, v: f.high };
+      if (hi.v <= lo.v) return;
       const tm = (d: string) => (S.ui.tf === 'W' ? mondayOfIso(d) : d);
       cv.setFib({ low: lo.v, high: hi.v, lowTime: tm(lo.d), highTime: tm(hi.d) }, false);
+    },
+    onFibDraft: (a, b) => {                 // drawing tool: live preview from the pressed point to the pointer
+      if (!cv || a.price === b.price) return;
+      const [lo, hi] = a.price < b.price ? [a, b] : [b, a];
+      cv.setFib({ low: lo.price, high: hi.price, lowTime: lo.time, highTime: hi.time }, false);
     },
   });
   $('#back')!.onclick = () => { location.hash = '#/'; };
@@ -974,6 +980,7 @@ function shell() {
   app.querySelectorAll<HTMLButtonElement>('[data-tf]').forEach((b) => (b.onclick = () => { S.ui.tf = b.dataset.tf as 'W' | 'D'; saveUi(); applyBars(); }));
   $('#addZone')!.onclick = () => startTap('zone');
   $('#addLong')!.onclick = () => startTap('long');
+  $('#addFib')!.onclick = () => startFibTool();
   bindIndChips();
   app.querySelectorAll<HTMLButtonElement>('[data-jump]').forEach((b) => (b.onclick = () => jumpTo(b.dataset.jump!)));
   swipe($('#chhead')!); swipe($('#panel')!); swipe($('#tools')!);
@@ -1011,7 +1018,11 @@ function bindIndChips() {
     saveUi(); bindIndChips(); applyIndicators();
   }));
   const fb = bar.querySelector<HTMLButtonElement>('[data-fib]');
-  if (fb) fb.onclick = () => { S.ui.fib = !S.ui.fib; saveUi(); bindIndChips(); applyIndicators(); renderPanel(); };
+  if (fb) fb.onclick = () => {
+    S.ui.fib = !S.ui.fib; saveUi(); bindIndChips(); applyIndicators(); renderPanel();
+    if (S.ui.fib && S.ticker && !fibManual(S.ticker)) startFibTool(); // nothing drawn yet: straight into the drawing tool
+    else if (!S.ui.fib && cv?.fibDrawing) { cv.cancelFibDraw(); renderHint(); }
+  };
   const eb = bar.querySelector<HTMLButtonElement>('[data-earn]');
   if (eb) eb.onclick = () => { S.ui.earn = !S.ui.earn; saveUi(); bindIndChips(); applyEarnings(); };
 }
@@ -1021,12 +1032,30 @@ function fibAuto(): Fib | null {
   if (curFib?.t !== S.ticker) curFib = { t: S.ticker, f: fibAnchor(curBars.daily) };
   return curFib.f;
 }
-/** Fib that counts on the stock page: a draft low being placed > his manual anchors > the automatic anchor. */
+/** Fib on the chart = the one he drew (Eyal 2026-10-30: no automatic placement on the chart any more). */
 function fibOfCur(): (Fib & { manual: boolean }) | null {
-  const auto = fibAuto(), t = S.ticker; if (!t) return null;
-  const m = fibManual(t), atrW = auto?.atr_w ?? numOrNull(S.byT.get(t)?.fib_atr) ?? numOrNull(S.byT.get(t)?.weekly_atr);
-  const base = m ? { ...m, atr_w: atrW, manual: true } : auto ? { ...auto, manual: false } : null;
-  return base;
+  const t = S.ticker; if (!t) return null;
+  const m = fibManual(t); if (!m) return null;
+  const atrW = fibAuto()?.atr_w ?? numOrNull(S.byT.get(t)?.fib_atr) ?? numOrNull(S.byT.get(t)?.weekly_atr);
+  return { ...m, atr_w: atrW, manual: true } as Fib & { manual: boolean };
+}
+// ---------------- Fib drawing tool (Eyal 2026-10-30, like TradingView) ----------------
+// '+ פיבו' (or the 'פיבונאצי' chip with no Fib yet): press on the chart = first anchor (the low), drag, release = second
+// anchor (the target); or click, then click. Anchors exactly where pressed / released (raw price + bar time, no snapping).
+function startFibTool() {
+  if (!cv || !S.ticker) return;
+  if (cv.fibDrawing) { cv.cancelFibDraw(); renderHint(); applyIndicators(); return; }
+  S.tap = null; if (S.selected) { S.selected = null; syncChart(); renderPanel(); }
+  const t = S.ticker;
+  cv.setFibEdit(null);
+  cv.startFibDraw(async (a, b) => {
+    renderHint();
+    if (S.ticker !== t) return;
+    const [lo, hi] = a.price < b.price ? [a, b] : [b, a];
+    if (!S.ui.fib) { S.ui.fib = true; saveUi(); bindIndChips(); }
+    await saveFibManual(t, { low: lo.price, low_date: lo.time, high: hi.price, high_date: hi.time });
+  });
+  renderHint();
 }
 
 // ---------------- manual Fib anchors (Eyal 2026-10-24: "start at the beginning of the up-wave, end at the top; take the wick") ----------------
@@ -1066,17 +1095,16 @@ function snapWick(time: string, which: 'low' | 'high'): { date: string; price: n
 function refreshFib() {
   applyIndicators(); renderPanel();
 }
-/** A Fib end was dragged (line or dot) and dropped on the candle at bar time `barTime`; the chart already picked the
- *  candle whose wick is nearest to the drop point. Low end -> that candle's low, high end -> its high (wick), then save. */
-async function onFibPick(which: 'low' | 'high', barTime: string) {
+/** A Fib end (line or dot) was dropped at bar time `time` / price `price`, exactly where released (no snapping since
+ *  2026-10-30), then save. */
+async function onFibPick(which: 'low' | 'high', time: string, price: number) {
   const t = S.ticker; if (!t) return;
-  const p = snapWick(barTime, which);
-  if (!p) { toast('אין נר בנקודה הזו', true); refreshFib(); return; }
   const cur = fibOfCur();
+  const p = { date: time, price };
   const low = which === 'low' ? p : cur ? { date: cur.low_date, price: cur.low } : null;
   const high = which === 'high' ? p : cur ? { date: cur.high_date, price: cur.high } : null;
   if (!low || !high) { refreshFib(); return; }
-  if (high.date <= low.date || high.price <= low.price) { toast('השיא חייב להיות אחרי השפל וגבוה ממנו', true); refreshFib(); return; }
+  if (high.price <= low.price) { toast('השיא חייב להיות גבוה מהשפל', true); refreshFib(); return; }
   await saveFibManual(t, { low: low.price, low_date: low.date, high: high.price, high_date: high.date });
 }
 const mondayOfIso = (d: string) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7)); return t.toISOString().slice(0, 10); };
@@ -1112,8 +1140,8 @@ function fibPanelHtml(r: Row | undefined): string {
   const m = fibManual(t);
   const f = fibOfCur() ?? (m ? { ...m, atr_w: numOrNull(r?.fib_atr), manual: true }
     : r && rowFib(r) ? { ...rowFib(r)!, low_date: String(r.fib_low_date || ''), high_date: String(r.fib_high_date || ''), atr_w: numOrNull(r.fib_atr), manual: false } : null);
-  const btns = `<div class="muted small fibhow">${S.ui.fib ? 'למיקום: גרור על הגרף את הקו העליון או התחתון של הפיבונאצי (גם מהצד, ליד המחיר) או את הנקודות. בשחרור הוא נצמד לפתיל הקרוב.' : ''}</div>${m ? '<div class="acts fibacts"><button id="fibAuto" class="ghost">אפס לאוטומטי</button></div>' : ''}`;
-  if (!f) return `<section class="fibbox" id="secFib"><h3>פיבונאצי</h3><div class="muted small">אין עדיין שפל ושיא ברורים בגרף השבועי. אפשר למקם ידנית.</div>${btns}</section>`;
+  const btns = `<div class="muted small fibhow">${m ? (S.ui.fib ? 'לשינוי: גרור על הגרף את הקו העליון או התחתון (גם מהצד, ליד המחיר) או את הנקודות. הנקודה נשארת בדיוק איפה ששחררת.' : '') : 'לשרטוט: "+ פיבו" מתחת לגרף, לחץ על השפל וגרור עד היעד.'}</div><div class="acts fibacts"><button id="fibDraw" class="ghost">${m ? 'שרטט מחדש' : '+ שרטט פיבונאצי'}</button>${m ? '<button id="fibAuto" class="ghost">מחק</button>' : ''}</div>`;
+  if (!f) return `<section class="fibbox" id="secFib"><h3>פיבונאצי</h3><div class="muted small">אין פיבונאצי על המניה הזו.</div>${btns}</section>`;
   const px = curBars ? curBars.daily[curBars.daily.length - 1]?.close : numOrNull(r?.current_price);
   const txt = fibText(f, f.atr_w, px, liveZoneOf(t, r));
   const lv = FIB_KEY.map((x) => `<span><b dir="ltr">${x}</b> <span dir="ltr">${fibPrice(f, x).toFixed(2)}</span></span>`).join('');
@@ -1121,7 +1149,7 @@ function fibPanelHtml(r: Row | undefined): string {
     <div class="small">מהשפל <bdi dir="ltr">${f.low.toFixed(2)}</bdi> (${ddmm(f.low_date)}/${f.low_date.slice(2, 4)}) לשיא <bdi dir="ltr">${f.high.toFixed(2)}</bdi> (${ddmm(f.high_date)}/${f.high_date.slice(2, 4)})</div>
     <div class="fiblv small">${lv}</div>
     <div class="small fibconf">${txt || '<span class="muted">המחיר והאזור לא מתלכדים עם 0.382 / 0.5 / 0.618.</span>'}</div>
-    <div class="muted small">מידע בלבד, לא תנאי ל-PASS.${S.ui.fib ? '' : ' להצגה על הגרף: כפתור "פיבונאצי" מתחת לגרף.'}</div>${btns}</section>`;
+    <div class="muted small">מידע בלבד, לא תנאי ל-PASS.${!f.manual ? ' חישוב אוטומטי (לסינון בלבד), לא מוצג על הגרף.' : S.ui.fib ? '' : ' להצגה על הגרף: כפתור "פיבונאצי" מתחת לגרף.'}</div>${btns}</section>`;
 }
 
 function swipe(el: HTMLElement) {
@@ -1199,6 +1227,7 @@ function syncChart() {
 
 function startTap(kind: 'zone' | 'long') {
   if (!curBars) return;
+  if (cv?.fibDrawing) cv.cancelFibDraw();
   S.tap = S.tap?.kind === kind ? null : { kind, pts: [], date: null };
   if (S.tap && S.selected) { S.selected = null; syncChart(); renderPanel(); } // hide handles so taps hit the chart
   renderHint();
@@ -1207,6 +1236,14 @@ function renderHint() {
   const h = $('#hint'); if (!h) return;
   const t = S.tap;
   ['addZone', 'addLong'].forEach((id) => $('#' + id)?.classList.toggle('on', !!t && (id === 'addZone') === (t.kind === 'zone')));
+  const fd = !!cv?.fibDrawing;
+  $('#addFib')?.classList.toggle('on', fd);
+  if (fd) {
+    h.hidden = false;
+    h.innerHTML = 'פיבונאצי: לחץ על השפל וגרור עד היעד (או לחץ על השפל ואז על היעד) <button id="cancelTap" class="ghost small">ביטול</button>';
+    $('#cancelTap')!.onclick = () => { cv?.cancelFibDraw(); renderHint(); applyIndicators(); };
+    return;
+  }
   if (!t) { h.hidden = true; return; }
   h.hidden = false;
   h.innerHTML = (t.kind === 'zone'
@@ -1428,6 +1465,7 @@ function renderPanel() {
   syncJumps();
   const rs = $('#research', p) as HTMLDetailsElement | null; if (rs) rs.ontoggle = () => { S.ui.researchOpen = rs.open; saveUi(); };
   const fa = $('#fibAuto', p); if (fa) fa.onclick = () => { if (S.ticker) saveFibManual(S.ticker, null); };
+  const fdw = $('#fibDraw', p); if (fdw) fdw.onclick = () => { if (!S.ui.fib) { S.ui.fib = true; saveUi(); bindIndChips(); } startFibTool(); };
 
   p.querySelectorAll<HTMLElement>('.card[data-id]').forEach((c) => {
     const id = c.dataset.id!;

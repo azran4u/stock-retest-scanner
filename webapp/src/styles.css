@@ -401,3 +401,7 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .smain .cv, body.has-pb .smain .cv { height: 100%; }
 .smain > .center { margin: auto; }
 .split #back { display: none; }
+
+/* Fib drawing tool (Eyal 2026-10-30): press = low, drag, release = target */
+.chartwrap.fibdrawmode, .chartwrap.fibdrawmode * { cursor: crosshair !important; }
+#addFib.on { outline: 2px solid #ffca28; }
