@@ -636,34 +636,12 @@ function renderLogin() {
   <div class="login">
     <div class="logo">📈</div>
     <h1>Retest Scanner</h1>
-    <button id="google" class="big gbtn" hidden><svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>התחבר עם Google</span></button>
-    <p class="muted small" id="gnote" hidden>רק החשבון <bdi dir="ltr">${esc(OWNER_EMAIL)}</bdi> מורשה.</p>
+    <button id="google" class="big gbtn"><svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg><span>התחבר עם Google</span></button>
+    <p class="muted small" id="gnote">רק החשבון <bdi dir="ltr">${esc(OWNER_EMAIL)}</bdi> מורשה.</p>
     ${authErr ? `<p class="autherr small" id="authErr">הכניסה נכשלה: ${esc(/restricted|database error/i.test(authErr) ? 'החשבון הזה לא מורשה' : authErr)}</p>` : ''}
-    <p class="muted" id="emnote">כניסה עם קישור או קוד שנשלח במייל</p>
-    <input id="em" type="email" inputmode="email" autocomplete="email" dir="ltr" value="${esc(localStorage.getItem('srs-email') || OWNER_EMAIL)}" />
-    <button id="send" class="primary big">שלח קישור התחברות</button>
-    <div id="codebox" class="codebox" hidden>
-      <p class="muted">נשלח מייל. פתח את הקישור, או (באפליקציה שבמסך הבית) הקלד כאן את הקוד מהמייל:</p>
-      <input id="code" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="10" placeholder="123456" />
-      <button id="verify" class="primary big">אמת קוד</button>
-    </div>
   </div>`;
-  // Google (Eyal 2026-10-30): shown once the project's Google provider is on; the email code stays as a fallback
-  api.googleEnabled().then((on) => {
-    const g = $('#google') as HTMLButtonElement | null; if (!g || !on) return;
-    g.hidden = false; $('#gnote')!.hidden = false; $('#emnote')!.textContent = 'או כניסה עם קישור / קוד במייל';
-    g.onclick = () => guard(api.signInGoogle());
-  });
-  $('#send')!.onclick = async () => {
-    const em = ($('#em') as HTMLInputElement).value.trim();
-    localStorage.setItem('srs-email', em);
-    const ok = await guard(api.sendLink(em).then(() => true), 'נשלח');
-    if (ok) $('#codebox')!.hidden = false;
-  };
-  $('#verify')!.onclick = async () => {
-    const em = ($('#em') as HTMLInputElement).value.trim();
-    await guard(api.verifyCode(em, ($('#code') as HTMLInputElement).value));
-  };
+  // Google is the only login (Eyal 2026-10-30): the email link / code was removed
+  $('#google')!.onclick = () => guard(api.signInGoogle());
 }
 function renderDenied() {
   app.innerHTML = `<div class="login"><h1>אין הרשאה</h1><p class="muted" dir="ltr">${esc(S.email)}</p><button id="out" class="big">התנתק</button></div>`;

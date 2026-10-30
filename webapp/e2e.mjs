@@ -11,10 +11,9 @@ page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 
 await page.goto(BASE + '?demo=login');
-await page.waitForSelector('#send');
+await page.waitForSelector('#google');
 await page.screenshot({ path: `${OUT}/01_login.png` });
-await page.click('#send'); await page.waitForSelector('#codebox:not([hidden])');
-await page.fill('#code', '123456'); await page.click('#verify');
+await page.click('#google');
 await page.waitForSelector('.row');
 ok(true, 'login (demo) -> list');
 
@@ -26,6 +25,8 @@ await page.screenshot({ path: `${OUT}/02_list.png` });
 await page.evaluate(() => window.__srs.setChip('pass'));
 const np = await page.locator('.row').count();
 ok(np > 0 && np < n, `PASS filter ${np}`);
+// CSCO's status depends on the nightly data (FAIL today): search the unfiltered list
+await page.evaluate(() => window.__srs.setChip('all'));
 await page.fill('#q', 'CSC'); await page.waitForTimeout(100);
 ok((await page.locator('.row').count()) >= 1, 'search CSC');
 await page.screenshot({ path: `${OUT}/03_list_filtered.png` });

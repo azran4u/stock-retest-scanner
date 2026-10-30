@@ -4,7 +4,7 @@
 //  - lists: built-in PASS / ★ / all; a static list (create, add tickers, rename, add from the stock page 📂, delete);
 //    a saved search from the current filters; switching lists changes the side list; lists survive a reload
 //  - mobile 390: unchanged flow (list page -> full stock page with back), lists available there too
-//  - login: Google button only when the provider is on (?google=1 in demo), email code still there
+//  - login: Google is the only sign-in (no email code form)
 // Usage: node e2e_split.mjs [baseURL] [outDir]
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -132,20 +132,19 @@ for (const [name, vp, mobile] of [['laptop', { width: 1440, height: 900 }, false
   await ctx.close();
 }
 
-{ // login
-  const { ctx, page } = await open('login', { width: 390, height: 844 }, true, '?demo=login&google=1#/');
-  await page.waitForSelector('#google:not([hidden])');
-  ok(await page.locator('#send').isVisible(), 'login: Google button + email code fallback');
-  await page.screenshot({ path: `${OUT}/login_google.png` });
-  await page.locator('#google').tap(); await page.waitForSelector('.list .row');
-  ok(true, 'login: Google sign-in (demo) opens the app');
-  await ctx.close();
-  const b = await open('login2', { width: 390, height: 844 }, true, '?demo=login#/');
-  await b.page.waitForSelector('#send'); await b.page.waitForTimeout(500);
-  ok(await b.page.locator('#google').isHidden(), 'login: no Google button while the provider is off');
-  await b.ctx.close();
+{ // login: Google only (email code removed 2026-10-30)
+  for (const [nm, vp] of [['mobile', { width: 390, height: 844 }], ['laptop', { width: 1440, height: 900 }]]) {
+    const { ctx, page } = await open('login_' + nm, vp, nm === 'mobile', '?demo=login#/');
+    await page.waitForSelector('#google'); await page.waitForTimeout(300);
+    ok(await page.locator('#google').isVisible(), `login ${nm}: Google button shown`);
+    ok(await page.locator('#send, #em, #code, #verify').count() === 0, `login ${nm}: no email / code form`);
+    await page.screenshot({ path: `${OUT}/login_google_${nm}.png` });
+    await page.locator('#google').click(); await page.waitForSelector('.row');
+    ok(true, `login ${nm}: Google sign-in (demo) opens the app`);
+    await ctx.close();
+  }
   const c = await open('login3', { width: 390, height: 844 }, true, '?demo=login#error=server_error&error_description=Database+error+saving+new+user');
-  await c.page.waitForSelector('#send');
+  await c.page.waitForSelector('#google');
   ok((await c.page.locator('#authErr').textContent()).includes('לא מורשה'), 'login: a rejected account sees "not allowed"');
   await c.ctx.close();
 }

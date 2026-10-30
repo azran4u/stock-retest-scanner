@@ -87,7 +87,7 @@ for (const [n, h, sel] of [['rules', '#/rules', '.rsec'], ['calibrate', '#/calib
   await page.screenshot({ path: `${OUT}/08_${n}.png` });
 }
 // login (logged out)
-await page.goto(BASE + '?demo=login'); await page.waitForSelector('#send'); await noHScroll('login');
+await page.goto(BASE + '?demo=login'); await page.waitForSelector('#google'); await noHScroll('login');
 ok(await page.locator('#botFab').isHidden(), 'login: no 💬 when logged out');
 await page.screenshot({ path: `${OUT}/09_login.png` });
 ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);

@@ -16,13 +16,10 @@ export interface Api {
   demo: boolean;
   session(): Promise<{ email: string | null }>;
   onAuth(fn: (email: string | null) => void): void;
-  sendLink(email: string): Promise<void>;
-  verifyCode(email: string, code: string): Promise<void>;
   signOut(): Promise<void>;
   /** data file (index.json, candles/T.json ...) from the private bucket 'app-data'; demo: undefined (local data/) */
   dataFetch?(path: string): Promise<Response>;
-  /** Google sign-in (Eyal 2026-10-30). Shown only when the project's Google provider is on (auth settings), or ?google=1 */
-  googleEnabled(): Promise<boolean>;
+  /** Google sign-in: the only login (Eyal 2026-10-30, email code removed) */
   signInGoogle(): Promise<void>;
   /** his own stock lists (table stock_lists, owner-only RLS) */
   loadLists(): Promise<StockList[]>;
@@ -67,13 +64,6 @@ class SupaApi implements Api {
   onAuth(fn: (email: string | null) => void) {
     this.sb.auth.onAuthStateChange((_e, s: Session | null) => fn(s?.user?.email ?? null));
   }
-  async sendLink(email: string) {
-    const redirect = location.origin + import.meta.env.BASE_URL;
-    check(await this.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect, shouldCreateUser: true } }));
-  }
-  async verifyCode(email: string, code: string) {
-    check(await this.sb.auth.verifyOtp({ email, token: code.trim(), type: 'email' }));
-  }
   async signOut() { await this.sb.auth.signOut(); }
   async dataFetch(path: string) {
     const { data } = await this.sb.auth.getSession();
@@ -86,13 +76,6 @@ class SupaApi implements Api {
     }
     // transition only: the static copy on the old host (removed once the repo is private)
     return fetch(import.meta.env.BASE_URL + 'data/' + path, { cache: 'no-cache' });
-  }
-  async googleEnabled() {
-    if (new URLSearchParams(location.search).has('google')) return true;
-    try {
-      const r = await fetch(SUPABASE_URL + '/auth/v1/settings', { headers: { apikey: SUPABASE_KEY } });
-      return !!(await r.json())?.external?.google;
-    } catch { return false; }
   }
   async signInGoogle() {
     // only the owner account is allowed: login_hint pre-selects it; the server rejects any other new user
@@ -165,10 +148,7 @@ class MemApi implements Api {
   constructor(loggedIn: boolean) { this.email = loggedIn ? OWNER_EMAIL : null; }
   async session() { return { email: this.email }; }
   onAuth(fn: (e: string | null) => void) { this.authFns.push(fn); }
-  async sendLink(_e: string) { /* demo */ }
-  async verifyCode(email: string) { this.email = email; this.authFns.forEach((f) => f(email)); }
   async signOut() { this.email = null; this.authFns.forEach((f) => f(null)); }
-  async googleEnabled() { return new URLSearchParams(location.search).has('google'); }
   async signInGoogle() { this.email = OWNER_EMAIL; this.authFns.forEach((f) => f(OWNER_EMAIL)); }
   lists: StockList[] = [];
   async loadLists() { return this.lists.map((l) => ({ ...l, tickers: [...l.tickers] })); }
