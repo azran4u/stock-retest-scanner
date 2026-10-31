@@ -12,6 +12,11 @@ export type HandleKey = 'zone_top' | 'zone_bottom' | 'entry' | 'stop' | 'target'
 export const LONG_W_BARS = 20;
 const PRICE_KEYS: HandleKey[] = ['zone_top', 'zone_bottom', 'entry', 'stop', 'target'];
 const DAY = 86400000;
+/** Display gap between the last candle and a Long box (Eyal 2026-10-31: "the last candle merges with the trade box,
+ *  leave at least one week"): the box's left edge sits at least this many bars after the last bar index, i.e. one
+ *  week of empty space after the last candle's right edge (weekly: 1 bar, daily: 5 sessions; +1 for the candle's own
+ *  half-width on each side). Display only: saved t_start / t_end are untouched. */
+export const longGapBars = (weekly: boolean) => (weekly ? 2 : 6);
 const addDays = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') + n * DAY).toISOString().slice(0, 10);
 const mondayOf = (d: string) => { const t = new Date(d + 'T00:00:00Z'); return addDays(d, -((t.getUTCDay() + 6) % 7)); };
 const isWeekday = (d: string) => { const w = new Date(d + 'T00:00:00Z').getUTCDay(); return w !== 0 && w !== 6; };
@@ -145,6 +150,9 @@ export class ChartView {
     let vt = 0;
     const viewChanged = () => { clearTimeout(vt); vt = window.setTimeout(() => this.onViewChange?.(), 250); };
     host.addEventListener('wheel', viewChanged, { passive: true });
+    const userMoved = () => { this.revealLongs = false; };  // never fight his own pan / zoom
+    host.addEventListener('wheel', userMoved, { passive: true });
+    host.addEventListener('pointerdown', userMoved, true);
     host.addEventListener('pointerup', viewChanged, true);
     host.addEventListener('dblclick', viewChanged, true);
     this.chart.timeScale().subscribeVisibleLogicalRangeChange(viewChanged);
@@ -322,6 +330,7 @@ export class ChartView {
     else ts.setVisibleLogicalRange({ from: Math.max(0, n - visible), to: n + 6 });
     if (v && !v.auto && v.pr && v.pr.to > v.pr.from) { ps.setAutoScale(false); ps.setVisibleRange(v.pr); }
     else ps.setAutoScale(true);
+    this.revealLongs = true;
     this.lastKey = '';
   }
   /** called after the user may have changed the view (pan / zoom / price-axis drag) */
@@ -406,9 +415,34 @@ export class ChartView {
     if (e < s + 1) e = s + 1;
     return { s, e };
   }
-  /** Anchor dates for a long (what gets persisted when a legacy row without anchors is edited). */
+  /** Where a long is DRAWN: its stored span, but a box that reaches the last candle starts at least one week after it
+   *  (longGapBars), keeping its width (max LONG_W_BARS when it was stretched back into history). Boxes that end before
+   *  the last candle (old trades) stay where they were drawn. */
+  longDisplaySpan(d: Drawing): { s: number; e: number; shifted: boolean } {
+    const sp = this.longSpan(d), n = this.bars.length;
+    const minS = n - 1 + longGapBars(this.weekly);
+    if (!n || sp.e < n - 1 || sp.s >= minS) return { ...sp, shifted: false };
+    const w = Math.max(this.weekly ? 6 : 10, Math.min(sp.e - sp.s, LONG_W_BARS));
+    return { s: minS, e: minS + w, shifted: true };
+  }
+  /** Make the shifted boxes visible once after a stock / timeframe opens (the default view ends a few bars after the
+   *  last candle): widen the visible range to the right only, and only while the view still shows the present. */
+  private revealLongs = false;
+  private revealLongsNow() {
+    const n = this.bars.length, ts = this.chart.timeScale(), lr = ts.getVisibleLogicalRange();
+    if (!n || !lr) return;
+    let need = -Infinity;
+    for (const d of this.drawings) if (d.kind === 'long') {
+      const sp = this.longDisplaySpan(d);
+      // show at least ~18% of the view (min 8 weekly / 12 daily bars) of the box, so its price labels fit inside it
+      if (sp.e >= n - 1) need = Math.max(need, sp.s + Math.min(sp.e - sp.s, Math.max(this.weekly ? 8 : 12, 0.18 * (+lr.to - +lr.from))) + 1);
+    }
+    this.revealLongs = false;
+    if (need > +lr.to && +lr.to >= n - 1) ts.setVisibleLogicalRange({ from: +lr.from, to: need });
+  }
+  /** Anchor dates for a long (what gets persisted when a legacy row without anchors is edited): where it is drawn. */
   longAnchor(d: Drawing): { t_start: string | null; t_end: string | null } {
-    const { s, e } = this.longSpan(d);
+    const { s, e } = this.longDisplaySpan(d);
     return { t_start: this.dateOfLogical(s), t_end: this.dateOfLogical(e) };
   }
   private Y(p: number | null | undefined): number | null {
@@ -438,6 +472,7 @@ export class ChartView {
   }
 
   render() {
+    if (this.revealLongs && this.drawings.some((d) => d.kind === 'long')) { this.revealLongsNow(); this.lastKey = ''; return; }
     const W = this.paneW(), H = this.paneH();
     // ATR box fills the corner under the price axis
     const psW = this.chart.priceScale('right').width();
@@ -488,7 +523,7 @@ export class ChartView {
       let xs = x1; // unclamped left edge (for the start handle)
       if (d.kind === 'long') {
         // anchored to bars (time), not to screen pixels: moves with pan / zoom
-        const sp = this.longSpan(d), ts = this.chart.timeScale();
+        const sp = this.longDisplaySpan(d), ts = this.chart.timeScale();
         const a = ts.logicalToCoordinate(sp.s as any), b = ts.logicalToCoordinate(sp.e as any);
         if (a == null || b == null) continue;
         xs = a;
@@ -713,7 +748,9 @@ export class ChartView {
       const rect = this.host.getBoundingClientRect();
       const d0 = this.drawings.find((x) => x.id === id);
       // a long without stored anchors gets them now (placed where it is drawn), so it stays put from here on
-      if (d0?.kind === 'long' && (!d0.t_start || !d0.t_end)) Object.assign(d0, this.longAnchor(d0));
+      // (and a box drawn shifted past the last candle is moved / stretched from where it is drawn when its time edges are dragged)
+      if (d0?.kind === 'long' && (!d0.t_start || !d0.t_end || ((key === 't_start' || key === 't_end') && this.longDisplaySpan(d0).shifted)))
+        Object.assign(d0, this.longAnchor(d0));
       const width = d0?.kind === 'long' ? (() => { const sp = this.longSpan(d0); return sp.e - sp.s; })() : 0;
       this.lastKey = '';
       const move = (ev: PointerEvent) => {
