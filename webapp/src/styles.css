@@ -395,8 +395,16 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .side .fpanel { max-height: 45vh; overflow-y: auto; }
 .side header.top .title { font-size: 17px; }
 .side .hbtns a.btnlike, .side .hbtns button { padding: 6px 8px; font-size: 13px; }
-.smain { flex: 1; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-.smain .cv, body.has-pb .smain .cv { height: 100%; }
+/* stock pane scrolls as ONE page (Eyal 2026-10-31: "the review area is small and can't be scrolled" - the pane was
+   fixed at 100% with the chart at 52dvh, so the panel with the review got a ~180px inner scroller below the fold).
+   Now: sticky header, fixed-height chart, panel at its full height, the whole pane scrolls (wheel + touch). */
+.smain { flex: 1; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; touch-action: pan-y; display: flex; flex-direction: column; }
+.smain .cv, body.has-pb .smain .cv { height: auto; min-height: 100%; flex: none; }
+.smain header.top.ch, body.has-pb .smain header.top.ch { position: sticky; top: 0; z-index: 6; }
+.smain .chartwrap { height: clamp(300px, 56vh, 640px); min-height: 300px; flex: none; }
+.smain .panel { flex: none; overflow: visible; padding-bottom: 40px; }
+.smain .panel section, .smain .panel .research { scroll-margin-top: 64px; }
 .smain > .center { margin: auto; }
 .split #back { display: none; }
 

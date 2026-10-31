@@ -1,7 +1,7 @@
 import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
-import { ChartView, LONG_W_BARS } from './chart';
+import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
 import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
@@ -883,7 +883,22 @@ function rowHtml(r: Row) {
 let cv: ChartView | null = null;
 let curBars: { daily: Bar[]; weekly: Bar[] } | null = null;
 let loadSeq = 0;
-function destroyChart() { if (cv) { cv.destroy(); cv = null; } }
+function destroyChart() { if (cv) { saveView(); cv.destroy(); cv = null; viewKey = null; } }
+
+// ---- per-stock chart view (Eyal 2026-10-31): time range + price axis remembered per ticker and timeframe ----
+const VIEWS_LS = 'srs-views-v1', VIEWS_MAX = 400;
+let viewKey: string | null = null;     // ticker|tf of the bars on the chart now
+function loadViews(): Record<string, ChartView2 & { at: number }> { try { return JSON.parse(localStorage.getItem(VIEWS_LS) || '{}'); } catch { return {}; } }
+function saveView() {
+  if (!cv || !viewKey) return;
+  const v = cv.getView(); if (!v) return;
+  const all = loadViews(); all[viewKey] = { ...v, at: Date.now() };
+  const keys = Object.keys(all);
+  if (keys.length > VIEWS_MAX) keys.sort((a, b) => all[a].at - all[b].at).slice(0, keys.length - VIEWS_MAX).forEach((k) => delete all[k]);
+  try { localStorage.setItem(VIEWS_LS, JSON.stringify(all)); } catch { /* quota: not critical */ }
+}
+addEventListener('pagehide', () => saveView());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveView(); });
 
 function navList(): string[] { return filtered().map((r) => r.ticker); }
 function neighbor(dir: 1 | -1): string | null {
@@ -1157,7 +1172,7 @@ async function openTicker(t: string) {
     renderPanel();
   } catch (e: any) {
     if (seq !== loadSeq) return;
-    curBars = null; cv?.setBars([], 0); cv?.setAtr(null); ($('#nodata') as HTMLElement).hidden = false;
+    curBars = null; saveView(); viewKey = null; cv?.setBars([], 0); cv?.setAtr(null); ($('#nodata') as HTMLElement).hidden = false;
   }
   // prefetch neighbours for fast swipes
   for (const d of [1, -1] as const) { const n = neighbor(d); if (n) loadDaily(n).catch(() => {}); }
@@ -1189,7 +1204,12 @@ function applyBars() {
   if (!cv || !curBars) return;
   const bars = S.ui.tf === 'W' ? curBars.weekly : curBars.daily;
   syncChart();
-  cv.setBars(bars, S.ui.tf === 'W' ? 110 : 160, S.ui.tf === 'W');
+  saveView();                                         // the view being left (previous stock / timeframe)
+  const vis = S.ui.tf === 'W' ? 110 : 160;
+  cv.setBars(bars, vis, S.ui.tf === 'W');
+  viewKey = `${S.ticker}|${S.ui.tf}`;
+  cv.setView(loadViews()[viewKey] || null, vis);       // saved view, else default (auto-fit, last close centred)
+  cv.onViewChange = saveView;
   // weekly ATR (Wilder 14) from the weekly candles, whatever timeframe is shown; scanner value as fallback
   const wAtr = atr(curBars.weekly) ?? (S.ticker ? S.byT.get(S.ticker)?.weekly_atr ?? null : null);
   cv.setAtr(wAtr == null ? null : +wAtr);

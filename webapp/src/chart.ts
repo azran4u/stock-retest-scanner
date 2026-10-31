@@ -32,6 +32,8 @@ export interface ChartCallbacks {
 /** One earnings report marker (Eyal 2026-10-28). d = report date; future = the next known date (est = estimated). */
 export interface EarnMark { d: string; t: 'bmo' | 'amc' | null; e: number | null; a: number | null; s: number | null; future?: boolean; est?: boolean }
 const ddmmyyyy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+export interface ChartView2 { lf: number; lt: number; auto: boolean; pr: { from: number; to: number } | null }
+
 export function earnTip(m: EarnMark): string {
   const tm = m.t === 'bmo' ? 'לפני הפתיחה' : m.t === 'amc' ? 'אחרי הסגירה' : '';
   const head = `<b>${m.future ? 'דוח הבא' : 'דוח'} <bdi dir="ltr">${ddmmyyyy(m.d)}</bdi></b>${m.future && m.est ? ' (משוער)' : ''}${tm ? ' · ' + tm : ''}`;
@@ -139,11 +141,18 @@ export class ChartView {
       const price = this.priceAt(y), date = this.dateAt(x);
       if (price != null && date) this.cb.onTap(price, date);
     }, true);
+    // per-stock view memory: tell the page after any pan / zoom / price-axis drag (debounced)
+    let vt = 0;
+    const viewChanged = () => { clearTimeout(vt); vt = window.setTimeout(() => this.onViewChange?.(), 250); };
+    host.addEventListener('wheel', viewChanged, { passive: true });
+    host.addEventListener('pointerup', viewChanged, true);
+    host.addEventListener('dblclick', viewChanged, true);
+    this.chart.timeScale().subscribeVisibleLogicalRangeChange(viewChanged);
     const loop = () => { this.renderIfChanged(); this.raf = requestAnimationFrame(loop); };
     this.raf = requestAnimationFrame(loop);
   }
 
-  destroy() { cancelAnimationFrame(this.raf); this.chart.remove(); }
+  destroy() { this.onViewChange = null; cancelAnimationFrame(this.raf); this.chart.remove(); }
 
   // ---- indicators (Eyal 2026-10-24): daily SMA 50/100/150/200 + Fibonacci retracement ----
   private maSeries = new Map<number, ISeriesApi<'Line'>>();
@@ -294,6 +303,30 @@ export class ChartView {
     this.lastKey = '';
   }
 
+  // ---- per-stock chart view (Eyal 2026-10-31: switching stocks kept the previous stock's price axis) ----
+  /** Current view: time range as logical offsets from the last bar (survives new nightly bars) + price axis
+   *  (auto, or the manual range after he dragged / zoomed the price scale). */
+  getView(): ChartView2 | null {
+    const n = this.bars.length; if (!n) return null;
+    const lr = this.chart.timeScale().getVisibleLogicalRange(); if (!lr) return null;
+    const ps = this.chart.priceScale('right');
+    const auto = ps.options().autoScale !== false;
+    const pr = auto ? null : ps.getVisibleRange();
+    return { lf: +lr.from - n, lt: +lr.to - n, auto, pr: pr ? { from: +pr.from, to: +pr.to } : null };
+  }
+  /** Restore a saved view (null = default: last `visible` bars, price axis auto-fit centred on the last close). */
+  setView(v: ChartView2 | null, visible: number) {
+    const n = this.bars.length; if (!n) return;
+    const ts = this.chart.timeScale(), ps = this.chart.priceScale('right');
+    if (v && Number.isFinite(v.lf) && Number.isFinite(v.lt) && v.lt > v.lf) ts.setVisibleLogicalRange({ from: n + v.lf, to: n + v.lt });
+    else ts.setVisibleLogicalRange({ from: Math.max(0, n - visible), to: n + 6 });
+    if (v && !v.auto && v.pr && v.pr.to > v.pr.from) { ps.setAutoScale(false); ps.setVisibleRange(v.pr); }
+    else ps.setAutoScale(true);
+    this.lastKey = '';
+  }
+  /** called after the user may have changed the view (pan / zoom / price-axis drag) */
+  onViewChange: (() => void) | null = null;
+
   setDrawings(ds: Drawing[], selected: string | null) {
     if (this.dragging) return; // keep the drag copy until pointerup
     this.drawings = ds.map((d) => ({ ...d }));
@@ -309,8 +342,16 @@ export class ChartView {
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
         const r = orig();
-        if (!r || !lv.length) return r;
-        return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...lv), maxValue: Math.max(r.priceRange.maxValue, ...lv) } };
+        if (!r) return r;
+        let mn = Math.min(r.priceRange.minValue, ...lv), mx = Math.max(r.priceRange.maxValue, ...lv);
+        // auto-fit centred on the last close while the last bar is on screen (Eyal 2026-10-31: a stock opens with
+        // its current price in the middle of the price axis, drawing levels still included)
+        const last = this.bars[this.bars.length - 1], lr = this.chart.timeScale().getVisibleLogicalRange();
+        if (last && lr && +lr.to >= this.bars.length - 1 && +lr.from <= this.bars.length - 1 && mn < last.close && last.close < mx) {
+          const h = Math.max(last.close - mn, mx - last.close);
+          mn = last.close - h; mx = last.close + h;
+        }
+        return { ...r, priceRange: { minValue: mn, maxValue: mx } };
       },
     });
   }
