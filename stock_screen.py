@@ -1043,6 +1043,109 @@ def _bounded_call(fn, timeout_s: float, *args, **kwargs):
     return box.get("r")
 
 
+class YahooEarningsGuard:
+    """Run-level guard for the Yahoo earnings lookups of the export (report_filters.earnings_history and
+    srs_app.earnings_marks), after the 2026-10-30 nightly stalled: Yahoo answered HTTP 429 on the crumb and then
+    401 'Invalid Crumb' / 'User is unable to access this feature' to every call. yfinance only LOGS those errors and
+    returns an empty answer, so nothing counted as a failure and every ticker was retried (with sleeps) for hours.
+
+    - auth / rate-limit errors are caught from the 'yfinance' logger (and from exception text);
+    - after BREAKER consecutive failed calls (auth error, exception or timeout) Yahoo is not asked again this run;
+    - the run's total time inside Yahoo earnings calls is capped at BUDGET_S, then Yahoo is skipped;
+    - callers then fall back to cached dates + the TradingView / Nasdaq dates in earn_{T}.json.
+    Env overrides: SRS_YAHOO_EARN_BUDGET_S, SRS_YAHOO_EARN_BREAKER."""
+
+    AUTH_MARKERS = ("invalid crumb", "unauthorized", "unable to access this feature", "http error 401",
+                    "http error 429", "too many requests", "rate limit", "ratelimit", "crumb")
+
+    def __init__(self, budget_s: Optional[float] = None, breaker: Optional[int] = None):
+        self.budget_s = float(budget_s if budget_s is not None else os.environ.get("SRS_YAHOO_EARN_BUDGET_S", 600))
+        self.breaker = int(breaker if breaker is not None else os.environ.get("SRS_YAHOO_EARN_BREAKER", 5))
+        self.lock = _threading.Lock()
+        self.reset()
+        self._handler = None
+
+    def reset(self) -> None:
+        with getattr(self, "lock", _threading.Lock()):
+            self.spent_s = 0.0
+            self.consecutive = 0
+            self.auth_errors = 0
+            self.calls = 0
+            self.tripped: Optional[str] = None
+
+    @classmethod
+    def is_auth_error(cls, text: Any) -> bool:
+        t = str(text or "").lower()
+        return any(m in t for m in cls.AUTH_MARKERS)
+
+    def install_log_hook(self) -> None:
+        """Count yfinance's logged auth / rate-limit errors (it logs them instead of raising)."""
+        if self._handler is not None:
+            return
+        import logging
+        guard = self
+
+        class _H(logging.Handler):
+            def emit(self, record):  # noqa: D401
+                try:
+                    if guard.is_auth_error(record.getMessage()):
+                        with guard.lock:
+                            guard.auth_errors += 1
+                except Exception:
+                    pass
+
+        self._handler = _H(level=logging.WARNING)
+        logging.getLogger("yfinance").addHandler(self._handler)
+
+    def allowed(self) -> bool:
+        with self.lock:
+            if self.tripped:
+                return False
+            if self.spent_s >= self.budget_s:
+                self.tripped = f"time budget {self.budget_s:.0f}s used"
+            elif self.consecutive >= self.breaker:
+                self.tripped = f"{self.consecutive} failed calls in a row"
+            return self.tripped is None
+
+    def call(self, fn, timeout_s: float, *args, **kwargs):
+        """_bounded_call(fn) with bookkeeping. Raises YahooUnavailable when the guard is open or the call hit an
+        auth / rate-limit error (logged or raised); TimeoutError / other exceptions are re-raised after counting."""
+        if not self.allowed():
+            raise YahooUnavailable(f"Yahoo skipped this run: {self.tripped}")
+        self.install_log_hook()
+        with self.lock:
+            a0 = self.auth_errors
+            self.calls += 1
+        t0 = time.monotonic()
+        try:
+            r = _bounded_call(fn, min(timeout_s, max(1.0, self.budget_s - self.spent_s)), *args, **kwargs)
+        except Exception as exc:
+            with self.lock:
+                self.spent_s += time.monotonic() - t0
+                self.consecutive += 1
+            if self.is_auth_error(exc):
+                raise YahooUnavailable(f"Yahoo auth / rate limit: {str(exc)[:80]}") from exc
+            raise
+        with self.lock:
+            self.spent_s += time.monotonic() - t0
+            auth = self.auth_errors > a0
+            self.consecutive = self.consecutive + 1 if auth else 0
+        if auth:
+            raise YahooUnavailable("Yahoo auth / rate limit (Invalid Crumb / 401 / 429)")
+        return r
+
+    def summary(self) -> str:
+        return (f"yahoo earnings: {self.calls} calls, {self.spent_s:.0f}s, {self.auth_errors} auth errors"
+                + (f", skipped after: {self.tripped}" if self.tripped else ""))
+
+
+class YahooUnavailable(RuntimeError):
+    """Yahoo refused (auth / rate limit) or the run's Yahoo guard is open: use the fallback dates."""
+
+
+YAHOO_EARN_GUARD = YahooEarningsGuard()
+
+
 def _iso_age_days(v: Any) -> Optional[float]:
     try:
         ts = datetime.fromisoformat(str(v).replace("Z", "+00:00"))

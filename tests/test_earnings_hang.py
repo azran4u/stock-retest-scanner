@@ -168,6 +168,7 @@ def test_earnings_history_hang_is_bounded_and_funds_skip(env, monkeypatch):
     d, ans, calls = env
     monkeypatch.setattr(rf, "EARN_HIST_CALL_TIMEOUT_S", 0.3)
     monkeypatch.setattr(rf, "_EARN_HIST_TIMEOUTS", [0])
+    monkeypatch.setattr(rf, "FV_CACHE_DIR", d)  # no fallback dates from the real cache (2026-10-30 fallback)
 
     class T:
         def __init__(self, t):

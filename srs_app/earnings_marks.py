@@ -10,7 +10,9 @@ cached in cache/earnmarks_{T}.json. Never invented: a value Yahoo does not give 
 (or times out) the dates alone come from the scanner caches (earnhist_{T}.json, earn_{T}.json last_earnings_date).
 Funds / ETFs (stock_screen.is_fund, cache only) have no earnings and are skipped (no network). Every Yahoo call is
 wall-clock bounded (stock_screen._bounded_call) and a breaker stops asking after BREAKER consecutive timeouts in a run
-(the 2026-10-27 nightly stalled for hours inside the same yfinance call).
+(the 2026-10-27 nightly stalled for hours inside the same yfinance call). The export passes
+stock_screen.YAHOO_EARN_GUARD.call as `bounded` (run time budget + breaker on 401 'Invalid Crumb' / 429, 2026-10-30):
+when Yahoo refuses, nothing is cached and the cached / scanner dates are used.
 
 Refresh: a cache is reused for TTL_DAYS, except that it is re-fetched (once a day at most) when a report date it
 knew as upcoming (or the scanner's next date) has passed since the fetch, so the new actual EPS shows up the night
@@ -155,7 +157,9 @@ def ticker_marks(t: str, today: date, cache_dir: Path, next_date: Optional[str] 
             note = f"error: {str(e)[:80]}"
             if "timed out" in str(e).lower():
                 _TIMEOUTS[0] += 1
-        if rows is not None or not (c and c.get("rows")):  # a failed refresh keeps the older good rows
+            if type(e).__name__ == "YahooUnavailable":  # Yahoo refused / skipped this run (2026-10-30): not cached
+                note = "skip"
+        if note != "skip" and (rows is not None or not (c and c.get("rows"))):  # a failed refresh keeps the older good rows
             c = {"fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "rows": rows, "note": note}
             try:
                 cf.write_text(json.dumps(c, separators=(",", ":")))

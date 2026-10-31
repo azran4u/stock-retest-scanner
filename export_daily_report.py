@@ -497,6 +497,11 @@ def main() -> None:
         except Exception as e:  # never block the report; rerun: python -m srs_app.publish_data
             print(f"  [app data upload] FAILED: {e}")
 
+    try:  # Yahoo earnings guard (2026-10-30 stall): calls / time / auth errors / skipped -> fallback dates
+        print(f"  {rf.ss.YAHOO_EARN_GUARD.summary()}")
+    except Exception:
+        pass
+
     n_pass = int((df["status"] == "PASS").sum())
     n_fail = int((df["status"] == "FAIL").sum())
     n_bo = int(df["earnings_blackout"].astype(bool).sum())

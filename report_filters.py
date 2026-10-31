@@ -334,10 +334,29 @@ _EARN_HIST_TIMEOUTS = [0]
 EARN_HIST_CALL_TIMEOUT_S = 25  # one yfinance get_earnings_dates call (2026-10-28: Yahoo scrape hung / ~60 s per ticker)
 
 
+def earnings_fallback_dates(ticker: str, stale: Optional[List[str]] = None) -> List[str]:
+    """Dates without Yahoo: the older earnhist cache (`stale`) + earn_{T}.json (the scanner's TradingView /
+    Yahoo / Nasdaq answers: last_earnings_date, the next earnings_date and each source's date)."""
+    ds = set(stale or [])
+    for d in (ss.CACHE_DIR, FV_CACHE_DIR):
+        e = _read_json(Path(d) / f"earn_{ticker.strip().upper()}.json")
+        vals = [e.get("last_earnings_date"), e.get("earnings_date"), *((e.get("sources") or {}).values())]
+        for v in vals:
+            v = str(v or "")[:10]
+            if len(v) == 10 and v[:4].isdigit():
+                ds.add(v)
+    return sorted(ds)
+
+
 def earnings_history(ticker: str) -> Tuple[Optional[List[str]], str]:
     """Past (and next) earnings dates (YYYY-MM-DD) from yfinance get_earnings_dates, cached
-    cache/earnhist_{T}.json for EARN_HIST_TTL_DAYS (failures too). Returns (dates or None, note)."""
+    cache/earnhist_{T}.json for EARN_HIST_TTL_DAYS (failures too). Returns (dates or None, note).
+    Bounded (2026-10-30 stall): every Yahoo call goes through ss.YAHOO_EARN_GUARD (wall-clock bound per call, a
+    run-level time budget and a breaker on consecutive auth / rate-limit / timeout failures). When Yahoo fails or is
+    skipped, the dates come from the older cache + earn_{T}.json (TradingView / Nasdaq), and a good older cache is
+    never overwritten by a failure."""
     cf = ss.CACHE_DIR / f"earnhist_{ticker}.json"
+    c = None
     try:
         c = json.loads(cf.read_text()) if cf.exists() else None
         ttl = EARN_HIST_TTL_DAYS if c and (c.get("dates") or c.get("fund")) else 1  # failures retried after a day
@@ -345,45 +364,57 @@ def earnings_history(ticker: str) -> Tuple[Optional[List[str]], str]:
             return c.get("dates"), c.get("note", "")
     except Exception:
         pass
-    dates, note = None, ""
-    import time as _time
+    stale = (c or {}).get("dates") or []
     if ss.is_fund(ticker):  # ETFs / funds have no earnings; Yahoo 404s and its scrape can hang (2026-10-28)
-        note = "fund: no earnings"
-        ttl_fund = True
-    else:
-        ttl_fund = False
+        _write_earnhist(cf, None, "fund: no earnings", fund=True)
+        return None, "fund: no earnings"
 
     def _fetch():
         import yfinance as yf
         return yf.Ticker(ticker.replace(".", "-")).get_earnings_dates(limit=16)
 
-    if not ttl_fund and _EARN_HIST_TIMEOUTS[0] >= EARN_HIST_BREAKER:
-        return None, "earnings history error: Yahoo timing out this run (skipped)"  # not cached: next run retries
-    for attempt in range(0 if ttl_fund else 2):
+    def _fallback(why: str) -> Tuple[Optional[List[str]], str]:
+        fb = earnings_fallback_dates(ticker, stale)
+        return (fb or None), f"earnings history: {why}; " + ("fallback cache / TradingView / Nasdaq" if fb else "no fallback dates")
+
+    if _EARN_HIST_TIMEOUTS[0] >= EARN_HIST_BREAKER:
+        return _fallback("Yahoo timing out this run (skipped)")  # not cached: next run retries
+    dates, note = None, ""
+    for attempt in range(2):
         try:
-            df = ss._bounded_call(_fetch, EARN_HIST_CALL_TIMEOUT_S)  # wall-clock bound (2026-10-28 export stall)
+            df = ss.YAHOO_EARN_GUARD.call(_fetch, EARN_HIST_CALL_TIMEOUT_S)
             _EARN_HIST_TIMEOUTS[0] = 0
             if df is not None and len(df):
                 dates = sorted({str(pd.Timestamp(x).date()) for x in df.index})
                 note = ""
-                break
-            note = "no earnings dates from yfinance"
+            else:
+                note = "no earnings dates from yfinance"
+            break  # an empty answer is an answer: no retry
+        except ss.YahooUnavailable as e:
+            return _fallback(str(e)[:80])  # not cached: the next run asks Yahoo again
         except TimeoutError as e:
             _EARN_HIST_TIMEOUTS[0] += 1
-            note = f"earnings history error: {str(e)[:80]}"
-            break  # a timeout is not retried in the same run (cached as a failure, retried after a day)
+            return _fallback(f"error: {str(e)[:60]}")
         except Exception as e:
             note = f"earnings history error: {str(e)[:80]}"
             if "timed out" in str(e).lower():  # curl (28) timeout inside yfinance counts too
                 _EARN_HIST_TIMEOUTS[0] += 1
-                break
-        _time.sleep(2)
+                return _fallback(note)
+            if attempt == 0:
+                import time as _time
+                _time.sleep(1)
+    if dates is None and stale:  # keep the good older dates
+        return _fallback(note or "empty")
+    _write_earnhist(cf, dates, note)
+    return dates, note
+
+
+def _write_earnhist(cf: Path, dates: Optional[List[str]], note: str, fund: bool = False) -> None:
     try:
         cf.write_text(json.dumps({"fetched_at": str(pd.Timestamp.utcnow().tz_localize(None)), "dates": dates, "note": note,
-                                  **({"fund": True} if ttl_fund else {})}))
+                                  **({"fund": True} if fund else {})}))
     except Exception:
         pass
-    return dates, note
 
 
 def compute_hammer_trade(ticker: str, wk: Optional[pd.DataFrame]) -> Dict[str, Any]:

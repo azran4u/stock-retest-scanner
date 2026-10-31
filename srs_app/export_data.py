@@ -138,7 +138,9 @@ def fetch_sector(ticker: str) -> Dict[str, Any]:
     if not out["sector"] or not out["industry"]:
         try:
             import yfinance as yf
-            inf = yf.Ticker(ticker.replace(".", "-")).info or {}
+            import stock_screen as ss
+            # bounded + counted by the run's Yahoo guard (quoteSummary 401 'Invalid Crumb' on 2026-10-30)
+            inf = ss.YAHOO_EARN_GUARD.call(lambda: yf.Ticker(ticker.replace(".", "-")).info or {}, 20) or {}
             if inf.get("sector") or inf.get("industry"):
                 out["sector"] = out["sector"] or inf.get("sector")
                 out["industry"] = out["industry"] or inf.get("industry")
@@ -492,7 +494,7 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         import stock_screen as ss
         cands = sorted({f.stem for f in (out / "candles").glob("*.json")})
         since = (datetime.now() - timedelta(days=int(365.25 * YEARS))).strftime("%Y-%m-%d")
-        em = build_earn(rows, cands, ss.CACHE_DIR, ss.is_fund, since=since, bounded=ss._bounded_call)
+        em = build_earn(rows, cands, ss.CACHE_DIR, ss.is_fund, since=since, bounded=ss.YAHOO_EARN_GUARD.call)
         (out / "earnings.json").write_text(json.dumps(em, separators=(",", ":")))
         print(f"  [app data] earnings markers: {len(em)} of {len(cands)} tickers "
               f"({sum(1 for v in em.values() if v.get('p'))} with past dates)")
