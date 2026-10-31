@@ -497,6 +497,13 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
     nsec = attach_sectors(rows)
     if nsec:
         print(f"  [app data] sector/industry fetched for {nsec} tickers")
+    try:  # institutional % + short float % next to every ticker (Eyal 2026-10-31), srs_app/ownership.py
+        from srs_app.ownership import attach_ownership
+        so = attach_ownership(rows)
+        print(f"  [app data] ownership: inst {so['inst']} / short {so['short']} of {so['rows']} rows"
+              f" ({so['fetched']} quote pages fetched, {so['failed']} failed{', budget/breaker hit' if so['tripped'] else ''})")
+    except Exception as e:  # never block the export
+        print(f"  [app data] ownership skipped: {e}")
     try:  # TradingView symbol for the app copy button (Eyal 2026-10-27), srs_app/tv_symbols.py
         from srs_app.tv_symbols import attach_tv_symbols
         ntv = attach_tv_symbols(rows)

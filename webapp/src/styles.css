@@ -411,3 +411,9 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 /* Fib drawing tool (Eyal 2026-10-30): press = low, drag, release = target */
 .chartwrap.fibdrawmode, .chartwrap.fibdrawmode * { cursor: crosshair !important; }
 #addFib.on { outline: 2px solid #ffca28; }
+
+/* inst own % + short float % (Eyal 2026-10-31): one compact line under the ticker in every list; inline in the header */
+.row .own { margin: -2px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.own bdi { color: var(--fg); font-weight: 600; }
+#tkown { margin-inline-start: 6px; white-space: nowrap; font-size: 12px; }
+@media (max-width: 600px) { #tkown { display: block; margin: 0; line-height: 1.2; } }

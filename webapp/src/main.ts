@@ -164,6 +164,11 @@ function sizingHtml(r: Row): string {
     + `<span>סיכון <b class="sz-risk"><bdi dir="ltr">${usd(z.risk)}</bdi></b></span>`
     + `<span>רווח <b class="sz-rew"><bdi dir="ltr">${usd(z.reward)}</bdi></b></span></div>`;
 }
+// institutional ownership % + short float % next to every ticker (Eyal 2026-10-31); funds have none on FinViz -> '—'
+const pctTxt = (v: unknown, big: boolean) => { const n = numOrNull(v); return n == null ? '—' : `${big && n >= 10 ? Math.round(n) : n.toFixed(1)}%`; };
+const ownTitle = (r: Row) => `FinViz${r.own_date ? ' · ' + r.own_date : ''}: Inst Own ${pctTxt(r.inst_own_pct, false)}, Short Float ${pctTxt(r.short_float_pct, false)}`;
+const ownInner = (r: Row) => `מוסדיים <bdi dir="ltr" class="own-i">${pctTxt(r.inst_own_pct, true)}</bdi> · SF <bdi dir="ltr" class="own-s">${pctTxt(r.short_float_pct, false)}</bdi>`;
+const ownHtml = (r: Row) => `<div class="own small muted" data-own="${esc(r.ticker)}" title="${esc(ownTitle(r))}">${ownInner(r)}</div>`;
 const secHtml = (r: Row) => {
   const sec = r.sector as string | null | undefined, ind = r.industry as string | null | undefined;
   return `<div class="r4 small muted" data-sector="${esc(sec || '')}"><span>תחום:</span> <bdi dir="ltr">${sec || ind ? esc([sec || '—', ind || '—'].join(' · ')) : '—'}</bdi></div>`;
@@ -870,6 +875,7 @@ function rowHtml(r: Row) {
   ].join('');
   return `<li class="row" data-t="${esc(r.ticker)}">
     <div class="r1"><span><button class="star ${isWatched(r.ticker) ? 'on' : ''}" data-star="${esc(r.ticker)}" aria-label="מעקב">${isWatched(r.ticker) ? '★' : '☆'}</button><b dir="ltr">${esc(r.ticker)}</b><button class="ghost cpy" data-copy="${esc(tvSymbol(r))}" aria-label="העתק ל-TradingView" title="${esc(tvSymbol(r))}">📋</button></span><span class="px" dir="ltr">${fmt(r.current_price)}</span></div>
+    ${ownHtml(r)}
     <div class="r2">${badgesOf(r).map(badgeHtml).join('')}${extra}</div>
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     ${secHtml(r)}
@@ -920,7 +926,7 @@ function shell() {
   <div class="cv">
     <header class="top ch" id="chhead">
       <button id="back" class="ghost icon" aria-label="חזרה">→</button>
-      <div class="tk"><b id="tk" dir="ltr"></b><button id="tkCopy" class="ghost cpy" aria-label="העתק ל-TradingView">📋</button> <span id="tkpx" class="muted small" dir="ltr"></span><div id="tkb" class="tkb"></div></div>
+      <div class="tk"><b id="tk" dir="ltr"></b><button id="tkCopy" class="ghost cpy" aria-label="העתק ל-TradingView">📋</button> <span id="tkpx" class="muted small" dir="ltr"></span><span id="tkown" class="own small muted"></span><div id="tkb" class="tkb"></div></div>
       <button id="star" class="ghost icon star" aria-label="מעקב">☆</button>
       <button id="niBtn" class="ghost small nib" aria-label="לא מעניינת">🚫</button>
       <button id="listsBtn" class="ghost small lsb" aria-label="הוסף לרשימה" title="הוסף לרשימה">📂</button>
@@ -1196,6 +1202,7 @@ function renderHeader() {
   $('#tk')!.textContent = t;
   const cp = $('#tkCopy')!; cp.dataset.copy = tvSymbol(r as Row); cp.title = cp.dataset.copy;
   $('#tkpx')!.textContent = r.current_price != null ? fmt(r.current_price) : '';
+  const ow = $('#tkown')!; ow.innerHTML = ownInner(r as Row); ow.title = ownTitle(r as Row); ow.dataset.own = t;
   $('#tkb')!.innerHTML = badgesOf(r as Row).filter((b) => b !== 'watch').map(badgeHtml).join('');
   const st = $('#star')!; st.textContent = isWatched(t) ? '★' : '☆'; st.classList.toggle('on', isWatched(t));
   $('#niBtn')!.classList.toggle('on', isNi(t));
