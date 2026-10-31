@@ -677,7 +677,7 @@ def compute_row(
         pass
     r.update({k: v for k, v in compute_stale(hist, r).items() if k in STALE_COLS})
     r.update(compute_technical(hist))
-    apply_user_overrides(r, ticker, report_date)
+    apply_user_overrides(r, ticker, report_date, hist)
     r.update(compute_evidence(hist, r))
 
     # --- smooth streak / reversals (completed bars only) --------------------
@@ -1557,21 +1557,91 @@ def _override_active(o: Dict[str, Any], ref: Optional[date] = None) -> bool:
         return False  # undated -> not trusted to freeze the computed flag
 
 
+# Eyal 2026-10-31 (SQM): "a head-and-shoulders top broke its neckline - wait until the stock forms a rising pattern
+# again (higher highs and higher lows)". An override with "until_hh_hl": true holds (instead of the 7-day expiry)
+# until the WEEKLY bars since its "since" date (default: its date) show the bottom, then a swing high, then a pullback
+# to a HIGHER low, then a weekly close above that swing high (HL + HH). A new lower low moves the bottom and resets
+# the wait. Then the computed f_technical is back. An "until" date, when given, still ends it.
+_HH_HL_MEMO: Dict[str, bool] = {}
+
+
+def hh_hl_recovered(weekly: "pd.DataFrame", since: Optional[str], ref: Optional[date] = None) -> bool:
+    """True when the weekly bars (columns High/Low/Close or h/l/c, DatetimeIndex) from `since` up to `ref`
+    contain: bottom (lowest low) -> swing high H -> a higher-low pullback -> a weekly close > H."""
+    if weekly is None or not len(weekly):
+        return False
+    cols = {c.lower(): c for c in weekly.columns}
+    hi, lo, cl = (cols.get(k) or cols.get(k[0]) for k in ("high", "low", "close"))
+    w = weekly
+    if since:
+        w = w[w.index >= pd.Timestamp(str(since)[:10])]
+    if ref is not None:
+        w = w[w.index <= pd.Timestamp(ref) + pd.Timedelta(days=6)]
+    if len(w) < 4:
+        return False
+    H, L, C = w[hi].to_numpy(float), w[lo].to_numpy(float), w[cl].to_numpy(float)
+    b = int(np.argmin(L))
+    for k in range(b + 1, len(w) - 2):
+        if not (H[k] >= H[k - 1] and H[k] >= H[k + 1]):
+            continue  # swing high
+        dipped = False
+        for j in range(k + 1, len(w)):
+            if L[j] < L[k] and L[j] > L[b]:
+                dipped = True  # higher low (pullback below the swing-high week, above the bottom)
+            if dipped and C[j] > H[k]:
+                return True  # higher high
+    return False
+
+
+def _weekly_for(ticker: str, hist: Optional["pd.DataFrame"] = None) -> Optional["pd.DataFrame"]:
+    try:
+        if hist is not None and len(hist):
+            return ss.to_weekly(hist)
+        p = Path(__file__).resolve().parent / "app" / "data" / "candles" / f"{ticker}.json"
+        d = _read_json(p).get("d") or []
+        if not d:
+            return None
+        df = pd.DataFrame(d, columns=["date", "o", "h", "l", "c", "v"])
+        df.index = pd.to_datetime(df.pop("date"))
+        return df.resample("W-FRI").agg({"o": "first", "h": "max", "l": "min", "c": "last"}).dropna()
+    except Exception:
+        return None
+
+
+def _structural_active(t: str, o: Dict[str, Any], ref: Optional[date], hist=None) -> bool:
+    """For an "until_hh_hl" override: still active (no HL+HH since)."""
+    if t in _HH_HL_MEMO and hist is None:
+        return not _HH_HL_MEMO[t]
+    rec = hh_hl_recovered(_weekly_for(t, hist), o.get("since") or o.get("date"), ref)
+    _HH_HL_MEMO[t] = rec
+    return not rec
+
+
+def _verdict_active(t: str, o: Dict[str, Any], ref: Optional[date] = None, hist=None) -> bool:
+    if o.get("until_hh_hl"):
+        if o.get("until") and not _override_active(o, ref):
+            return False
+        return _structural_active(t, o, ref, hist)
+    return _override_active(o, ref)
+
+
 def user_technical(ticker: str, ref: Optional[date] = None) -> Optional[bool]:
     """The user's ACTIVE technical verdict for `ticker` (True / False) or None (none / expired)."""
-    o = load_user_overrides().get(str(ticker).strip().upper()) or {}
+    t = str(ticker).strip().upper()
+    o = load_user_overrides().get(t) or {}
     v = o.get("technical")
-    return None if v is None or not _override_active(o, ref) else bool(v)
+    return None if v is None or not _verdict_active(t, o, ref) else bool(v)
 
 
-def apply_user_overrides(r: Dict[str, Any], ticker: str, ref: Optional[date] = None) -> Dict[str, Any]:
+def apply_user_overrides(r: Dict[str, Any], ticker: str, ref: Optional[date] = None, hist=None) -> Dict[str, Any]:
     """After compute_technical: tech_computed = the computed f_technical; an ACTIVE user override
     (user_overrides.json "technical", USER_OVERRIDE_DAYS / until) replaces f_technical; tech_override = e.g.
     "not technical (Eyal) 2026-10-09: <note>" (empty when not overridden or expired)."""
     r["tech_computed"] = r.get("f_technical")
     r["tech_override"] = ""
-    o = load_user_overrides().get(str(ticker).strip().upper()) or {}
-    if o.get("technical") is not None and _override_active(o, ref):
+    t = str(ticker).strip().upper()
+    o = load_user_overrides().get(t) or {}
+    if o.get("technical") is not None and _verdict_active(t, o, ref, hist):
         v = bool(o["technical"])
         r["f_technical"] = v
         r["tech_override"] = (f"{'technical' if v else 'not technical'} ({o.get('by') or 'Eyal'}) "

@@ -355,7 +355,7 @@ def merge_df(df: pd.DataFrame, today: Optional[date] = None,
         for c in rf.STALE_COLS:
             df.at[i, c] = _csv_val(st[c])
         tech = rf.apply_user_overrides(dict(rf.compute_technical(h), ticker=str(row["ticker"]).strip()),
-                                       str(row["ticker"]).strip(), report_date)
+                                       str(row["ticker"]).strip(), report_date, h)
         for c in rf.TECH_COLS:
             df.at[i, c] = _csv_val(tech.get(c))
         r["f_technical"] = tech.get("f_technical")  # needs_drawing requires technical (after overrides)
