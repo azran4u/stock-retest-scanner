@@ -45,11 +45,15 @@ const setZone = async (top, bottom) => {
   await page.locator(`.card[data-id="${setup.zid}"] .selbtn`).click(); await page.waitForTimeout(200);
   if (!(await page.locator('g.h[data-key="zone_top"]').count())) { await page.locator(`.card[data-id="${setup.zid}"] .selbtn`).click(); await page.waitForTimeout(200); }
   for (const [f, v] of top >= setup.zt ? [['zone_top', top], ['zone_bottom', bottom]] : [['zone_bottom', bottom], ['zone_top', top]]) {
-    for (let k = 0; k < 4; k++) {      // the price scale may refit after a drop: re-measure and correct
+    for (let k = 0; k < 6; k++) {      // the price scale may refit after a drop: re-measure and correct
       const cur = await page.evaluate(({ id, f }) => +window.__srs.S.drawings.get(id)[f], { id: setup.zid, f });
       if (Math.abs(cur - v) <= 0.05 * setup.atrw) break;
+      // clicking the card (below the chart once the stock page scrolls) scrolls the chart off-screen: bring it back,
+      // and never aim outside the visible price pane (target off-scale -> drag to the edge, the scale refits, repeat)
+      await page.evaluate(() => document.querySelector('#chart').scrollIntoView({ block: 'center' })); await page.waitForTimeout(150);
       const hb = await page.locator(`g.h[data-id="${setup.zid}"][data-key="${f}"] circle`).nth(1).boundingBox();
-      const y = await page.evaluate((v) => document.querySelector('#chart').getBoundingClientRect().top + window.__srs.cv.candles.priceToCoordinate(v), v);
+      const y = await page.evaluate((v) => { const cv = window.__srs.cv; const top = document.querySelector('#chart').getBoundingClientRect().top;
+        const H = cv.chart.paneSize().height; const yy = cv.candles.priceToCoordinate(v); return top + Math.min(H - 6, Math.max(6, yy ?? (v > 0 ? 6 : H - 6))); }, v);
       await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2); await page.mouse.down();
       await page.mouse.move(hb.x + hb.width / 2, y, { steps: 8 }); await page.mouse.up();
       await page.waitForTimeout(400);
