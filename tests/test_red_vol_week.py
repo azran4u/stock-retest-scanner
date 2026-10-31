@@ -110,7 +110,7 @@ def test_next_week_clears_wait():
 
 def test_red_week_no_longer_blocks_pass():
     """Regression (Eyal 2026-10-26): WAIT cancelled, a red loud week alone leaves the stock PASS."""
-    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True}
+    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True, "f_after_earnings_week": True}
     assert rf.finalize_status({**base, "f_no_red_vol_week": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_red_vol_week": False})
     assert r["status"] == "PASS" and r["failed_filters"] == ""

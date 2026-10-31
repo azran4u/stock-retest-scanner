@@ -43,7 +43,7 @@ def test_shapes():
 def test_inverted_hammer_no_longer_blocks_pass():
     """Regression (Eyal 2026-10-26): a former WAIT (BFH-type inverted hammer) is PASS when the other gates pass."""
     base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True,
-            "f_no_red_vol_week": True, "f_from_above": True}
+            "f_no_red_vol_week": True, "f_from_above": True, "f_after_earnings_week": True}
     assert rf.finalize_status({**base, "f_no_inv_hammer": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_inv_hammer": False})
     assert r["status"] == "PASS" and r["failed_filters"] == ""

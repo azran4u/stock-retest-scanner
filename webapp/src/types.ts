@@ -103,6 +103,9 @@ export interface Row {
   red_vol_detail?: string | null;
   /** Eyal 2026-10-24 (USB): back in the zone from below = not interesting until a weekly close above the zone top */
   f_no_inv_hammer?: boolean | null;
+  f_after_earnings_week?: boolean | null;
+  earn_week_report?: string | null;
+  earn_week_detail?: string | null;
   inv_hammer_week_date?: string | null;
   inv_hammer_detail?: string | null;
   f_from_above?: boolean | null;

@@ -7,7 +7,7 @@ earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
-sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above; else FAIL. The WAIT status
+sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above, f_after_earnings_week (2026-10-31); else FAIL. The WAIT status
 (Eyal 2026-10-23) was cancelled 2026-10-26: f_no_red_vol_week / f_no_inv_hammer (last completed weekly
 candle = healthy red bar on above-average volume / inverted hammer) are informational warnings (WARN_FILTERS). (f_short_float / f_inst_own are
 informational dashboard filters since 2026-10-14; None = data missing.)
@@ -154,13 +154,18 @@ CONFIG: Dict[str, Any] = {
     # (<= inv_hammer_lower_max x range; 0.15 = calibrated on his BFH week 2026-10-23, lower shadow 11% of range).
     "inv_hammer_upper_min": 2.0,
     "inv_hammer_lower_max": 0.15,
+    # f_after_earnings_week (Eyal 2026-10-31, app command 12, CHRW): a stock whose last COMPLETED weekly candle is an
+    # earnings week (or that reported after it, in the week still running) is not PASS: that week's volume and
+    # price move are driven by the report. Wait for the close of the FOLLOWING week, then the rules decide again.
+    "earnings_week_gate": True,
     "from_above_tol_atr": 0.25,  # a close less than this x weekly ATR under the bottom is not 'under the zone'
                                  # (same tolerance as the bot's touch count; OXY 2026-09-25 0.07 ATR under its zone)
 }
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
-    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above",
+    "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above", "f_after_earnings_week",
 ]
+EARN_WEEK_COLS = ["earn_week_date", "earn_week_report", "earn_week_detail"]
 # Informational warnings on the last completed weekly candle (Eyal 2026-10-26: status WAIT cancelled; they were
 # WAIT gates 2026-10-23 / 2026-10-24). Still computed for every row, shown as badges / app filters, NOT in status.
 WARN_FILTERS = ["f_no_red_vol_week", "f_no_inv_hammer"]
@@ -214,6 +219,7 @@ REPORT_COLS = [
     *RED_VOL_COLS,
     *INV_HAMMER_COLS,
     *FROM_ABOVE_COLS,
+    *EARN_WEEK_COLS,
     "daily_reversal_kind", "daily_reversal_date",
     "smooth_pullback", "earnings_known", "earnings_blackout", "earnings_estimated", "earnings_none",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
@@ -566,6 +572,7 @@ def compute_row(
     r["f_no_red_vol_week"] = True  # blocks only on evidence (compute_red_vol_week)
     r["f_from_above"] = True  # blocks only on evidence (compute_from_above)
     r["f_no_inv_hammer"] = True  # blocks only on evidence (compute_inv_hammer_week)
+    r["f_after_earnings_week"] = True  # blocks only on evidence (compute_earnings_week)
     r["f_rr_computed"] = False
     r["smooth_pullback"] = False
     r["weekly_reversal_kind"] = r["daily_reversal_kind"] = ""
@@ -708,6 +715,11 @@ def compute_row(
     except Exception as e:  # pragma: no cover
         r["f_from_above"] = True
         notes.append(f"from-above error: {e}")
+    try:
+        r.update(compute_earnings_week(daily, report_date, cached_report_dates(ticker), r.get("earnings_date")))
+    except Exception as e:  # pragma: no cover
+        r["f_after_earnings_week"] = True
+        notes.append(f"earnings-week error: {e}")
 
     # --- informational smooth_pullback (needs a zone) -----------------------
     if setup is not None:
@@ -859,6 +871,77 @@ def compute_inv_hammer_week(daily: Optional[pd.DataFrame], report_date: date,
         out["inv_hammer_detail"] = (f"info (not a gate) - inverted hammer week {wend}: upper shadow "
                                     f"{(h - max(o, c)) / rng * 100:.0f}% / body {abs(c - o) / rng * 100:.0f}% / "
                                     f"lower shadow {(min(o, c) - l) / rng * 100:.0f}% of the range")
+    return out
+
+
+def cached_report_dates(ticker: str) -> List[Tuple[str, Optional[str]]]:
+    """Earnings report dates known from the caches only (no network): earnmarks_{T}.json (Yahoo calendar with
+    BMO/AMC), earnhist_{T}.json and earn_{T}.json (last_earnings_date / next date / each source's date).
+    Returns [(YYYY-MM-DD, "bmo"|"amc"|None)], one per date, the known time kept."""
+    t = ticker.strip().upper()
+    out: Dict[str, Optional[str]] = {}
+    for d in (ss.CACHE_DIR, FV_CACHE_DIR):
+        for row in (_read_json(Path(d) / f"earnmarks_{t}.json").get("rows") or []):
+            v = str((row or {}).get("d") or "")[:10]
+            if len(v) == 10:
+                out[v] = out.get(v) or (row.get("t") or None)
+        for v in (_read_json(Path(d) / f"earnhist_{t}.json").get("dates") or []):
+            out.setdefault(str(v)[:10], None)
+    for v in earnings_fallback_dates(t):
+        out.setdefault(v, None)
+    return sorted(out.items())
+
+
+def _reaction_day(d: date, when: Optional[str]) -> date:
+    """First session that trades on the report: after the close (amc) or on a weekend -> the next weekday."""
+    if when == "amc":
+        d = d + timedelta(days=1)
+    while d.weekday() >= 5:
+        d = d + timedelta(days=1)
+    return d
+
+
+def compute_earnings_week(daily: Optional[pd.DataFrame], report_date: date,
+                          reports: Iterable[Tuple[str, Optional[str]]], next_date: Any = None,
+                          now_et: Optional[pd.Timestamp] = None) -> Dict[str, Any]:
+    """f_after_earnings_week (Eyal 2026-10-31, app command 12, CHRW): 'a stock that finished an earnings week cannot
+    be PASS, because its volume and price move are affected by the report; wait for the close of the following week
+    to decide whether it meets the rules'. The week a report trades in (its reaction session: an after-close report
+    trades the next weekday) must not be the last COMPLETED W-FRI week, nor the week still running. So False when a
+    report's reaction day is after the Monday of the last completed week and on or before the report date; the next
+    completed week without a report clears it. No dates / no completed week -> True (blocks only on evidence)."""
+    out: Dict[str, Any] = {"f_after_earnings_week": True, "earn_week_date": None, "earn_week_report": None,
+                           "earn_week_detail": ""}
+    if not CONFIG.get("earnings_week_gate", True):
+        return out
+    wk = completed_weekly(daily, report_date, now_et)
+    if wk is None or wk.empty:
+        out["earn_week_detail"] = "no completed week"
+        return out
+    wend = pd.Timestamp(wk.index[-1]).date()
+    wstart = wend - timedelta(days=wend.weekday())  # Monday of the last completed week
+    seen = list(reports or [])
+    if next_date:
+        seen.append((str(next_date)[:10], None))
+    hits = []
+    for ds, when in seen:
+        try:
+            d = date.fromisoformat(str(ds)[:10])
+        except Exception:
+            continue
+        rd = _reaction_day(d, when)
+        if wstart <= rd and d <= report_date:
+            hits.append((rd, d, when))
+    out["earn_week_date"] = wend.isoformat()
+    if not hits:
+        return out
+    rd, d, when = max(hits)
+    wait_until = rd + timedelta(days=(4 - rd.weekday()) % 7 + 7)  # the Friday of the week after the report's week
+    out["f_after_earnings_week"] = False
+    out["earn_week_report"] = d.isoformat()
+    out["earn_week_detail"] = (f"earnings {d.isoformat()}{' ' + when if when else ''} traded in the week of "
+                               f"{(rd - timedelta(days=rd.weekday())).isoformat()}; wait for the weekly close of "
+                               f"{wait_until.isoformat()}")
     return out
 
 
@@ -1713,6 +1796,8 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
             f = f"from_above ({r.get('from_above_detail') or 'came back to the zone from below'})"
         elif f == "no_inv_hammer":
             f = f"no_inv_hammer ({r.get('inv_hammer_detail') or 'last week an inverted hammer'})"
+        elif f == "after_earnings_week":
+            f = f"after_earnings_week ({r.get('earn_week_detail') or 'earnings week: wait for the next weekly close'})"
         elif f == "no_red_vol_week":
             f = f"no_red_vol_week ({r.get('red_vol_detail') or 'healthy red week on above-average volume'})"
         fails.append(f)

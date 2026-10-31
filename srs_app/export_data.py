@@ -51,6 +51,7 @@ INDEX_COLS = [
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
     "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
     "f_no_inv_hammer", "inv_hammer_week_date", "inv_hammer_detail",
+    "f_after_earnings_week", "earn_week_report", "earn_week_detail",  # PASS gate (Eyal 2026-10-31, CHRW)
     # independent list filters (Eyal 2026-10-26)
     "smooth_streak_weeks", "f_smooth_streak",
 ]
@@ -442,6 +443,41 @@ def attach_reversals(rows: List[Dict[str, Any]], asof_date: Optional[str] = None
             print(f"  [reversals] {r['ticker']}: {e}")
 
 
+def attach_earnings_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = None,
+                         hist: Optional[Dict[str, Any]] = None) -> int:
+    """f_after_earnings_week at export time (Eyal 2026-10-31, app command 12, CHRW): re-checked as of the export day
+    (report_filters.compute_earnings_week on the history cache + cached report dates), so an export of an older report
+    still holds back a stock whose last completed week (or the running week) traded a report. A PASS row that fails
+    it becomes FAIL. Returns how many rows it blocks."""
+    import sys as _s
+    from datetime import date as _d
+    root = str(Path(__file__).resolve().parent.parent)
+    if root not in _s.path:
+        _s.path.insert(0, root)
+    import report_filters as rf
+    hist = hist if hist is not None else dict(pd.read_pickle(HIST_CACHE))
+    rd = _d.fromisoformat(asof_date) if asof_date else _d.today()
+    blocked = 0
+    for r in rows:
+        df = hist.get(r["ticker"])
+        if df is None or getattr(df, "empty", True):
+            continue
+        try:
+            o = rf.compute_earnings_week(df, rd, rf.cached_report_dates(r["ticker"]), r.get("earnings_date"))
+        except Exception as e:  # never block the export
+            print(f"  [earnings week] {r['ticker']}: {e}")
+            continue
+        r["f_after_earnings_week"] = o["f_after_earnings_week"]
+        r["earn_week_report"] = o["earn_week_report"]
+        r["earn_week_detail"] = o["earn_week_detail"]
+        if o["f_after_earnings_week"] is False:
+            blocked += 1
+            if r.get("status") == "PASS":
+                r["status"] = "FAIL"
+                r["badges"] = [b for b in (r.get("badges") or []) if b != "pass"]
+    return blocked
+
+
 def export(repo: Path, report: Path | None = None, include_all: bool = False, report_date: str | None = None) -> Path:
     """Write app/data/* under repo. report = latest.csv to read (default repo/historical-reports/latest.csv)."""
     out = repo / "app" / "data"
@@ -502,6 +538,10 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] earnings markers skipped: {e}")
     attach_week_closes(rows, asof_date=report_date)
     attach_reversals(rows, asof_date=report_date)
+    try:
+        print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
+    except Exception as e:  # never block the export
+        print(f"  [app data] earnings week skipped: {e}")
     try:
         from srs_app.rules import build_rules
         (out / "rules.json").write_text(json.dumps(build_rules(), ensure_ascii=False, separators=(",", ":")))

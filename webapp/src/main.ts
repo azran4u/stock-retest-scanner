@@ -132,8 +132,12 @@ function liveOf(r: Row): Live | null {
   const q = lg ? rr(lg.entry, lg.stop, lg.target) : null;
   const rrOk = q != null && q >= RR_MIN;
   const fromBelow = fromBelowOf(r);
-  const status = !gatesOk || !rrOk || fromBelow ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (red-volume / inverted-hammer weeks = info)
+  // earnings week (Eyal 2026-10-31, CHRW): the last completed week (or the running one) traded a report -> not PASS
+  // until the following week closes. Only an explicit false blocks (older exports lack the column).
+  const earnWeek = r.f_after_earnings_week === false;
+  const status = !gatesOk || !rrOk || fromBelow || earnWeek ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (red-volume / inverted-hammer weeks = info)
   const why = fromBelow ? 'חזרה לאזור מלמטה'
+    : earnWeek ? 'שבוע דוחות — ממתינים לסגירת השבוע הבא'
     : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
   return { status, rr: q, gatesOk, why, fromBelow };
 }
@@ -1339,6 +1343,7 @@ function feedbackHtml(d: Drawing) {
 // TP stays. His own Long (user / TV / a bot Long he edited) is never moved: only its R:R is re-checked (live PASS).
 function liveBoxHtml(r: Row): string {
   const l = liveOf(r); if (!l || !l.gatesOk) return '';
+  if (l.status === 'FAIL' && r.f_after_earnings_week === false && !l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">המניה פרסמה דוחות${r.earn_week_report ? ` ב-${ddmm(r.earn_week_report)}` : ''}, ולכן המחזור ותנועת המחיר בשבוע הדוחות מושפעים מהם. נחליט אם היא עומדת בכללים רק אחרי הסגירה של השבוע שאחרי.</div></section>`;
   if (l.status === 'FAIL' && l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הסגירה השבועית האחרונה מחוץ לאזור הייתה מתחתיו, כלומר המניה חזרה לאזור מלמטה. היא תחזור להיות מעניינת רק אחרי סגירה שבועית מעל האזור וחזרה אליו מלמעלה.</div></section>`;
   if (l.status === 'FAIL') return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">${l.rr == null ? 'אין לונג פעיל, ולכן ה-R:R לא ידוע.' : 'ה-R:R של הלונג הנוכחי מתחת ל-2.'} הסטטוס מתעדכן מיד כשמשנים אזור או לונג.</div></section>`;
   return '';
