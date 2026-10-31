@@ -11,6 +11,8 @@ export interface Facts {
   rr: number | null;
   revD: Partial<Record<RevKind, string>>;   // kind -> date of the most recent daily candle of that shape
   revW: Partial<Record<RevKind, string>>;   // kind -> date (week end) of the most recent weekly candle
+  revDC?: RevCandle[]; revWC?: RevCandle[];  // every daily / weekly reversal candle (export rev_dc / rev_wc, no zone gate)
+  zone?: { top: number; bottom: number } | null;   // the zone that counts now (live: app drawing, else TV zone)
   daysToEarn: number | null;                // null = unknown date
   earnNone?: boolean;                       // no earnings in any source (ETFs...) -> passes 'days to earnings'
   unfit: boolean;
@@ -47,6 +49,21 @@ export function withinWeeks(m: Partial<Record<RevKind, string>>, kinds: readonly
   const from = minusDays(today, Math.round(7 * weeks));
   return kinds.some((k) => { const d = m[k]; return !!d && d >= from; });
 }
+/** [k (bars back from the last completed bar, 0 = last), kinds mask (bit i = REV_KINDS[i]), low, close, ATR(14)]
+ *  = report_filters.reversal_candles (app/data/revc.json) */
+export type RevCandle = [number, number, number, number, number];
+export const REV_ZONE_ATR = 0.5;   // report_filters CONFIG reversal_zone_atr
+/** A reversal candle of one of `kinds` among the last `bars` completed bars that touches the zone, with the E1/E2
+ *  gate of report_filters._scan_reversals: low <= top + 0.5 ATR and (low >= bottom - 0.5 ATR or close >= bottom),
+ *  ATR(14) of the same timeframe. No zone -> false. (Python twin: report_filters.at_zone) */
+export function revAtZone(cands: RevCandle[] | undefined, zone: { top: number; bottom: number } | null | undefined,
+  bars: number, kinds: readonly RevKind[]): boolean {
+  if (!zone || !cands?.length) return false;
+  const zt = Math.max(zone.top, zone.bottom), zb = Math.min(zone.top, zone.bottom);
+  const want = kinds.reduce((m, k) => m | (1 << REV_KINDS.indexOf(k)), 0);
+  return cands.some(([k, mask, lo, cl, a]) => k < bars && (mask & want) !== 0
+    && lo <= zt + REV_ZONE_ATR * a && (lo >= zb - REV_ZONE_ATR * a || cl >= zb));
+}
 const t = (b: boolean | null) => b === true;
 
 export const FILTERS: FilterDef[] = [
@@ -57,6 +74,11 @@ export const FILTERS: FilterDef[] = [
     test: (f, s) => withinWeeks(f.revD, s.kinds?.length ? s.kinds : DEF_KINDS, s.x ?? 1, f.today) },
   { id: 'revW', label: 'נר היפוך שבועי ב-', group: 'main', param: { def: 2, min: 1, max: 26, step: 1, unit: 'שבועות אחרונים' }, kinds: true,
     test: (f, s) => withinWeeks(f.revW, s.kinds?.length ? s.kinds : DEF_KINDS, s.x ?? 2, f.today) },
+  // reversal candle that TOUCHES the level (Eyal 2026-10-31): last X completed weekly bars / X trading days
+  { id: 'revWZ', label: 'נר היפוך שבועי שנוגע ברמה ב-', group: 'main', param: { def: 2, min: 1, max: 26, step: 1, unit: 'שבועות אחרונים' }, kinds: true,
+    test: (f, s) => revAtZone(f.revWC, f.zone, s.x ?? 2, s.kinds?.length ? s.kinds : DEF_KINDS) },
+  { id: 'revDZ', label: 'נר היפוך יומי שנוגע ברמה ב-', group: 'main', param: { def: 5, min: 1, max: 60, step: 1, unit: 'ימים אחרונים' }, kinds: true,
+    test: (f, s) => revAtZone(f.revDC, f.zone, s.x ?? 5, s.kinds?.length ? s.kinds : DEF_KINDS) },
   { id: 'earn', label: 'ימים עד דוחות ≥', group: 'main', param: { def: 14, min: 0, max: 120, step: 1 }, test: (f, s) => !!f.earnNone || (f.daysToEarn != null && f.daysToEarn >= (s.x ?? 14)) },
   { id: 'unfit', label: 'לא מתאימות לשיטה', group: 'main', tri: true,
     test: (f, s) => ((s.mode ?? 'hide') === 'all' ? true : (s.mode ?? 'hide') === 'only' ? f.unfit : !f.unfit) },

@@ -58,6 +58,7 @@ INDEX_COLS = [
 # 'reversal candle within X weeks' filters: the most recent reversal-shape candle (no zone gate) of the last
 # REV_LOOKBACK_WEEKS weeks, daily and weekly (report_filters.last_reversal)
 REV_LOOKBACK_WEEKS = 26
+REV_ZONE_DAYS = 60  # daily 'reversal candle touching the level within X days' filter: max X (trading days)
 
 
 def _clean(v: Any) -> Any:
@@ -431,7 +432,7 @@ def attach_reversals(rows: List[Dict[str, Any]], asof_date: Optional[str] = None
     rd = _d.fromisoformat(asof_date) if asof_date else _d.today()
     for r in rows:
         df = hist.get(r["ticker"])
-        r["rev_d"], r["rev_w"] = {}, {}
+        r["rev_d"], r["rev_w"], r["rev_dc"], r["rev_wc"] = {}, {}, [], []
         if df is None or getattr(df, "empty", True):
             continue
         try:
@@ -439,6 +440,10 @@ def attach_reversals(rows: List[Dict[str, Any]], asof_date: Optional[str] = None
             wk = rf.completed_weekly(df, rd)
             r["rev_d"] = rf.last_reversals(dd, weeks * 5)
             r["rev_w"] = rf.last_reversals(wk, weeks)
+            # every reversal candle (no zone gate) for the 'reversal candle touching the level' filters (Eyal
+            # 2026-10-31): the app applies the zone gate live with the zone that counts now
+            r["rev_dc"] = rf.reversal_candles(dd, REV_ZONE_DAYS)
+            r["rev_wc"] = rf.reversal_candles(wk, weeks)
         except Exception as e:  # never block the export
             print(f"  [reversals] {r['ticker']}: {e}")
 
@@ -545,6 +550,14 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] earnings markers skipped: {e}")
     attach_week_closes(rows, asof_date=report_date)
     attach_reversals(rows, asof_date=report_date)
+    # reversal candles for the 'touches the level' filters -> app/data/revc.json (loaded by the app only when one of
+    # those filters is on; keeps index.json small): {ticker: {"d": [[k, mask, low, close, atr], ...], "w": [...]}}
+    revc = {}
+    for r in rows:
+        dc, wc = r.pop("rev_dc", []) or [], r.pop("rev_wc", []) or []
+        if dc or wc:
+            revc[r["ticker"]] = {"d": dc, "w": wc}
+    (out / "revc.json").write_text(json.dumps(revc, separators=(",", ":")))
     try:
         print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
     except Exception as e:  # never block the export

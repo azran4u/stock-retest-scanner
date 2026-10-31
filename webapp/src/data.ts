@@ -33,6 +33,13 @@ export function decodeSpark(sp: Spark): SparkBars {
   }
   return { lo: sp.lo, hi: sp.hi, o, h, l, c };
 }
+/** Reversal candles per ticker for the 'reversal candle touching the level' filters (export -> revc.json, Eyal 2026-10-31):
+ *  d = daily (last 60 completed sessions), w = weekly (last 26 completed weeks); [k, mask, low, close, atr]. */
+let revcP: Promise<Record<string, { d: [number, number, number, number, number][]; w: [number, number, number, number, number][] }>> | null = null;
+export function loadRevc() {
+  revcP ??= fetcher('revc.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return revcP;
+}
 let sparkP: Promise<Record<string, Spark>> | null = null;
 export function loadSpark(): Promise<Record<string, Spark>> {
   sparkP ??= fetcher('spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));

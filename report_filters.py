@@ -542,6 +542,48 @@ def last_reversals(bars: Optional[pd.DataFrame], lookback: int) -> Dict[str, str
     return out
 
 
+def reversal_candles(bars: Optional[pd.DataFrame], lookback: int) -> List[list]:
+    """Every reversal-shape candle among the last `lookback` completed bars, for the app's 'reversal candle that
+    touches the level within X weeks / days' filters (Eyal 2026-10-31). Same shapes / thresholds / ATR(14) as
+    _scan_reversals and last_reversals. One entry per candle, newest first:
+      [k, mask, low, close, atr]  k = bars back from the last completed bar (0 = last), mask = bit i set for
+      CONFIG reversal_kinds[i] (hammer=1, engulfing=2, strong_close=4, rejection=8), atr = the bar's ATR(14).
+    The zone gate is NOT applied here: the app applies it live (at_zone) with the zone that counts now, so it follows
+    drawings edited in the app."""
+    out: List[list] = []
+    if bars is None or len(bars) < 2:
+        return out
+    atr = ss.atr_series(bars, 14)
+    kinds = [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]
+    n = len(bars)
+    for i in range(n - 1, max(0, n - int(lookback)) - 1, -1):
+        if i < 1:
+            break
+        a_i = float(atr.iloc[i]) if pd.notna(atr.iloc[i]) else float("nan")
+        sh = ssa.weekly_reversal_shapes(
+            float(bars["Open"].iloc[i]), float(bars["High"].iloc[i]),
+            float(bars["Low"].iloc[i]), float(bars["Close"].iloc[i]),
+            float(bars["Open"].iloc[i - 1]), float(bars["Close"].iloc[i - 1]), a_i,
+        )
+        mask = sum(1 << j for j, k in enumerate(kinds) if sh[_KIND_KEY[k]])
+        if mask and np.isfinite(a_i):
+            out.append([n - 1 - i, mask, round(float(bars["Low"].iloc[i]), 4), round(float(bars["Close"].iloc[i]), 4), round(a_i, 4)])
+    return out
+
+
+def at_zone(cands: List[list], zone: Optional[Tuple[float, float]], within: int, kinds: Optional[Iterable[str]] = None) -> bool:
+    """Python twin of the app filter: any candle of `cands` (reversal_candles) among the last `within` bars, of one of
+    `kinds` (default all), passing _scan_reversals' zone gate. zone None -> False."""
+    if zone is None:
+        return False
+    zb, zt = min(zone), max(zone)
+    m = float(CONFIG["reversal_zone_atr"])
+    order = [k for k in CONFIG["reversal_kinds"] if k in _KIND_KEY]
+    want = sum(1 << order.index(k) for k in (kinds or order) if k in order)
+    return any(k < within and (mask & want) and lo <= zt + m * a and (lo >= zb - m * a or cl >= zb)
+               for k, mask, lo, cl, a in cands)
+
+
 # ---------------------------------------------------------------------------
 # per-row computation
 # ---------------------------------------------------------------------------

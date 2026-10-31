@@ -71,3 +71,62 @@ def test_rules_json_from_code(tmp_path):
     assert j["sizing"] == {"account_usd": 5000, "risk_pct": 1.1, "max_risk_usd": 55.0}, "max risk $55 / trade (2026-10-26)"
     b = j["bot"]
     assert b["rule_version"] == "v5-2026-10-26" and b["zone_scoring"] == "v5" and "structure_exclude_weeks" not in b
+
+
+# ---- reversal candle touching the level (Eyal 2026-10-31): export candles + live zone gate ----
+def test_reversal_candles_shapes_and_mask():
+    b = _daily()
+    c = rf.reversal_candles(b, 60)
+    assert c and all(0 <= k < 60 for k, *_ in c)
+    assert [k for k, *_ in c] == sorted(k for k, *_ in c), "newest first"
+    atr = ss.atr_series(b, 14)
+    order = list(rf.CONFIG["reversal_kinds"])
+    for k, mask, lo, cl, a in c:
+        i = len(b) - 1 - k
+        assert abs(lo - b.Low.iloc[i]) < 1e-3 and abs(cl - b.Close.iloc[i]) < 1e-3
+        sh = _shapes(b, i, atr)
+        assert mask == sum(1 << j for j, kk in enumerate(order) if sh[rf._KIND_KEY[kk]])
+    # bars without any shape are not listed
+    ks = {k for k, *_ in c}
+    assert all(not any(_shapes(b, len(b) - 1 - k, atr)[rf._KIND_KEY[kk]] for kk in order) for k in range(1, 60) if k not in ks)
+
+
+def test_at_zone_matches_scan_reversals_gate():
+    """the app's live gate (at_zone on exported candles) == report_filters._scan_reversals (E1/E2 zone gate)."""
+    for seed in (3, 7, 11):
+        b = _daily(seed=seed)
+        cands = rf.reversal_candles(b, 60)
+        px = float(b.Close.iloc[-1])
+        for lo_f, hi_f in ((0.80, 0.85), (0.9, 0.95), (0.95, 1.0), (1.0, 1.05), (0.6, 0.65)):
+            zone = (px * lo_f, px * hi_f)
+            for L in (1, 3, 5, 10, 26, 60):
+                assert rf.at_zone(cands, zone, L) == rf._scan_reversals(b, L, zone)[0], (seed, zone, L)
+    assert rf.at_zone(cands, None, 60) is False
+
+
+def test_at_zone_kinds_and_window():
+    cands = [[0, 1, 99.0, 101.0, 2.0], [4, 2, 90.0, 92.0, 2.0]]
+    z = (95.0, 100.0)
+    assert rf.at_zone(cands, z, 1) and rf.at_zone(cands, z, 1, ["hammer"]) and not rf.at_zone(cands, z, 1, ["engulfing"])
+    # engulfing 4 bars back: low 90 < bottom 95 - 0.5*2 and close 92 < 95 -> under the zone, not touching
+    assert not rf.at_zone(cands, z, 5, ["engulfing"])
+    assert rf.at_zone([[2, 4, 101.0, 103.0, 2.0]], z, 3) and not rf.at_zone([[2, 4, 101.5, 103.0, 2.0]], z, 3)
+    assert not rf.at_zone([[2, 4, 99.0, 103.0, 2.0]], z, 2), "outside the window"
+
+
+def test_attach_reversals_candles():
+    b = _daily()
+    rows = [{"ticker": "AAA"}, {"ticker": "NOPE"}]
+    ed.attach_reversals(rows, asof_date=str(b.index[-1].date()), hist={"AAA": b}, weeks=26)
+    assert rows[1]["rev_dc"] == [] and rows[1]["rev_wc"] == []
+    assert rows[0]["rev_dc"] and all(k < ed.REV_ZONE_DAYS for k, *_ in rows[0]["rev_dc"])
+    assert all(k < 26 for k, *_ in rows[0]["rev_wc"])
+
+
+def test_kind_bit_order_matches_app():
+    """mask bits = REV_KINDS order in webapp/src/filters.ts"""
+    from pathlib import Path
+    import re
+    ts = (Path(__file__).resolve().parent.parent / "webapp/src/filters.ts").read_text()
+    app = re.search(r"REV_KINDS = \[([^\]]*)\]", ts).group(1)
+    assert [x.strip().strip("'") for x in app.split(",")] == list(rf.CONFIG["reversal_kinds"])

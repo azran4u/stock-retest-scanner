@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
-import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -308,9 +308,17 @@ function fibRowHtml(r: Row): string {
   return txt ? `<div class="r7 small fibline">פיבונאצי${fibManual(r.ticker) ? ' (ידני)' : ''}: ${txt}</div>` : '';
 }
 
+// reversal candles (revc.json) are loaded only once a 'reversal candle touching the level' filter is on
+let revc: Awaited<ReturnType<typeof loadRevc>> | null = null, revcLoading = false;
+function needRevc(fs: Filters) {
+  if (revc || revcLoading || !(fs.revWZ?.on || fs.revDZ?.on)) return;
+  revcLoading = true;
+  loadRevc().then((m) => { revc = m; revcLoading = false; if ($('.list')) updateListBody(); });
+}
 function filtered(): Row[] {
   const q = S.ui.q.trim().toUpperCase();
   const list = curList(), fs = effectiveFilters(list, S.ui.f);
+  needRevc(fs);
   let base = allRows();
   if (list.kind === 'static') {
     const want = new Set(list.tickers);
@@ -369,6 +377,7 @@ function factsOf(r: Row): Facts {
     technical: bool(r.f_technical),
     rr: liveRR(r),
     revD: (r.rev_d as Facts['revD']) || {}, revW: (r.rev_w as Facts['revW']) || {},
+    revDC: revc?.[r.ticker]?.d || [], revWC: revc?.[r.ticker]?.w || [], zone: liveZoneOf(r.ticker, r),
     daysToEarn: ed ? daysBetween(td, ed) : null, earnNone: r.earnings_none === true,
     unfit: isNi(r.ticker),
     status: live ? live.status : bs.includes('pass') ? 'PASS' : String(r.status || ''),
@@ -1663,7 +1672,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh
