@@ -27,19 +27,23 @@ export interface Facts {
   sector: string | null;
   instOwn: number | null; shortFloat: number | null;   // % ; null = no data (never filtered out)
   fib: boolean;                             // price near a key Fib level or the zone coincides with one
+  expertHam?: { k: number; s: 'H' | 'h' }[] | null; // hammer weeks touching the expert zone (k = weeks back, 1 = last completed)
+  expertBelowK?: number[] | null;           // weekly closes under the expert zone bottom (k)
   expertDist?: number | null;               // weekly ATRs from the expert zone (0 inside); null = no expert level
   expertScore?: number | null;              // expert-zone score 0-100 (expert_zones.json); null = no expert level / not loaded
   today: string;                            // YYYY-MM-DD (Israel) for "within X weeks"
 }
 
 export type UnfitMode = 'hide' | 'only' | 'all';
-export interface FState { on: boolean; x?: number; kinds?: RevKind[]; v?: string; mode?: UnfitMode }
+export interface FState { on: boolean; x?: number; y?: number; kinds?: RevKind[]; v?: string; mode?: UnfitMode }
 export type Filters = Record<string, FState>;
 
 export interface FilterDef {
   id: string; label: string; group: 'main' | 'status' | 'setup';
   /** numeric parameter: shown as a small input next to the toggle */
   param?: { def: number; min: number; max: number; step: number; unit?: string; pre?: string };
+  /** second numeric parameter (FState.y), e.g. the window of 'פטישים על אזור המומחים' */
+  param2?: { def: number; min: number; max: number; step: number; unit?: string; pre?: string };
   kinds?: boolean;      // reversal kinds picker
   select?: 'sector';
   tri?: boolean;        // unfit: hide / only / all
@@ -105,6 +109,9 @@ export const FILTERS: FilterDef[] = [
   { id: 'fib', label: 'התלכדות פיבונאצי', group: 'setup', test: (f) => f.fib },
   // expert zone (Eyal 2026-11-01): a separate overlay; this filter only shows / hides rows, it never changes PASS
   { id: 'expert', label: 'יש אזור מומחים, ציון ≥', group: 'setup', param: { def: 0, min: 0, max: 100, step: 5 }, test: (f, s) => f.expertScore != null && f.expertScore >= (s.x ?? 0) },
+  { id: 'expertham', label: 'פטישים על אזור המומחים: לפחות', group: 'setup', param: { def: 2, min: 1, max: 12, step: 1, unit: 'שבועות פטיש' },
+    param2: { def: 6, min: 1, max: 12, step: 1, pre: 'ב-', unit: 'השבועות האחרונים' },
+    test: (f, s) => { const x = s.y ?? 6; return !!f.expertHam && f.expertHam.filter((h) => h.k <= x).length >= (s.x ?? 2) && !(f.expertBelowK || []).some((k) => k <= x); } },
   { id: 'expertnear', label: 'מרחק מאזור המומחים ≤', group: 'setup', param: { def: 1, min: 0, max: 10, step: 0.1, unit: 'ATR שבועי' }, test: (f, s) => f.expertDist != null && f.expertDist <= (s.x ?? 1) },
   { id: 'sector', label: 'תחום', group: 'setup', select: 'sector', test: (f, s) => !s.v || f.sector === s.v },
   { id: 'inst', label: 'אחזקה מוסדית ≥', group: 'setup', param: { def: 60, min: 0, max: 100, step: 5, unit: '% (חסר = עובר)' }, test: (f, s) => f.instOwn == null || f.instOwn >= (s.x ?? 60) },

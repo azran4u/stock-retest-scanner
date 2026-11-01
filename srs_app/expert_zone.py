@@ -41,6 +41,8 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
                     recent), its
                     lowest low L above the origin top + 0.5 A, and not broken by the same rules as the zone
                     (no close < L x 0.97 after its first low, no two consecutive closes < L, price not < L x 0.97)
+       near       : when price is > 2 A above the origin top, the candidate is still valid if it is <= 2 A above the
+                    shelf top (the shelf is the active support; STLD 10/30 at 250.8)
        zone       = bottom L, top = the lowest body bottom min(open, close) of the cluster weeks, width clamped to
                     0.25-0.5 A. The breakout level is kept as 'origin' (shown on the stock page).
        score on the shelf: time/volume from its first low on (volume vs the weeks since the breakout), touches = cluster
@@ -238,11 +240,15 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
         elif last > post_hi - PULLBACK_ATR * A:
             reason = "no pullback yet (price within 1 ATR of the post-breakout high)"
         elif last > top + NEAR_ATR * A:
-            reason = f"price {(last - top) / A:.1f} ATR above the base top"
+            sh = _shelf(Wall, W, b, z, A, last)   # v4: a higher shelf is the active support -> 'near' is measured to it
+            if not (sh and last <= sh["top"] + NEAR_ATR * A):
+                reason = f"price {(last - top) / A:.1f} ATR above the base top"
         if reason:
             first_reason = first_reason or f"{reason}; latest breakout {W[b]['time']} over {top:.2f}"
             continue
-        return _result(Wall, W, b, z, A, last, post_hi, daily, _shelf(Wall, W, b, z, A, last))
+        res = _result(Wall, W, b, z, A, last, post_hi, daily, _shelf(Wall, W, b, z, A, last))
+        res.update(hammers(W, res["top"], res["bottom"], A))
+        return res
     return {"ok": False, "reason": first_reason or "no breakout above a 26-week base in 3 years", "atr_w": round(A, 4)}
 
 
@@ -279,6 +285,43 @@ def _shelf(Wall, W, b, z, A, last) -> Optional[Dict[str, Any]]:
     elif t - L > MAX_W_ATR * A:
         t, note = L + MAX_W_ATR * A, "clamped"
     return {"top": t, "bottom": L, "cluster": sorted(cl), "width_note": note}
+
+
+HAMMER_WEEKS = 12   # weeks stored; the app filter looks at the last X <= 12 of them
+
+
+def hammer_shape(o: float, h: float, l: float, c: float) -> Optional[str]:
+    """'H' textbook hammer: lower shadow >= 2x body, body in the top third, upper shadow <= 15% of the range;
+    'h' near-hammer: lower shadow >= 1.5x body and >= 40% of the range, close in the upper half (Eyal 2026-11-01,
+    /workspace/asb_like/scan.py)."""
+    R = h - l
+    if R <= 0:
+        return None
+    body, lo, up = abs(c - o), min(o, c) - l, h - max(o, c)
+    if lo >= 2 * max(body, 1e-9) and lo >= 2 / 3 * R and up <= 0.15 * R:
+        return "H"
+    if lo >= 1.5 * max(body, 1e-9) and lo >= 0.4 * R and (c - l) >= 0.5 * R:
+        return "h"
+    return None
+
+
+def touches(l: float, c: float, top: float, bot: float, A: float) -> bool:
+    """A week touches the zone: low <= top + 0.5 A and (low >= bottom - 0.5 A or close >= bottom)."""
+    return l <= top + 0.5 * A and (l >= bot - 0.5 * A or c >= bot)
+
+
+def hammers(W, top: float, bot: float, A: float, weeks: int = HAMMER_WEEKS) -> Dict[str, Any]:
+    """Hammer weeks touching the (active) expert zone and weekly closes under its bottom in the last `weeks` completed
+    weeks. k = 1 is the last completed week. The app filter 'פטישים על אזור המומחים' counts them in its own window."""
+    n, hw, cb = len(W), [], []
+    for k in range(1, min(weeks, n) + 1):
+        w = W[n - k]
+        s = hammer_shape(w["open"], w["high"], w["low"], w["close"])
+        if s and touches(w["low"], w["close"], top, bot, A):
+            hw.append({"w": w["time"], "s": s, "k": k})
+        if w["close"] < bot:
+            cb.append(k)
+    return {"hammers": hw, "closes_below_k": cb, "last_week": W[-1]["time"] if W else None}
 
 
 def _avg(xs: Sequence[float]) -> float:

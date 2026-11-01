@@ -59,7 +59,7 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 /** expert zone + optional expert trade (Entry / SL / TP), drawn as separate dashed purple overlays */
-export interface ExpertOverlay { top: number; bottom: number; start: string; score: number | null; trade?: { entry: number; sl: number; tp: number; rr: number | null } | null }
+export interface ExpertOverlay { top: number; bottom: number; start: string; score: number | null; trade?: { entry: number; sl: number; tp: number; rr: number | null } | null; hammers?: { w: string; s: 'H' | 'h' }[] }
 const EXPERT_TRADE_W = (weekly: boolean) => (weekly ? 8 : 14);
 
 export class ChartView {
@@ -548,6 +548,15 @@ export class ChartView {
         s += `<g class="expert" pointer-events="none"><rect x="${ex1}" y="${y}" width="${Math.max(0, W - ex1)}" height="${h}" fill="rgba(186,104,200,.12)" stroke="#ba68c8" stroke-width="1.5" stroke-dasharray="7 4"/>` +
           `<rect x="${tx}" y="${y + h + 2}" width="${w}" height="16" rx="4" fill="rgba(74,20,90,.85)" stroke="#ba68c8" stroke-width="1"/>` +
           `<text x="${tx + w / 2}" y="${y + h + 14}" text-anchor="middle" style="fill:#e1bee7;font-size:11px">${esc(txt)}</text></g>`;
+      }
+      // hammer weeks on the expert zone (weekly chart only): purple H / h under the week's low
+      if (this.weekly && e.hammers?.length) {
+        let hs = '';
+        for (const hm of e.hammers) {
+          const bar = this.bars.find((b) => String(b.time) === hm.w); const x = this.X(hm.w), y = bar ? this.Y(bar.low) : null;
+          if (bar && x != null && y != null && x >= 0 && x <= W) hs += `<text x="${x}" y="${y + 14}" text-anchor="middle" style="fill:#e1bee7;font-size:11px;font-weight:700">${hm.s}</text>`;
+        }
+        if (hs) s += `<g class="experthammers" pointer-events="none">${hs}</g>`;
       }
       // expert trade (Entry / SL / TP): dashed purple outline, green-ish target and red-ish risk, labelled 'מומחים R:R'
       const sp = this.expertTradeSpan(), tr = e.trade;

@@ -256,3 +256,52 @@ def test_no_shelf_without_two_higher_lows():
     """The synthetic base path has no higher shelf: the zone stays at the breakout level, origin == zone."""
     r = E.find(daily(base_path()))
     assert r["ok"] and r["shelf"] is None and r["origin"]["top"] == r["top"]
+
+
+def test_hammer_shapes():
+    assert E.hammer_shape(10, 10.2, 8, 10.1) == "H"          # long lower shadow, body on top, tiny upper shadow
+    assert E.hammer_shape(10, 10.6, 8.8, 10.3) == "h"        # lower shadow 1.2 = 4x body, 67% of range, close upper half
+    assert E.hammer_shape(10, 12, 9.9, 11.9) is None         # big up body
+    assert E.hammer_shape(10, 10, 10, 10) is None
+    assert E.touches(9.6, 10.1, 10, 9.5, 1.0) and not E.touches(10.6, 11, 10, 9.5, 1.0)
+    assert not E.touches(8.8, 9.0, 10, 9.5, 1.0) and E.touches(8.8, 9.6, 10, 9.5, 1.0)
+
+
+def _fixture(name):
+    from pathlib import Path
+    return json.loads((Path(__file__).parent / "data" / name).read_text())["d"]
+
+
+def test_asb_hammers_on_the_expert_zone():
+    """ASB (Eyal 2026-11-01, scan /workspace/asb_like): 3 hammer weeks on the expert zone in the last 6 completed weeks,
+    no weekly close under the zone -> matches the default filter (N=2, X=6)."""
+    r = E.find(_fixture("asb_daily_20261030.json"), asof="2026-11-01")
+    assert r["ok"] and r["last_week"] == "2026-10-26"
+    h6 = [(x["w"], x["s"]) for x in r["hammers"] if x["k"] <= 6]
+    assert sorted(h6) == [("2026-09-21", "h"), ("2026-09-28", "H"), ("2026-10-12", "h")]
+    assert not [k for k in r["closes_below_k"] if k <= 6]
+
+
+def test_tgt_hammers_on_the_shelf_zone():
+    """TGT: the zone is the v4 shelf; textbook hammer in the last completed week + 2 near-hammers in 6 weeks."""
+    r = E.find(_fixture("tgt_daily_20261030.json"), asof="2026-11-01")
+    assert r["ok"] and r["shelf"] is not None
+    h6 = {x["w"]: x["s"] for x in r["hammers"] if x["k"] <= 6}
+    assert h6.get("2026-10-26") == "H" and len(h6) >= 3
+    assert all(x["k"] <= E.HAMMER_WEEKS for x in r["hammers"])
+
+
+def test_refresh_stale_refreshes_only_exported_stale_tickers():
+    """Candles froze for tickers that dropped out of the day's FinViz screen (ASB/STLD/MRK, 2026-11-01)."""
+    import pandas as pd
+    from srs_app import export_data as X
+    idx = lambda end: pd.date_range(end=end, periods=5, freq="B")
+    mk = lambda end: pd.DataFrame({"Open": 1.0, "High": 1.0, "Low": 1.0, "Close": 1.0, "Volume": 1}, index=idx(end))
+    hist = {"OLD": mk("2026-10-22"), "NEW": mk("2026-10-30"), "OTHER": mk("2026-10-01")}
+    seen = {}
+    def fake(sub, ts):
+        seen["t"] = sorted(ts)
+        return {t: mk("2026-10-30") for t in ts}
+    got = X.refresh_stale(hist, ["OLD", "NEW", "MISSING"], target=pd.Timestamp("2026-10-30"), refresh=fake)
+    assert got == ["OLD"] and seen["t"] == ["OLD"]
+    assert hist["OLD"].index.max() == pd.Timestamp("2026-10-30") and hist["OTHER"].index.max() == pd.Timestamp("2026-10-01")

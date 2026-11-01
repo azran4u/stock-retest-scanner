@@ -122,6 +122,7 @@ export interface ExpertFactor { k: string; he: string; pts: number; max: number;
 export interface ExpertZone {
   ok: boolean; reason?: string; top?: number; bottom?: number; atr_w?: number; base_start?: string; pivot_week?: string;
   breakout_week?: string; breakout_close?: number; post_high?: number; price?: number; dist_atr?: number;
+  hammers?: { w: string; s: 'H' | 'h'; k: number }[]; closes_below_k?: number[]; last_week?: string;
   origin?: { top: number; bottom: number; base_start: string }; shelf?: { lows: [string, number][]; src: string } | null;
   width_note?: string | null; score?: number; factors?: ExpertFactor[];
   /** single weekly close under the zone bottom since the breakout (not followed by a second): valid, flagged, -10 pts */

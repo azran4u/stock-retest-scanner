@@ -433,3 +433,4 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .expertbox .exrow { display: grid; grid-template-columns: 44px 70px 1fr; gap: 6px; align-items: baseline; padding: 2px 0; }
 .expertbox .exsrc { font-size: 10.5px; margin-top: 4px; text-align: left; }
 .expertbox .expshelf { color: #ce93d8; margin: 4px 0; }
+.expertbox .exham { margin: 2px 0; }

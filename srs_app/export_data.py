@@ -334,11 +334,66 @@ def attach_fib(rows: List[Dict[str, Any]], fib: Dict[str, Dict[str, Any]], manua
         r["fib_confluence"] = ", ".join(parts) or None
 
 
+def _last_session() -> pd.Timestamp:
+    import sys as _s
+    root = str(Path(__file__).resolve().parent.parent)
+    if root not in _s.path:
+        _s.path.insert(0, root)
+    import stock_screen as ss
+    return ss.last_us_session_date()
+
+
+def refresh_stale(hist: Dict[str, Any], tickers: List[str], target: Optional[pd.Timestamp] = None,
+                  refresh=None) -> List[str]:
+    """Exported tickers whose cached daily bars end before the latest completed US session get re-fetched in place.
+
+    Why (2026-11-01, ASB / STLD / MRK + ~50 more stuck on 10/22-10/29): the screen refreshes the history cache only for
+    the tickers of that day's FinViz screener result (stock_screen.refresh_hist_map(hist, tickers)). The universe
+    changes from day to day (1836 tickers on 10/22, 5323 on 10/30), but the app keeps exporting tickers that dropped out
+    (his drawings, stars, positions, calibration), so their candles and expert zones froze. Same refresh as the screen
+    (rolling overlap window, merge, nothing after the target session). Returns the refreshed tickers."""
+    if target is None:
+        target = _last_session()
+    stale = []
+    for t in dict.fromkeys(tickers):
+        df = hist.get(t)
+        if df is None or getattr(df, "empty", True):
+            continue
+        try:
+            last = pd.Timestamp(pd.to_datetime(df.index).max()).tz_localize(None).normalize()
+        except TypeError:
+            last = pd.Timestamp(pd.to_datetime(df.index).max()).normalize()
+        if last < target:
+            stale.append(t)
+    if not stale:
+        return []
+    if refresh is None:
+        import stock_screen as ss    # importable: _last_session put the repo root on sys.path
+        refresh = ss.refresh_hist_map
+    print(f"  [app data] refreshing {len(stale)} stale exported tickers (not in today's screen) through {target.date()}")
+    sub = refresh({t: hist[t] for t in stale}, stale)
+    for t in stale:
+        if sub.get(t) is not None and not getattr(sub.get(t), "empty", True):
+            hist[t] = sub[t]
+    return stale
+
+
+def _save_cache(hist: Dict[str, Any]) -> None:
+    tmp = HIST_CACHE.with_name(HIST_CACHE.name + ".tmp")
+    pd.to_pickle(hist, tmp)
+    os.replace(tmp, HIST_CACHE)
+
+
 def export_candles(tickers: List[str], out: Path, fetch_missing: Optional[List[str]] = None,
                    fib_out: Optional[Dict[str, Dict[str, Any]]] = None, ema_for: Optional[set] = None) -> int:
     hist = dict(pd.read_pickle(HIST_CACHE))
     miss = [t for t in (fetch_missing or []) if hist.get(t) is None or getattr(hist.get(t), "empty", True)]
     hist.update(_download_missing(miss))
+    try:   # never block the export
+        if refresh_stale(hist, tickers) or miss:
+            _save_cache(hist)
+    except Exception as e:
+        print(f"  [app data] stale-candle refresh failed: {e}")
     cdir = out / "candles"
     cdir.mkdir(parents=True, exist_ok=True)
     cutoff = pd.Timestamp(datetime.now() - timedelta(days=int(365.25 * YEARS)))

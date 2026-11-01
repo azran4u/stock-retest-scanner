@@ -403,6 +403,8 @@ function factsOf(r: Row): Facts {
     fib: !!fc && (fc.priceLevel != null || fc.zoneLevels.length > 0),
     expertScore: expertScoreOf(r.ticker),
     expertDist: expertDistOf(r.ticker)?.atr ?? null,
+    expertHam: (() => { const e = expertOf(r.ticker); return e?.ok ? (e.hammers || []).map((h) => ({ k: h.k, s: h.s })) : null; })(),
+    expertBelowK: expertOf(r.ticker)?.closes_below_k ?? null,
     today: td,
   };
 }
@@ -418,6 +420,7 @@ function fpanelHtml(): string {
     }
     let extra = '';
     if (d.param) { const x = st.x ?? d.param.def; extra += `<input class="fx" type="number" inputmode="decimal" dir="ltr" min="${d.param.min}" max="${d.param.max}" step="${d.param.step}" value="${x}" aria-label="${esc(d.label)}" />${d.param.unit ? `<span class="fu muted">${d.param.unit}</span>` : ''}`; }
+    if (d.param2) { const p2 = d.param2, y = st.y ?? p2.def; extra += `${p2.pre ? `<span class="fu muted">${p2.pre}</span>` : ''}<input class="fx2" type="number" inputmode="decimal" dir="ltr" min="${p2.min}" max="${p2.max}" step="${p2.step}" value="${y}" aria-label="${esc(d.label)} ${esc(p2.unit || '')}" />${p2.unit ? `<span class="fu muted">${p2.unit}</span>` : ''}`; }
     if (d.select === 'sector') extra += `<select class="fsel" aria-label="תחום"><option value="">בחר…</option>${sectors.map((x) => `<option ${st.v === x ? 'selected' : ''} value="${esc(x)}">${esc(x)}</option>`).join('')}</select>`;
     let kinds = '';
     if (d.kinds) { const ks = st.kinds?.length ? st.kinds : DEF_KINDS; kinds = `<div class="fk">${REV_KINDS.map((k) => `<button class="kd ${ks.includes(k) ? 'on' : ''}" data-k="${k}">${REV_HE[k]}</button>`).join('')}</div>`; }
@@ -437,6 +440,8 @@ function bindFpanel() {
     if (cb) cb.onchange = () => { st().on = cb.checked; el.classList.toggle('act', isActive(id, st())); upd(); };
     const nx = el.querySelector<HTMLInputElement>('.fx');
     if (nx) nx.oninput = () => { const v = parseFloat(nx.value); if (!Number.isFinite(v)) return; st().x = v; st().on = true; if (cb) cb.checked = true; el.classList.add('act'); upd(); };
+    const ny = el.querySelector<HTMLInputElement>('.fx2');
+    if (ny) ny.oninput = () => { const v = parseFloat(ny.value); if (!Number.isFinite(v)) return; st().y = v; st().on = true; if (cb) cb.checked = true; el.classList.add('act'); upd(); };
     const sel = el.querySelector<HTMLSelectElement>('.fsel');
     if (sel) sel.onchange = () => { st().v = sel.value; st().on = !!sel.value; if (cb) cb.checked = st().on; el.classList.toggle('act', isActive(id, st())); upd(); };
     el.querySelectorAll<HTMLButtonElement>('.kd').forEach((b) => (b.onclick = () => {
@@ -522,7 +527,7 @@ function afterListsChanged() {
 }
 const fsummary = (fs: Filters) => {
   const ids = Object.keys(activeOnly(fs));
-  return ids.length ? ids.map((id) => { const d = BY_ID.get(id); const s = fs[id]; return d ? `${d.label}${d.param ? ' ' + (s.x ?? d.param.def) : ''}${d.select ? ' ' + (s.v || '') : ''}${d.tri ? ' (' + ({ hide: 'הסתר', only: 'רק הן', all: 'הצג גם' } as any)[s.mode || 'hide'] + ')' : ''}` : id; }).join(' · ') : 'ללא תנאים';
+  return ids.length ? ids.map((id) => { const d = BY_ID.get(id); const s = fs[id]; return d ? `${d.label}${d.param ? ' ' + (s.x ?? d.param.def) : ''}${d.param2 ? ' ' + (d.param2.pre || '') + (s.y ?? d.param2.def) : ''}${d.select ? ' ' + (s.v || '') : ''}${d.tri ? ' (' + ({ hide: 'הסתר', only: 'רק הן', all: 'הצג גם' } as any)[s.mode || 'hide'] + ')' : ''}` : id; }).join(' · ') : 'ללא תנאים';
 };
 // manager sheet: switch, create (static / from the current filters), rename, delete, add / remove tickers
 const listSheet = document.createElement('div');
@@ -1633,7 +1638,8 @@ function applyExpert() {
   const e = expertOf(S.ticker);
   cv.setExpert(S.ui.expert !== false && e?.ok && e.top != null && e.bottom != null && e.base_start
     ? { top: e.top, bottom: e.bottom, start: e.base_start, score: e.score ?? null,
-        trade: e.trade ? { entry: e.trade.entry, sl: e.trade.sl, tp: e.trade.tp, rr: e.trade.rr } : null } : null);
+        trade: e.trade ? { entry: e.trade.entry, sl: e.trade.sl, tp: e.trade.tp, rr: e.trade.rr } : null,
+        hammers: (e.hammers || []).map((h) => ({ w: h.w, s: h.s })) } : null);
 }
 function expertBadgeHtml(t: string): string {
   const e = expertOf(t); if (!e?.ok) return '';   // badge only where there is an expert zone
@@ -1675,6 +1681,7 @@ function expertPanelHtml(t: string): string {
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi></div>
     ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
     ${e.shelf && e.origin ? `<div class="small expshelf" data-shelf="1">מדף תמיכה גבוה יותר (v4): שפלים שבועיים <bdi dir="ltr">${e.shelf.lows.map(([d, l]) => `${l} (${ddmm(d)})`).join(', ')}</bdi>. רמת הפריצה המקורית <bdi dir="ltr">${e.origin.bottom.toFixed(2)}–${e.origin.top.toFixed(2)}</bdi> נשמרת כמקור.<div class="muted" dir="ltr">${esc(e.shelf.src)}</div></div>` : ''}
+    ${(() => { const hs = (e.hammers || []).filter((h) => h.k <= 12); return `<div class="small exham" data-ham="${hs.map((h) => h.w + ':' + h.s).join(',')}">פטישים על האזור ב-12 השבועות האחרונים: ${hs.length ? hs.map((h) => `<bdi dir="ltr">${ddmm(h.w)} ${h.s}</bdi>`).join(', ') + ' <span class="muted">(H = פטיש קלאסי, h = כמעט פטיש)</span>' : 'אין'}</div>`; })()}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}
