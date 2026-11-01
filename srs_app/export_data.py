@@ -627,6 +627,13 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
     except Exception as e:  # never block the export
         print(f"  [app data] earnings week skipped: {e}")
+    try:  # expert watchlist (Eyal 2026-11-01): near a valid expert zone, R:R >= 2, tradable, ranked by readiness
+        from srs_app.expert_watch import build as _ew_build
+        _ew = _ew_build(out, rows, revc, report_date)
+        print(f"  [app data] expert watchlist: {len(_ew['items'])} "
+              f"({sum(1 for x in _ew['items'] if x['tier'] == 'מוכנה')} ready)")
+    except Exception as e:  # never block the export
+        print(f"  [app data] expert watchlist skipped: {e}")
     try:
         from srs_app.rules import build_rules
         (out / "rules.json").write_text(json.dumps(build_rules(), ensure_ascii=False, separators=(",", ":")))

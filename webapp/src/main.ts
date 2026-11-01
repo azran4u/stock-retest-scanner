@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
-import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, rr, toWeekly, type Spark, type ExpertDoc, type ExpertZone } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, type Spark, type ExpertDoc, type ExpertZone } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -333,6 +333,9 @@ function filtered(): Row[] {
   const s = S.ui.sort;
   if (s === 'ticker') rows = [...rows].sort((a, b) => a.ticker.localeCompare(b.ticker));
   else if (s === 'rr') rows = [...rows].sort((a, b) => num(liveRR(b)) - num(liveRR(a)));
+  else if (list.id === 'expertwatch' && s === 'default') {   // the watchlist's own ranking (ready first)
+    rows = [...rows].sort((a, b) => (watchOf(a.ticker)?.rank ?? 1e9) - (watchOf(b.ticker)?.rank ?? 1e9));
+  }
   else if (s === 'zone') {
     const zd = new Map(rows.map((r) => [r.ticker, zoneDistOf(r)?.atr ?? Infinity]));
     const pz = new Map(rows.map((r) => [r.ticker, badgesOf(r).includes('pass') ? 0 : 1]));
@@ -403,6 +406,7 @@ function factsOf(r: Row): Facts {
     fib: !!fc && (fc.priceLevel != null || fc.zoneLevels.length > 0),
     expertScore: expertScoreOf(r.ticker),
     expertDist: expertDistOf(r.ticker)?.atr ?? null,
+    expertWatch: (() => { const w = watchOf(r.ticker); return w ? { tier: w.tier, rank: w.rank } : null; })(),
     expertHam: (() => { const e = expertOf(r.ticker); return e?.ok ? (e.hammers || []).map((h) => ({ k: h.k, s: h.s })) : null; })(),
     expertBelowK: expertOf(r.ticker)?.closes_below_k ?? null,
     today: td,
@@ -780,6 +784,15 @@ function listInner(rows: Row[]) {
   const q = normT(S.ui.q);
   const add = q && !allRows().some((r) => r.ticker === q)
     ? `<li class="addrow"><button class="primary" id="addWatch" data-t="${esc(q)}">★ הוסף ${esc(q)} למעקב</button><div class="muted small">לא ברשימת המועמדים. נרות יתווספו בריצה הלילית.</div></li>` : '';
+  if (curList().id === 'expertwatch') {
+    let body = '', prev = '';
+    for (const r of rows) {
+      const tier = watchOf(r.ticker)?.tier || '';
+      if (S.ui.sort === 'default' && tier && tier !== prev) { body += `<li class="ewtier small" data-tier="${tier === EW_READY ? 'ready' : 'wait'}">${esc(tier)}</li>`; prev = tier; }
+      body += rowHtml(r);
+    }
+    return add + watchHeadHtml() + (body || '<li class="muted center">אין מניות ברשימה הלילה</li>');
+  }
   return add + (rows.map(rowHtml).join('') || (add ? '' : '<li class="muted center">אין תוצאות</li>'));
 }
 // ---------------- list mini charts (3y weekly closes, drawn lazily when a row scrolls into view) ----------------
@@ -904,6 +917,7 @@ function rowHtml(r: Row) {
     <canvas class="spark" data-spark="${esc(r.ticker)}" aria-hidden="true"></canvas>
     ${secHtml(r)}
     ${sizingHtml(r)}
+    ${watchLineHtml(r.ticker)}
     ${zoneDistHtml(r)}
     ${fibRowHtml(r)}
     <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', earnShort(r)].filter(Boolean).join(' · ')}</div>
@@ -1613,7 +1627,28 @@ async function loadAll() {
 }
 // ---------------- expert zone (Eyal 2026-11-01): separate overlay for the starred stocks, never a drawing / PASS input ----------------
 let expertDoc: ExpertDoc | null = null;
+let expertWatch: ExpertWatchDoc | null = null;
+let watchBy = new Map<string, ExpertWatchItem>();
+const watchOf = (t: string) => watchBy.get(t) || null;
+async function loadExpertWatchList() {
+  expertWatch = await loadExpertWatch();
+  watchBy = new Map((expertWatch?.items || []).map((x) => [x.t, x]));
+  if ($('.list')) updateListBody();
+}
+const EW_READY = 'מוכנה';
+function watchLineHtml(t: string): string {
+  const w = watchOf(t); if (!w) return '';
+  return `<div class="r6 small ewl ${w.tier === EW_READY ? 'ready' : 'wait'}" data-ew="${w.tier === EW_READY ? 'ready' : 'wait'}"><b>מעקב מומחים #${w.rank} · ${esc(w.tier)}</b>: ${esc(w.reason_he)}</div>`;
+}
+function watchHeadHtml(): string {
+  const c = expertWatch?.criteria || {};
+  const n = expertWatch?.items.length ?? 0, nr = expertWatch?.items.filter((x) => x.tier === EW_READY).length ?? 0;
+  return `<li class="ewhead small" id="ewHead"><b>רשימת מעקב מומחים</b> · ${n} מניות (${nr} מוכנות, ${n - nr} ממתינות לאישור) · מחושבת כל לילה${expertWatch?.asof ? ` (<bdi dir="ltr">${esc(expertWatch.asof)}</bdi>)` : ''}
+    <div class="muted">תנאים: אזור מומחים תקף (רמת התנגדות שנפרצה, ממוצע 30 שבועות לא יורד); המחיר בתוך האזור או עד ${c.max_dist_atr ?? 1} ATR שבועי מעליו; R:R מומחים ≥ ${c.min_rr ?? 2}; אין דוחות ב-${c.earn_days ?? 14} הימים הקרובים והשבוע האחרון לא שבוע דוחות; סיכון למניה ≤ $${c.max_risk_usd ?? 55} וסיכון ≤ ${c.max_risk_pct ?? 10}%.
+    <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג). דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
+}
 async function loadExpertZones() {
+  loadExpertWatchList();
   expertDoc = await loadExpert();
   if (!expertDoc) return;
   if ($('.list')) updateListBody();
@@ -1770,7 +1805,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get expertDoc() { return expertDoc; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

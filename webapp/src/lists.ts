@@ -23,6 +23,8 @@ export const BUILTIN_LISTS: StockList[] = [
   { id: 'pass', name: 'PASS', kind: 'dynamic', tickers: [], criteria: { f: { st_pass: { on: true } } }, pos: -3, builtin: true },
   // the old ★ chip listed starred tickers even when marked unfit
   { id: 'starred', name: '★ מעקב', kind: 'dynamic', tickers: [], criteria: { f: { starred: { on: true }, unfit: { on: true, mode: 'all' } } }, pos: -2, builtin: true },
+  // expert watchlist (Eyal 2026-11-01): computed nightly (srs_app/expert_watch.py -> app/data/expert_watch.json)
+  { id: 'expertwatch', name: 'רשימת מעקב מומחים', kind: 'dynamic', tickers: [], criteria: { f: { expertwatch: { on: true }, unfit: { on: true, mode: 'all' } } }, pos: -1.5, builtin: true },
   { id: 'positions', name: 'פוזיציות', kind: 'dynamic', tickers: [], criteria: { f: { position: { on: true }, unfit: { on: true, mode: 'all' } } }, pos: -1, builtin: true },
 ];
 export const LISTS_LS = 'srs-lists-v1';

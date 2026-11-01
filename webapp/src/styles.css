@@ -433,3 +433,8 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .expertbox .exrow { display: grid; grid-template-columns: 44px 70px 1fr; gap: 6px; align-items: baseline; padding: 2px 0; }
 .expertbox .exsrc { font-size: 10.5px; margin-top: 4px; text-align: left; }
 .expertbox .exham { margin: 2px 0; }
+.ewl { color: #ce93d8; }
+.ewl.ready b { color: #81c784; }
+.ewhead { list-style: none; padding: 8px 10px; margin: 4px 0; border: 1px dashed #ba68c8; border-radius: 8px; line-height: 1.5; }
+.ewtier { list-style: none; padding: 6px 10px 2px; font-weight: 700; color: #ce93d8; }
+.ewtier[data-tier="ready"] { color: #81c784; }

@@ -129,6 +129,12 @@ export interface ExpertZone {
   /** expert Entry / SL / TP (srs_app/expert_zone._trade): separate overlay, never a Long / PASS / sizing input */
   trade?: { entry: number; sl: number; tp: number; rr: number | null; tp_mm: number; retest_low: number; risk_pct: number; confirmed: boolean; notes: string[] } | null;
 }
+export interface ExpertWatchItem { t: string; tier: string; rank: number; comp: number; zone: [number, number]; score: number | null; dist: number;
+  entry: number; sl: number; tp: number; rr: number; risk_pct: number; shares: number; signals: { k: string; pts: number; he: string }[]; reason_he: string }
+export interface ExpertWatchDoc { generated_at: string; asof: string; rule_version?: string; criteria: Record<string, number>; items: ExpertWatchItem[] }
+export function loadExpertWatch(): Promise<ExpertWatchDoc | null> {
+  return fetcher('expert_watch.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+}
 export interface ExpertDoc { rule_version: string; generated_at: string; labels?: Record<string, string>; sources?: Record<string, string>; tickers: Record<string, ExpertZone> }
 let expertP: Promise<ExpertDoc | null> | null = null;
 export function loadExpert(): Promise<ExpertDoc | null> {

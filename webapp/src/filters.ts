@@ -29,7 +29,8 @@ export interface Facts {
   fib: boolean;                             // price near a key Fib level or the zone coincides with one
   expertHam?: { k: number; s: 'H' | 'h' }[] | null; // hammer weeks touching the expert zone (k = weeks back, 1 = last completed)
   expertBelowK?: number[] | null;           // weekly closes under the expert zone bottom (k)
-  expertDist?: number | null;               // weekly ATRs from the expert zone (0 inside); null = no expert level
+  expertDist?: number | null;
+  expertWatch?: { tier: string; rank: number } | null; // in the nightly expert watchlist (expert_watch.json)               // weekly ATRs from the expert zone (0 inside); null = no expert level
   expertScore?: number | null;              // expert-zone score 0-100 (expert_zones.json); null = no expert level / not loaded
   today: string;                            // YYYY-MM-DD (Israel) for "within X weeks"
 }
@@ -112,6 +113,7 @@ export const FILTERS: FilterDef[] = [
   { id: 'expertham', label: 'פטישים על אזור המומחים: לפחות', group: 'setup', param: { def: 2, min: 1, max: 12, step: 1, unit: 'שבועות פטיש' },
     param2: { def: 6, min: 1, max: 12, step: 1, pre: 'ב-', unit: 'השבועות האחרונים' },
     test: (f, s) => { const x = s.y ?? 6; return !!f.expertHam && f.expertHam.filter((h) => h.k <= x).length >= (s.x ?? 2) && !(f.expertBelowK || []).some((k) => k <= x); } },
+  { id: 'expertwatch', label: 'ברשימת מעקב מומחים', group: 'setup', test: (f) => !!f.expertWatch },
   { id: 'expertnear', label: 'מרחק מאזור המומחים ≤', group: 'setup', param: { def: 1, min: 0, max: 10, step: 0.1, unit: 'ATR שבועי' }, test: (f, s) => f.expertDist != null && f.expertDist <= (s.x ?? 1) },
   { id: 'sector', label: 'תחום', group: 'setup', select: 'sector', test: (f, s) => !s.v || f.sector === s.v },
   { id: 'inst', label: 'אחזקה מוסדית ≥', group: 'setup', param: { def: 60, min: 0, max: 100, step: 5, unit: '% (חסר = עובר)' }, test: (f, s) => f.instOwn == null || f.instOwn >= (s.x ?? 60) },
