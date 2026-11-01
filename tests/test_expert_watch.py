@@ -69,6 +69,48 @@ def test_signals_weekly_hammer_and_daily_reversal_only():
 
 def test_earnings_from_file_for_tickers_outside_the_report():
     from datetime import date
-    assert not X._earn_ok_from_file({"n": "2026-11-05"}, date(2026, 11, 1), "2026-10-26")
-    assert not X._earn_ok_from_file({"p": [{"d": "2026-10-28", "t": "bmo"}]}, date(2026, 11, 1), "2026-10-26")
-    assert X._earn_ok_from_file({"n": "2026-12-01", "p": [{"d": "2026-10-16", "t": "amc"}]}, date(2026, 11, 1), "2026-10-26")
+    assert X.earn_block({"n": "2026-11-05"}, {}, date(2026, 11, 1), "2026-10-26")
+    assert X.earn_block({"p": [{"d": "2026-10-28", "t": "bmo"}]}, {}, date(2026, 11, 1), "2026-10-26")
+    assert X.earn_block({"n": "2026-12-01", "p": [{"d": "2026-10-16", "t": "amc"}]}, {}, date(2026, 11, 1), "2026-10-26") is None
+
+
+def test_earnings_gate_live_irm_rok_mufg(tmp_path):
+    """Regression 2026-11-01: IRM / ROK (report 11/05, rows WITHOUT f_no_earnings_14d) and MUFG (11/13 = 12 days;
+    the report row said f_no_earnings_14d=True as of 10/30) were in the watchlist. earnings.json is flat {T: {...}}.
+    SLG reported 10/21 amc (reaction 10/22, week 10/19) -> last completed week 10/26 is clean -> stays."""
+    flat = _daily([(103, 104)] * 6 + [(99.5, 101)])
+    earn = {
+        "IRM": {"p": [{"d": "2026-08-05", "t": "bmo"}], "n": "2026-11-05", "ne": True, "nt": "bmo"},
+        "ROK": {"p": [{"d": "2026-08-03", "t": "amc"}], "n": "2026-11-05", "ne": True, "nt": "bmo"},
+        "MUFG": {"p": [{"d": "2026-08-03", "t": "bmo"}], "n": "2026-11-13", "ne": False, "nt": None},
+        "SLG": {"p": [{"d": "2026-07-21", "t": "amc"}, {"d": "2026-10-21", "t": "amc"}], "n": "2027-01-27", "ne": True},
+        "WKAMC": {"p": [{"d": "2026-10-23", "t": "amc"}], "n": "2027-01-20"},    # Fri amc -> reacts Mon 10/26 (last week)
+        "WKBMO": {"p": [{"d": "2026-10-28", "t": "bmo"}], "n": "2027-01-20"},
+        "OFFROW": {"n": "2026-11-04"},                                           # no report row: file only
+    }
+    names = ["IRM", "ROK", "MUFG", "SLG", "WKAMC", "WKBMO", "OFFROW", "CLEAN"]
+    rows = [{"ticker": "IRM", "current_price": 101.0, "f_after_earnings_week": True},
+            {"ticker": "ROK", "current_price": 101.0, "f_after_earnings_week": True},
+            {"ticker": "MUFG", "current_price": 101.0, "earnings_date": "2026-11-13", "f_no_earnings_14d": True,
+             "f_after_earnings_week": True},
+            {"ticker": "SLG", "current_price": 101.0, "f_after_earnings_week": True},
+            {"ticker": "WKAMC", "current_price": 101.0}, {"ticker": "WKBMO", "current_price": 101.0},
+            {"ticker": "CLEAN", "current_price": 101.0, "earnings_date": "2026-11-15"}]   # 14 days -> clear
+    _write(tmp_path, {t: _z() for t in names}, {t: flat for t in names}, earn)
+    res = X.build(tmp_path, rows, {}, "2026-11-01")
+    assert {x["t"] for x in res["items"]} == {"SLG", "CLEAN"}
+    ex = res["earn_excluded"]
+    assert set(ex) == {"IRM", "ROK", "MUFG", "WKAMC", "WKBMO", "OFFROW"}
+    assert "4 ימים" in ex["IRM"] and "12 ימים" in ex["MUFG"]
+
+
+def test_reason_line_is_short(tmp_path):
+    flat = _daily([(103, 104)] * 6 + [(99.5, 101)])
+    _write(tmp_path, {"A": _z(hammers=[{"w": "2026-10-26", "s": "H", "k": 1}]), "B": _z()},
+           {"A": flat, "B": _daily([(102.5, 103)] * 7)})
+    rv = {"A": {"d": [[1, 1, 99.8, 100.5, 2.0]], "w": []}}
+    res = X.build(tmp_path, [{"ticker": "A", "current_price": 101.0}, {"ticker": "B", "current_price": 101.0}], rv, "2026-11-01")
+    got = {x["t"]: x["reason_he"] for x in res["items"]}
+    assert got["A"] == "סגירה שבועית מעל האזור אחרי נגיעה · R:R 3.0 · 0.5 ATR מעל"
+    assert got["B"].startswith("ממתינה לסימן היפוך · R:R 3.0")
+    assert got["A"].count("·") == 2

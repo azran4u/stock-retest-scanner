@@ -53,22 +53,46 @@ def _kinds(mask: int) -> List[str]:
     return [k for i, k in enumerate(REV_KINDS) if mask & (1 << i)]
 
 
-def _earn_ok_from_file(em: Dict[str, Any], asof: date, last_week: Optional[str]) -> bool:
-    """Tickers outside the report: next report >= EARN_DAYS days away and none in the last completed week."""
-    if not em:
-        return True
-    n = em.get("n")
-    if n and date.fromisoformat(n[:10]) - asof < timedelta(days=EARN_DAYS) and date.fromisoformat(n[:10]) >= asof:
-        return False
+def _reaction_day(d: date, t: Optional[str]) -> date:
+    """Trading day the market reacts to a report: bmo / unknown -> that day, amc -> next weekday."""
+    if t == "amc":
+        d += timedelta(days=3 if d.weekday() == 4 else (2 if d.weekday() == 5 else 1))
+    return d
+
+
+def earn_block(em: Dict[str, Any], row: Dict[str, Any], asof: date, last_week: Optional[str]) -> Optional[str]:
+    """Why the earnings gate blocks a ticker (None = clear). Evaluated LIVE on `asof` for every ticker (bug 2026-11-01:
+    the report row's f_no_earnings_14d was trusted, but it is computed on the report date and is missing for many
+    rows, so IRM / ROK (11/05) and MUFG (11/13) slipped through). Sources: earnings.json {T: {p: [{d, t}], n, nt}}
+    (flat, keyed by ticker) and the row's earnings_date as a fallback.
+      - next report within EARN_DAYS days (0 <= days < EARN_DAYS, same rule as the scanner's f_no_earnings_14d)
+      - a report reacted to in the last completed week (Mon last_week .. Fri) or after it up to asof."""
+    nxt = []
+    if em.get("n"):
+        nxt.append(date.fromisoformat(str(em["n"])[:10]))
+    if isinstance(row.get("earnings_date"), str) and row["earnings_date"][:10]:
+        try:
+            nxt.append(date.fromisoformat(row["earnings_date"][:10]))
+        except ValueError:
+            pass
+    for n in sorted(set(nxt)):
+        dd = (n - asof).days
+        if 0 <= dd < EARN_DAYS:
+            return f"דוחות בעוד {dd} ימים ({n.isoformat()})"
+    if row.get("f_no_earnings_14d") is False:                # scanner said so on the report date (conservative)
+        return "דוחות בקרוב (סורק)"
+    if row.get("f_after_earnings_week") is False:
+        return "שבוע דוחות (סורק)"
     if last_week:
         mon = date.fromisoformat(last_week)
-        for p in em.get("p", []) or []:
-            d = date.fromisoformat(p["d"][:10])
-            if p.get("t") == "amc":
-                d += timedelta(days=3 if d.weekday() == 4 else 1)
-            if mon <= d <= mon + timedelta(days=6):
-                return False
-    return True
+        past = [(date.fromisoformat(str(p["d"])[:10]), p.get("t")) for p in em.get("p", []) or [] if p.get("d")]
+        if em.get("n"):
+            past.append((date.fromisoformat(str(em["n"])[:10]), em.get("nt")))
+        for d, t in past:
+            r = _reaction_day(d, t)
+            if mon <= r <= max(asof, mon + timedelta(days=4)) and d <= asof:
+                return f"דוחות בשבוע האחרון ({d.isoformat()})"
+    return None
 
 
 def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -77,22 +101,25 @@ def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[st
     out: List[Dict[str, Any]] = []
     recent = weeks[-READY_WEEKS:]
     if recent and recent[-1]["close"] > top and any(w["low"] <= top for w in recent):
-        out.append({"k": "confirm", "pts": 3, "he": "סגירה שבועית מעל האזור אחרי נגיעה"})
+        out.append({"k": "confirm", "pts": 3, "he": "סגירה שבועית מעל האזור אחרי נגיעה", "short": "סגירה שבועית מעל האזור אחרי נגיעה"})
     for h in z.get("hammers") or []:
         if h["k"] <= READY_WEEKS:
             out.append({"k": "hammerW", "pts": 3 if h["s"] == "H" else 2, "w": h["w"],
-                        "he": "פטיש שבועי על האזור" if h["s"] == "H" else "כמעט-פטיש שבועי על האזור"})
+                        "he": "פטיש שבועי על האזור" if h["s"] == "H" else "כמעט-פטיש שבועי על האזור",
+                        "short": "פטיש שבועי על האזור" if h["s"] == "H" else "כמעט-פטיש שבועי על האזור"})
             break
     if rv:
         for k, mask, lo, cl, a in rv.get("w") or []:
             if k < READY_WEEKS and _touch(lo, cl, top, bot, a or A):
                 ks = [x for x in _kinds(mask) if not (x == "hammer" and any(s["k"] == "hammerW" for s in out))]
                 if ks:
-                    out.append({"k": "revW", "pts": 2, "he": "נר היפוך שבועי על האזור (" + ", ".join(REV_HE[x] for x in ks) + ")"})
+                    out.append({"k": "revW", "pts": 2, "he": "נר היפוך שבועי על האזור (" + ", ".join(REV_HE[x] for x in ks) + ")",
+                                "short": "נר היפוך שבועי על האזור"})
                     break
         for k, mask, lo, cl, a in rv.get("d") or []:
             if k < READY_DAYS and _touch(lo, cl, top, bot, a or A):
-                out.append({"k": "revD", "pts": 1, "he": "נר היפוך יומי על האזור (" + ", ".join(REV_HE[x] for x in _kinds(mask)) + ")"})
+                out.append({"k": "revD", "pts": 1, "he": "נר היפוך יומי על האזור (" + ", ".join(REV_HE[x] for x in _kinds(mask)) + ")",
+                                "short": "נר היפוך יומי על האזור"})
                 break
     return out
 
@@ -106,6 +133,7 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
     by = {r["ticker"]: r for r in rows}
     ad = date.fromisoformat(asof) if asof else date.today()
     items = []
+    excluded: Dict[str, str] = {}
     for t, z in doc.get("tickers", {}).items():
         if not z.get("ok") or not z.get("trade"):
             continue
@@ -127,10 +155,9 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
             risk = tr["entry"] - tr["sl"]
             if risk <= 0 or risk > MAX_RISK_USD or tr["risk_pct"] > WATCH_MAX_RISK_PCT:
                 continue
-            if r:
-                if r.get("f_no_earnings_14d") is False or r.get("f_after_earnings_week") is False:
-                    continue
-            elif not _earn_ok_from_file(earn.get(t) or {}, ad, z.get("last_week")):
+            eb = earn_block(earn.get(t) or {}, r, ad, z.get("last_week"))
+            if eb:
+                excluded[t] = eb
                 continue
             W = E.weekly(daily) if daily else []
             if W and not E.week_complete(W[-1]["last"], asof):
@@ -139,7 +166,8 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
             ready = sum(s["pts"] for s in sg)
             comp = 10 * ready + 0.5 * (z.get("score") or 0) + 5 * min(tr["rr"], 5) - 10 * dist
             where = "בתוך האזור" if dist == 0 else f"{dist:.1f} ATR מעל"
-            reason = ", ".join([s["he"] for s in sg] + [f"R:R {tr['rr']:.1f}", where])
+            best = max(sg, key=lambda s: s["pts"]) if sg else None   # strongest signal only (Eyal 2026-11-01: short line)
+            reason = " · ".join([best["short"] if best else "ממתינה לסימן היפוך", f"R:R {tr['rr']:.1f}", where])
             items.append({"t": t, "tier": TIER_READY if ready >= READY_MIN_PTS else TIER_WAIT, "comp": round(comp, 1),
                           "zone": [bot, top], "score": z.get("score"), "dist": round(dist, 2),
                           "entry": tr["entry"], "sl": tr["sl"], "tp": tr["tp"], "rr": tr["rr"], "risk_pct": tr["risk_pct"],
@@ -155,7 +183,7 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
            "criteria": {"max_dist_atr": WATCH_MAX_DIST_ATR, "min_rr": WATCH_MIN_RR, "max_risk_pct": WATCH_MAX_RISK_PCT,
                         "max_risk_usd": MAX_RISK_USD, "earn_days": EARN_DAYS, "ready_weeks": READY_WEEKS, "ready_days": READY_DAYS,
                         "ready_min_pts": READY_MIN_PTS},
-           "items": items}
+           "items": items, "earn_excluded": excluded}
     (out / "expert_watch.json").write_text(json.dumps(res, ensure_ascii=False, separators=(",", ":")))
     return res
 
