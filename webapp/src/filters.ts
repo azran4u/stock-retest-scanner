@@ -27,6 +27,7 @@ export interface Facts {
   sector: string | null;
   instOwn: number | null; shortFloat: number | null;   // % ; null = no data (never filtered out)
   fib: boolean;                             // price near a key Fib level or the zone coincides with one
+  expertDist?: number | null;               // weekly ATRs from the expert zone (0 inside); null = no expert level
   expertScore?: number | null;              // expert-zone score 0-100 (expert_zones.json); null = no expert level / not loaded
   today: string;                            // YYYY-MM-DD (Israel) for "within X weeks"
 }
@@ -104,6 +105,7 @@ export const FILTERS: FilterDef[] = [
   { id: 'fib', label: 'התלכדות פיבונאצי', group: 'setup', test: (f) => f.fib },
   // expert zone (Eyal 2026-11-01): a separate overlay; this filter only shows / hides rows, it never changes PASS
   { id: 'expert', label: 'יש אזור מומחים, ציון ≥', group: 'setup', param: { def: 0, min: 0, max: 100, step: 5 }, test: (f, s) => f.expertScore != null && f.expertScore >= (s.x ?? 0) },
+  { id: 'expertnear', label: 'מרחק מאזור המומחים ≤', group: 'setup', param: { def: 1, min: 0, max: 10, step: 0.1, unit: 'ATR שבועי' }, test: (f, s) => f.expertDist != null && f.expertDist <= (s.x ?? 1) },
   { id: 'sector', label: 'תחום', group: 'setup', select: 'sector', test: (f, s) => !s.v || f.sector === s.v },
   { id: 'inst', label: 'אחזקה מוסדית ≥', group: 'setup', param: { def: 60, min: 0, max: 100, step: 5, unit: '% (חסר = עובר)' }, test: (f, s) => f.instOwn == null || f.instOwn >= (s.x ?? 60) },
   { id: 'short', label: 'Short float ≤', group: 'setup', param: { def: 5, min: 0, max: 100, step: 0.5, unit: '% (חסר = עובר)' }, test: (f, s) => f.shortFloat == null || f.shortFloat <= (s.x ?? 5) },

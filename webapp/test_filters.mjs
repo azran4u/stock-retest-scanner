@@ -44,6 +44,7 @@ ok(F.matches(base, { mine: { on: true }, tradable: { on: true }, fromAbove: { on
 ok(!F.matches(base, { fib: { on: true } }) && !F.matches(base, { starred: { on: true } }), 'fib / starred off');
 // expert zone (Eyal 2026-11-01): has one (score >= X, default 0); none / not loaded fails; never touches status
 ok(F.matches(f({ expertScore: 0 }), { expert: { on: true } }) && !F.matches(f({ expertScore: null }), { expert: { on: true } }) && !F.matches(base, { expert: { on: true } }), 'expert zone: has one (score 0 counts), none fails');
+ok(F.matches(f({ expertDist: 0.8 }), { expertnear: { on: true } }) && !F.matches(f({ expertDist: 1.2 }), { expertnear: { on: true } }) && F.matches(f({ expertDist: 1.2 }), { expertnear: { on: true, x: 1.5 } }) && !F.matches(f({ expertDist: null }), { expertnear: { on: true } }), 'expert distance: <= 1 ATR default, x adjustable, no level fails');
 ok(F.matches(f({ expertScore: 60 }), { expert: { on: true, x: 50 } }) && !F.matches(f({ expertScore: 45 }), { expert: { on: true, x: 50 } }), 'expert zone min score');
 ok(F.matches(f({ expertScore: null }), { expert: { on: false, x: 50 } }), 'expert filter off = ignored');
 ok(F.activeCount({}) === 0 && F.activeCount({ rr: { on: true }, unfit: { on: true, mode: 'hide' }, sector: { on: true, v: '' } }) === 1

@@ -338,6 +338,10 @@ function filtered(): Row[] {
     const pz = new Map(rows.map((r) => [r.ticker, badgesOf(r).includes('pass') ? 0 : 1]));
     rows = [...rows].sort((a, b) => zd.get(a.ticker)! - zd.get(b.ticker)! || pz.get(a.ticker)! - pz.get(b.ticker)! || a.ticker.localeCompare(b.ticker)); // no zone -> last; ties: PASS first
   }
+  else if (s === 'expertnear') {   // closest to the expert zone first (weekly ATRs); no expert level -> last; ties: higher score first
+    const ed = new Map(rows.map((r) => [r.ticker, expertDistOf(r.ticker)?.atr ?? Infinity]));
+    rows = [...rows].sort((a, b) => ed.get(a.ticker)! - ed.get(b.ticker)! || num(expertScoreOf(b.ticker)) - num(expertScoreOf(a.ticker)) || a.ticker.localeCompare(b.ticker));
+  }
   else if (s === 'expert') {   // expert-zone score, highest first; no expert level -> last (Eyal 2026-11-01)
     rows = [...rows].sort((a, b) => num(expertScoreOf(b.ticker)) - num(expertScoreOf(a.ticker)) || a.ticker.localeCompare(b.ticker));
   }
@@ -398,6 +402,7 @@ function factsOf(r: Row): Facts {
     instOwn: numOrNull(r.inst_own_pct), shortFloat: numOrNull(r.short_float_pct),
     fib: !!fc && (fc.priceLevel != null || fc.zoneLevels.length > 0),
     expertScore: expertScoreOf(r.ticker),
+    expertDist: expertDistOf(r.ticker)?.atr ?? null,
     today: td,
   };
 }
@@ -691,7 +696,7 @@ function renderList(root?: HTMLElement) {
     </div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span><button id="copyList" class="ghost small cpyall" title="העתק את הרשימה המסוננת כסימולים של TradingView">📋 העתק ל-TV</button>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
-        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['expert', 'ציון מומחים (גבוה תחילה)'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
+        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['expert', 'ציון מומחים (גבוה תחילה)'], ['expertnear', 'קרוב לאזור המומחים'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select></label></div>
   </div>
   <ul class="list">${listInner(rows)}</ul>`;
@@ -1611,6 +1616,18 @@ async function loadExpertZones() {
 }
 const expertOf = (t: string | null): ExpertZone | null => (t && expertDoc?.tickers?.[t]) || null;
 const expertScoreOf = (t: string): number | null => { const e = expertOf(t); return e?.ok && e.score != null ? e.score : null; };
+/** Distance of the price from the expert zone in weekly ATRs (Eyal 2026-11-01), same convention as zoneDistOf:
+ *  0 inside, (price - top)/A above, (bottom - price)/A below. Price = live quote when there is one, else the latest close. */
+function expertDistOf(t: string): ZoneDist | null {
+  const e = expertOf(t); if (!e?.ok || e.top == null || e.bottom == null) return null;
+  const r = S.byT.get(t);
+  const px = S.quotes?.get(t)?.price ?? numOrNull(r?.current_price) ?? numOrNull(e.price);
+  const a = numOrNull(e.atr_w) ?? numOrNull(r?.weekly_atr);
+  if (px == null || !a || a <= 0) return null;
+  const side = px > e.top ? 'above' : px < e.bottom ? 'below' : 'inside';
+  return { atr: side === 'inside' ? 0 : side === 'above' ? (px - e.top) / a : (e.bottom - px) / a, side };
+}
+const expertDistText = (z: ZoneDist) => z.side === 'inside' ? '0 ATR (בתוך האזור)' : `<bdi dir="ltr">${z.side === 'above' ? '+' : '−'}${z.atr.toFixed(2)} ATR</bdi> (${z.side === 'above' ? 'מעל לאזור' : 'מתחת לאזור'})`;
 function applyExpert() {
   if (!cv) return;
   const e = expertOf(S.ticker);
@@ -1621,7 +1638,9 @@ function applyExpert() {
 function expertBadgeHtml(t: string): string {
   const e = expertOf(t); if (!e?.ok) return '';   // badge only where there is an expert zone
   const warn = e.ok && e.warnings?.length ? ` ⚠` : '';
-  return e.ok ? `<span class="badge b-expert" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100 (מידע בלבד)${warn ? ' · ' + e.warnings!.map((w) => w.he).join(', ') : ''}">מומחים ${e.score}${warn}</span>`
+  const d = expertDistOf(t);
+  const ds = d ? (d.side === 'inside' ? ' · בתוך' : ` · <bdi dir="ltr">${d.side === 'above' ? '+' : '−'}${d.atr.toFixed(1)}</bdi>`) : '';
+  return e.ok ? `<span class="badge b-expert" data-edist="${d ? (d.side === 'below' ? -d.atr : d.atr).toFixed(4) : ''}" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100, מרחק ${d ? (d.side === 'below' ? '−' : '+') + d.atr.toFixed(2) + ' ATR' : '—'} (מידע בלבד)${warn ? ' · ' + e.warnings!.map((w) => w.he).join(', ') : ''}">מומחים ${e.score}${ds}${warn}</span>`
     : '<span class="badge b-expert off" title="אין רמת מומחים">מומחים —</span>';
 }
 const EXPERT_REASON_HE: [RegExp, string][] = [
@@ -1653,7 +1672,8 @@ function expertPanelHtml(t: string): string {
   const ov = z ? Math.min(e.top!, z.top) >= Math.max(e.bottom!, z.bottom) : null;
   const rows = (e.factors || []).map((f) => `<tr><td>${esc(f.he)}</td><td dir="ltr" class="num">${+f.pts.toFixed(1)}/${f.max}</td><td dir="ltr" class="val">${esc(f.val)}</td><td class="src" dir="ltr">${esc(f.src)}</td></tr>`).join('');
   return `<section class="expertbox" id="secExpert">${head}
-    <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi>${e.dist_atr ? ` (<bdi dir="ltr">${e.dist_atr > 0 ? '+' : ''}${e.dist_atr}</bdi> ATR)` : ' (בתוך האזור)'}</div>
+    <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi></div>
+    ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}
@@ -1743,7 +1763,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, get expertDoc() { return expertDoc; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get expertDoc() { return expertDoc; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh
