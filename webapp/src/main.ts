@@ -1614,11 +1614,12 @@ function applyExpert() {
 }
 function expertBadgeHtml(t: string): string {
   const e = expertOf(t); if (!e) return '';
-  return e.ok ? `<span class="badge b-expert" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100 (מידע בלבד)">מומחים ${e.score}</span>`
+  const warn = e.ok && e.warnings?.length ? ` ⚠` : '';
+  return e.ok ? `<span class="badge b-expert" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100 (מידע בלבד)${warn ? ' · ' + e.warnings!.map((w) => w.he).join(', ') : ''}">מומחים ${e.score}${warn}</span>`
     : '<span class="badge b-expert off" title="אין רמת מומחים">מומחים —</span>';
 }
 const EXPERT_REASON_HE: [RegExp, string][] = [
-  [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-1 ATR)'],
+  [/two consecutive/, 'הרמה נשברה (שתי סגירות שבועיות רצופות מתחת לאזור)'], [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-1 ATR)'],
   [/^no pullback/, 'עדיין אין פולבק (המחיר בטווח 1 ATR מהשיא שאחרי הפריצה)'], [/ATR above/, 'המחיר רחוק מעל גג הבסיס (יותר מ-2 ATR)'],
   [/^no breakout/, 'אין פריצה מעל בסיס של 26 שבועות ב-3 השנים האחרונות'], [/^short history|^no candles/, 'אין מספיק היסטוריה'],
 ];
@@ -1635,9 +1636,10 @@ function expertPanelHtml(t: string): string {
   const rows = (e.factors || []).map((f) => `<tr><td>${esc(f.he)}</td><td dir="ltr" class="num">${+f.pts.toFixed(1)}/${f.max}</td><td dir="ltr" class="val">${esc(f.val)}</td><td class="src" dir="ltr">${esc(f.src)}</td></tr>`).join('');
   return `<section class="expertbox" id="secExpert">${head}
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi>${e.dist_atr ? ` (<bdi dir="ltr">${e.dist_atr > 0 ? '+' : ''}${e.dist_atr}</bdi> ATR)` : ' (בתוך האזור)'}</div>
+    ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם המחיר התרחק ≥1 ATR, לא נסגר יותר מ-3% מתחת, וחזר אליו מלמעלה (עד 2 ATR מעליו).</div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות.</div>
     ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */

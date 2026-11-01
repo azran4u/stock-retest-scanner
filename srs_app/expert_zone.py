@@ -23,7 +23,12 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
        width sanity: top - bottom < 0.25 A -> bottom = top - 0.25 A ('widened'); > 0.5 A -> top - 0.5 A ('clamped').
   3. A candidate is THE expert zone when (all of):
        moved away : the highest high from b on >= top + 1 A        (Edwards & Magee: price must move away first)
-       not broken : no completed weekly close after b < bottom x 0.97 (Murphy 3% / Weinstein weekly close)
+       not broken (completed weekly closes after b; tightened 2026-11-01, Eyal approved after KBWB):
+                    (a) any close more than 3% under the bottom (< bottom x 0.97, Murphy 3%)       -> broken
+                    (b) two CONSECUTIVE closes under the bottom (Murphy: two closes; Weinstein)    -> broken
+                    (c) a single close under the bottom, not followed by a second -> still valid, flagged
+                        'סגירה שבועית מתחת לאזור' with its date, and -10 points per such week (max -20)
+                    the current (running) price more than 3% under the bottom also counts as broken
        pulled back toward it from above: last close <= post-breakout high - 1 A, and last close <= top + 2 A
      The newest candidate that passes wins. None -> 'no expert level' with the reason of the newest candidate
      (no breakout in 3 years / broken / price too far above / never moved away / no pullback yet).
@@ -39,6 +44,7 @@ SIGNIFICANCE SCORE 0-100 (transparent: each factor's points, max, measured value
   recency    5  weeks since the breakout <= 13 ->5, <= 26 ->3, <= 52 ->1 (Murphy; Bulkowski: age does not matter -> light)
   round      5  a round number (step by price) inside the zone +/- 0.1 A (Murphy; Bulkowski)
   gap        5  a daily gap up in the breakout week or the next one that starts at the zone (Murphy: breakaway gap = support)
+  below    -20  penalty: -10 per single weekly close under the bottom since the breakout (rule (c) above)
   confluence 10 30-week SMA inside the zone +/- 0.5 A ->5 (Weinstein); Fib 0.382-0.618 of base low -> post-breakout
                 high overlaps the zone ->5 (Murphy)
 
@@ -62,7 +68,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v1-2026-11-01"
+RULE_VERSION = "expert-v2-2026-11-01"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -85,10 +91,11 @@ SRC = {
     "round": "Murphy; Bulkowski: round numbers stop moves",
     "gap": "Murphy: a breakaway gap acts as support on the pullback",
     "confluence": "Weinstein: 30-week MA; Murphy: Fib 38-62% retracement",
+    "below": "Murphy: a close beyond the level weakens it (2 closes / 3% = broken); Weinstein: weekly close",
 }
 LABEL_HE = {
     "time": "שבועות באזור", "touches": "נגיעות נפרדות", "volume": "נפח ברמה", "breakout": "איכות הפריצה",
-    "retest": "מספר הבדיקה", "recency": "עדכניות", "round": "מספר עגול", "gap": "גאפ ברמה", "confluence": "חפיפה (MA30 / פיבו)",
+    "retest": "מספר הבדיקה", "recency": "עדכניות", "round": "מספר עגול", "gap": "גאפ ברמה", "below": "סגירה מתחת לאזור", "confluence": "חפיפה (MA30 / פיבו)",
 }
 
 
@@ -187,6 +194,8 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
             reason = "never moved away (high after the breakout < top + 1 ATR)"
         elif any(W[k]["close"] < bot * (1 - BREAK_PCT) for k in range(b + 1, n)) or last < bot * (1 - BREAK_PCT):
             reason = "broken (weekly close > 3% under the zone)"
+        elif any(W[k]["close"] < bot and W[k + 1]["close"] < bot for k in range(b + 1, n - 1)):
+            reason = "broken (two consecutive weekly closes under the zone)"
         elif last > post_hi - PULLBACK_ATR * A:
             reason = "no pullback yet (price within 1 ATR of the post-breakout high)"
         elif last > top + NEAR_ATR * A:
@@ -268,8 +277,10 @@ def _result(Wall, W, b, z, A, last, post_hi, daily) -> Dict[str, Any]:
     if f62 <= top and f38 >= bot:
         conf += 5
         parts.append(f"Fib {f62:.2f}-{f38:.2f}")
+    below = [W[k]["last"] for k in range(b + 1, n) if W[k]["close"] < bot]
+    add("below", -min(20, 10 * len(below)), 0, ", ".join(below) or "-")
     add("confluence", conf, 10, ", ".join(parts) or (f"MA30 {ma:.2f} (outside)" if ma is not None else "-"))
-    score = int(round(sum(f["pts"] for f in F)))
+    score = max(0, int(round(sum(f["pts"] for f in F))))
     start = W[min(z["cluster"])]["time"]
     return {
         "ok": True, "top": round(top, 2), "bottom": round(bot, 2), "atr_w": round(A, 4),
@@ -277,6 +288,7 @@ def _result(Wall, W, b, z, A, last, post_hi, daily) -> Dict[str, Any]:
         "breakout_close": round(W[b]["close"], 2), "post_high": round(post_hi, 2), "price": round(last, 2),
         "dist_atr": round((last - top) / A, 2) if last > top else (0.0 if last >= bot else round((last - bot) / A, 2)),
         "width_note": z["width_note"], "score": score, "factors": F,
+        "warnings": [{"k": "close_below", "date": d, "he": f"סגירה שבועית מתחת לאזור ({d})"} for d in below],
     }
 
 

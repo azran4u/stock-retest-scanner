@@ -123,6 +123,8 @@ export interface ExpertZone {
   ok: boolean; reason?: string; top?: number; bottom?: number; atr_w?: number; base_start?: string; pivot_week?: string;
   breakout_week?: string; breakout_close?: number; post_high?: number; price?: number; dist_atr?: number;
   width_note?: string | null; score?: number; factors?: ExpertFactor[];
+  /** single weekly close under the zone bottom since the breakout (not followed by a second): valid, flagged, -10 pts */
+  warnings?: { k: string; date: string; he: string }[];
 }
 export interface ExpertDoc { rule_version: string; generated_at: string; tickers: Record<string, ExpertZone> }
 let expertP: Promise<ExpertDoc | null> | null = null;

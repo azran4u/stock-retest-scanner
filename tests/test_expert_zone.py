@@ -56,7 +56,7 @@ def test_zone_is_base_top_wick_to_body():
     assert r["breakout_week"] == (date(2023, 1, 2) + timedelta(weeks=42)).isoformat()
     assert 0 <= r["score"] <= 100
     assert r["score"] == round(sum(f["pts"] for f in r["factors"]))
-    assert {f["k"] for f in r["factors"]} == {"time", "touches", "volume", "breakout", "retest", "recency", "round", "gap", "confluence"}
+    assert {f["k"] for f in r["factors"]} == {"time", "touches", "volume", "breakout", "retest", "recency", "round", "gap", "below", "confluence"}
     assert sum(f["max"] for f in r["factors"]) == 100
     assert all(f["src"] for f in r["factors"])
     t = {f["k"]: f for f in r["factors"]}
@@ -148,3 +148,40 @@ def test_add_and_remove_merge(tmp_path, monkeypatch):
     assert not (tmp_path / "candles" / "NEW.json").exists()
     E.remove(["AAA"], tmp_path)
     assert set(json.loads(p.read_text())["tickers"]) == {"NEW"}
+
+
+def test_kbwb_five_closes_under_the_zone_is_broken():
+    """Regression (Eyal 2026-11-01): KBWB closed under its expert-zone bottom 89.02 for 5 straight weeks (lows 86.78)
+    and stayed valid with score 82 under v1. Two consecutive closes under the bottom now break it: no expert level at
+    89.02-89.94 (an older valid level is allowed)."""
+    from pathlib import Path
+    rows = json.loads((Path(__file__).parent / "data" / "kbwb_daily_20261030.json").read_text())["d"]
+    r = E.find(rows, asof="2026-11-01")
+    assert not (r["ok"] and r["bottom"] == 89.02 and r["top"] == 89.94), r
+    if r["ok"]:
+        assert r["top"] < 89.02
+
+
+def _with_closes_below(n_below):
+    """base_path pulled back into the zone, then n_below weekly closes under the zone bottom, then back inside."""
+    p = base_path(pull_to=100.5)
+    r0 = E.find(daily(p))
+    bot = r0["bottom"]
+    under = [(bot + 0.2, bot + 0.3, bot - 1.2, bot - 0.4)] * n_below
+    back = [(bot - 0.4, r0["top"] + 0.2, bot - 0.5, bot + 0.3)]
+    return E.find(daily(p + under + back)), r0
+
+
+def test_single_close_below_is_flagged_with_penalty():
+    r, r0 = _with_closes_below(1)
+    assert r["ok"] and r["top"] == r0["top"]
+    assert len(r["warnings"]) == 1 and r["warnings"][0]["he"].startswith("סגירה שבועית מתחת לאזור")
+    below = {f["k"]: f for f in r["factors"]}["below"]
+    assert below["pts"] == -10 and below["val"] == r["warnings"][0]["date"]
+
+
+def test_two_consecutive_closes_below_break_the_level():
+    r, r0 = _with_closes_below(2)
+    assert not (r["ok"] and r["top"] == r0["top"])
+    if not r["ok"]:
+        assert "broken" in r["reason"]

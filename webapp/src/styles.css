@@ -428,3 +428,4 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .expertbox td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .expertbox td.src { color: #787b86; font-size: 11px; min-width: 160px; }
 .expertbox b.ok { color: #26a69a; } .expertbox b.warn { color: #ffa726; }
+.expertbox .expwarn { color: #ffa726; }

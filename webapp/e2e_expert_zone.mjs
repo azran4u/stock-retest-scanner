@@ -13,7 +13,7 @@ const noT = Object.keys(doc.tickers).filter((t) => !doc.tickers[t].ok);
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 const browser = await chromium.launch();
 const errors = [];
-const SHOT_T = process.env.SHOT_T || 'KBWB';
+const SHOT_T = process.env.SHOT_T || okT.slice().sort((a, b) => doc.tickers[b].score - doc.tickers[a].score)[0];
 for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, true], ['laptop_1366', { width: 1366, height: 768 }, false]]) {
   const ctx = await browser.newContext({ viewport: vp, isMobile: mobile, hasTouch: mobile, locale: 'he-IL', timezoneId: 'Asia/Jerusalem' });
   // statuses with the expert file blocked = baseline
@@ -58,8 +58,9 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
     ok(geo && geo.label === `אזור מומחים ${e.score}`, `${name} ${t}: label '${geo?.label}'`);
     const sec = page.locator('#secExpert');
     ok(await sec.count() === 1 && (await sec.textContent()).includes(`ציון ${e.score}/100`), `${name} ${t}: stock page score ${e.score}/100`);
-    ok(await sec.locator('tbody tr').count() === e.factors.length && e.factors.length === 9, `${name} ${t}: 9 factor rows with sources`);
+    ok(await sec.locator('tbody tr').count() === e.factors.length && e.factors.length === 10, `${name} ${t}: 10 factor rows with sources`);
     ok((await sec.textContent()).includes('לא משנה את האזור הנוכחי'), `${name} ${t}: 'separate, read-only' note`);
+    ok(await sec.locator('.expwarn').count() === (e.warnings || []).length, `${name} ${t}: ${(e.warnings || []).length} close-below warning(s) shown`);
     if (t === SHOT_T) {
       await page.screenshot({ path: `${OUT}/${name}_${t}_weekly.png` });
       await sec.scrollIntoViewIfNeeded(); await page.waitForTimeout(200);
