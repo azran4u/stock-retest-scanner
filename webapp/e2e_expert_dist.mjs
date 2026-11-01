@@ -61,6 +61,20 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
     await el.scrollIntoViewIfNeeded(); await page.waitForTimeout(150);
     await page.screenshot({ path: `${OUT}/${name}_${t}_${side === 'בתוך' ? 'inside' : side === 'מעל' ? 'above' : 'below'}.png` });
   }
+  // v4 higher shelf (STLD): chart draws the active shelf zone, the stock page shows the shelf lows + the origin level
+  const sh = await page.evaluate(() => window.__srs.expertDoc.tickers.STLD);
+  if (sh?.shelf) {
+    await page.goto(BASE + '?demo=1#/t/STLD'); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(500);
+    await page.locator('[data-tf="W"]').click(); await page.waitForTimeout(500);
+    const g = await page.evaluate(({ e }) => { const cv = window.__srs.cv, r = document.querySelector('#chart g.expert rect'); if (!r) return null;
+      return { dTop: Math.abs(+r.getAttribute('y') - cv.candles.priceToCoordinate(e.top)), dBot: Math.abs(+r.getAttribute('y') + +r.getAttribute('height') - cv.candles.priceToCoordinate(e.bottom)) }; }, { e: sh });
+    ok(g && g.dTop < 1.5 && g.dBot < 1.5, `${name} STLD: chart zone = shelf ${sh.bottom}-${sh.top}`);
+    await page.screenshot({ path: `${OUT}/${name}_STLD_shelf_weekly.png` });
+    const tx = await page.locator('#secExpert [data-shelf]').textContent();
+    ok(tx.includes('216.36') && tx.includes(sh.origin.top.toFixed(2)) && tx.includes('Weinstein'), `${name} STLD: shelf lows + origin ${sh.origin.bottom}-${sh.origin.top} on the stock page`);
+    await page.locator('#secExpert').scrollIntoViewIfNeeded(); await page.waitForTimeout(150);
+    await page.screenshot({ path: `${OUT}/${name}_STLD_shelf_panel.png` });
+  } else ok(false, `${name}: STLD has no shelf`);
   await ctx.close();
 }
 ok(!errors.length, 'no page errors ' + errors.slice(0, 3).join(' | '));

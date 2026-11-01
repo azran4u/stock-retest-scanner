@@ -1674,11 +1674,12 @@ function expertPanelHtml(t: string): string {
   return `<section class="expertbox" id="secExpert">${head}
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi></div>
     ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
+    ${e.shelf && e.origin ? `<div class="small expshelf" data-shelf="1">מדף תמיכה גבוה יותר (v4): שפלים שבועיים <bdi dir="ltr">${e.shelf.lows.map(([d, l]) => `${l} (${ddmm(d)})`).join(', ')}</bdi>. רמת הפריצה המקורית <bdi dir="ltr">${e.origin.bottom.toFixed(2)}–${e.origin.top.toFixed(2)}</bdi> נשמרת כמקור.<div class="muted" dir="ltr">${esc(e.shelf.src)}</div></div>` : ''}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}
     <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות.</div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות. אם אחרי השיא שלאחר הפריצה נוצרו ≥2 שפלים שבועיים בטווח 0.5 ATR מעל הרמה ולא נשברו, האזור עולה למדף הזה (Weinstein; O'Neil base-on-base).</div>
     ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */

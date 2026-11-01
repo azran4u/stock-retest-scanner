@@ -232,3 +232,27 @@ def test_gpix_stop_is_one_weekly_atr_not_four_percent():
     assert abs(tr["entry"] - 54.54) < 0.05
     assert abs(tr["sl"] - (tr["entry"] - r["atr_w"])) < 0.02 and abs(tr["sl"] - 53.48) < 0.05, tr
     assert tr["notes"] == ["widened to 1 weekly ATR"]
+
+
+def test_stld_moves_up_to_the_higher_shelf():
+    """Regression (Eyal 2026-11-01, v4): STLD broke out over 201.31-207.36 in April 2026, then weekly lows held at
+    216.36 (6/29), 217.5 (8/17), 219.1 (9/28) with no close under ~220. The active expert zone is that shelf
+    (Weinstein trailing support; O'Neil base-on-base); the breakout level is kept as the origin."""
+    from pathlib import Path
+    rows = json.loads((Path(__file__).parent / "data" / "stld_daily_20261030.json").read_text())["d"]
+    r = E.find(rows, asof="2026-11-01")
+    assert r["ok"], r
+    assert abs(r["bottom"] - 216.36) < 0.05 and 219.5 < r["top"] < 222.5, r
+    assert r["origin"]["top"] == 207.36 and r["origin"]["bottom"] == 201.31
+    assert [x[1] for x in r["shelf"]["lows"]] == [216.36, 217.5, 219.1]
+    tr = r["trade"]
+    assert tr["entry"] == r["top"] and tr["sl"] <= r["bottom"] - 0.1 * r["atr_w"] + 0.01
+    assert tr["sl"] <= tr["entry"] - r["atr_w"] + 0.01 and tr["tp"] == r["post_high"]
+    touches = next(f for f in r["factors"] if f["k"] == "touches")
+    assert touches["pts"] == 15 and touches["val"].startswith("3")
+
+
+def test_no_shelf_without_two_higher_lows():
+    """The synthetic base path has no higher shelf: the zone stays at the breakout level, origin == zone."""
+    r = E.find(daily(base_path()))
+    assert r["ok"] and r["shelf"] is None and r["origin"]["top"] == r["top"]
