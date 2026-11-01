@@ -208,7 +208,7 @@ def test_expert_trade_entry_sl_tp():
     tr = r["trade"]
     assert tr["entry"] == r["top"]                                   # Bulkowski: close back above the pattern top
     assert tr["sl"] < min(r["bottom"], tr["retest_low"])             # under the retest low and the zone
-    assert tr["sl"] <= tr["entry"] * 0.96 + 1e-6                     # Bulkowski: never tighter than 4%
+    assert tr["sl"] <= tr["entry"] - r["atr_w"] + 0.01                # never tighter than 1 weekly ATR
     assert tr["tp"] == r["post_high"]                                # IBD: the pre-pullback high
     assert abs(tr["rr"] - (tr["tp"] - tr["entry"]) / (tr["entry"] - tr["sl"])) < 0.02
     assert tr["tp_mm"] > r["top"] and isinstance(tr["confirmed"], bool)
@@ -219,3 +219,16 @@ def test_falling_30_week_ma_is_not_a_retest():
     path = base_path()[:-4] + rally(3, 115, 200) + [(200, 201, 199, 200)] * 20 + rally(12, 200, 102)
     r = E.find(daily(path))
     assert not r["ok"] and r["reason"].startswith("30-week MA falling")
+
+
+def test_gpix_stop_is_one_weekly_atr_not_four_percent():
+    """Regression (Eyal 2026-11-01): GPIX (weekly ATR ~1.06) had its stop forced to 4% under the entry (52.36).
+    The minimum is now 1 weekly ATR: sl = min(structural, entry - 1 A) ~ 54.54 - 1.06 = 53.48."""
+    from pathlib import Path
+    rows = json.loads((Path(__file__).parent / "data" / "gpix_daily_20261030.json").read_text())["d"]
+    r = E.find(rows, asof="2026-11-01")
+    assert r["ok"], r
+    tr = r["trade"]
+    assert abs(tr["entry"] - 54.54) < 0.05
+    assert abs(tr["sl"] - (tr["entry"] - r["atr_w"])) < 0.02 and abs(tr["sl"] - 53.48) < 0.05, tr
+    assert tr["notes"] == ["widened to 1 weekly ATR"]

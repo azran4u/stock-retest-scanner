@@ -1632,7 +1632,7 @@ const EXPERT_REASON_HE: [RegExp, string][] = [
 function tradeHtml(e: ExpertZone): string {
   const tr = e.trade; if (!tr) return '';
   const src = expertDoc?.sources || {};
-  const notes = { 'widened to 4% (Bulkowski)': 'הורחב ל-4% (Bulkowski)', 'risk > 8% (IBD max 7-8%)': 'סיכון מעל 8% (IBD: עד 7-8%)' } as Record<string, string>;
+  const notes = { 'widened to 1 weekly ATR': 'הורחב ל-ATR שבועי אחד (Bulkowski: סטופ צמוד נפגע, מנורמל לתנודתיות)', 'risk > 8% (IBD max 7-8%)': 'סיכון מעל 8% (IBD: עד 7-8%)' } as Record<string, string>;
   return `<div class="exptrade small">
     <div class="extt"><b>עסקת מומחים</b> <span class="badge b-expert">R:R <bdi dir="ltr">${tr.rr != null ? tr.rr.toFixed(2) : '—'}</bdi></span>${tr.confirmed ? ' <span class="muted">(השבוע האחרון נסגר מעל גג האזור)</span>' : ''}</div>
     <div class="exrow"><span>כניסה</span><b dir="ltr">${tr.entry.toFixed(2)}</b><span class="muted">גג האזור: קונים אחרי סגירה שבועית חזרה מעליו</span></div>

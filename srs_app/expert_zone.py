@@ -60,8 +60,9 @@ EXPERT TRADE (Eyal 2026-11-01 20:48; research page 'כניסה וסטופ' / 'א
           of the three entries tested, 89% wins / 10% stopped); 'confirmed' when the last weekly close is above it.
   SL    = under the retest low AND under the zone bottom: min(lowest low since the post-breakout high, bottom) - 0.1 ATR,
           moved under a round number sitting just above it (Murphy: stop beyond the round number, not on it);
-          then at least 4% under the entry (Bulkowski: stops < 4% under the breakout are hit about half the time within
-          a month, 8% about a quarter); deeper than 8% is flagged (IBD: a leader rarely falls > 7-8% under the buy point).
+          then at least 1 weekly ATR under the entry: sl = min(structural, entry - 1 A) (Eyal 2026-11-01; Bulkowski: tight
+          stops get hit - < 4% about half the time within a month - normalized by volatility instead of a fixed 4%,
+          which was ~1 ATR for a calm ETF and far inside the noise of a volatile stock); deeper than 8% is flagged (IBD: a leader rarely falls > 7-8% under the buy point).
   TP    = the high after the breakout, the pre-pullback high = the next resistance (IBD: enter before price returns to
           the high before the pullback); the measured move (top + base height, base height = top - base low) is shown
           as a secondary target only.  R:R = (TP - entry) / (entry - SL).
@@ -107,7 +108,7 @@ SRC = {
     "gap": "Murphy: a breakaway gap acts as support on the pullback",
     "confluence": "Weinstein: 30-week MA; Murphy: Fib 38-62% retracement",
     "trade_entry": "Bulkowski (Throwback entry): buy after a close back above the top of the pattern; 89% wins, 10% stopped",
-    "trade_sl": "AlphaMethodX / Wyckoff: under the retest low and the level; Murphy: beyond a round number; Bulkowski: < 4% gets hit ~half the time; IBD: max ~7-8%",
+    "trade_sl": "AlphaMethodX / Wyckoff: under the retest low and the level; Murphy: beyond a round number; at least 1 weekly ATR under the entry (Bulkowski: tight stops get hit, < 4% ~half the time; normalized by volatility); IBD: max ~7-8%",
     "trade_tp": "IBD: the high before the pullback (next resistance); measured move = base height added to the breakout (secondary)",
     "below": "Murphy: a close beyond the level weakens it (2 closes / 3% = broken); Weinstein: weekly close",
 }
@@ -329,8 +330,8 @@ def _trade(Wall, W, b, top, bot, A, post_hi, base_low) -> Dict[str, Any]:
     if rn - sl < 0.1 * A and rn <= bot:                     # a round number right above it -> go under the round number
         sl = rn - 0.1 * A
     notes = []
-    if sl > entry * 0.96:
-        sl, notes = entry * 0.96, ["widened to 4% (Bulkowski)"]
+    if sl > entry - A:
+        sl, notes = entry - A, ["widened to 1 weekly ATR"]
     risk_pct = (entry - sl) / entry * 100
     if risk_pct > 8:
         notes.append("risk > 8% (IBD max 7-8%)")
