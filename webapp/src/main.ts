@@ -1650,7 +1650,7 @@ function expertBadgeHtml(t: string): string {
     : '<span class="badge b-expert off" title="אין רמת מומחים">מומחים —</span>';
 }
 const EXPERT_REASON_HE: [RegExp, string][] = [
-  [/two consecutive/, 'הרמה נשברה (שתי סגירות שבועיות רצופות מתחת לאזור)'], [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-1 ATR)'],
+  [/two consecutive/, 'הרמה נשברה (שתי סגירות שבועיות רצופות מתחת לאזור)'], [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-2 ATR)'], [/^too soon/, 'פחות מ-4 שבועות מאז הפריצה: עוד אין Retest'],
   [/^no pullback/, 'עדיין אין פולבק (המחיר בטווח 1 ATR מהשיא שאחרי הפריצה)'], [/ATR above/, 'המחיר רחוק מעל גג הבסיס (יותר מ-2 ATR)'],
   [/^no breakout/, 'אין פריצה מעל בסיס של 26 שבועות ב-3 השנים האחרונות'], [/^30-week MA falling/, 'ממוצע 30 שבועות יורד: שלב 3/4, לא Retest (Weinstein)'], [/^short history|^no candles/, 'אין מספיק היסטוריה'],
 ];
@@ -1680,13 +1680,13 @@ function expertPanelHtml(t: string): string {
   return `<section class="expertbox" id="secExpert">${head}
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi></div>
     ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
-    ${e.shelf && e.origin ? `<div class="small expshelf" data-shelf="1">מדף תמיכה גבוה יותר (v4): שפלים שבועיים <bdi dir="ltr">${e.shelf.lows.map(([d, l]) => `${l} (${ddmm(d)})`).join(', ')}</bdi>. רמת הפריצה המקורית <bdi dir="ltr">${e.origin.bottom.toFixed(2)}–${e.origin.top.toFixed(2)}</bdi> נשמרת כמקור.<div class="muted" dir="ltr">${esc(e.shelf.src)}</div></div>` : ''}
+    ${e.shelf && e.origin ? `<div class="small expshelf" data-shelf="1">מדף תמיכה גבוה יותר: נגיעות נפרדות (עם עלייה של ≥2 ATR ו-≥4 שבועות ביניהן) <bdi dir="ltr">${e.shelf.lows.map(([d, l]) => `${l} (${ddmm(d)})`).join(', ')}</bdi>. רמת הפריצה המקורית <bdi dir="ltr">${e.origin.bottom.toFixed(2)}–${e.origin.top.toFixed(2)}</bdi> נשמרת כמקור.<div class="muted" dir="ltr">${esc(e.shelf.src)}</div></div>` : ''}
     ${(() => { const hs = (e.hammers || []).filter((h) => h.k <= 12); return `<div class="small exham" data-ham="${hs.map((h) => h.w + ':' + h.s).join(',')}">פטישים על האזור ב-12 השבועות האחרונים: ${hs.length ? hs.map((h) => `<bdi dir="ltr">${ddmm(h.w)} ${h.s}</bdi>`).join(', ') + ' <span class="muted">(H = פטיש קלאסי, h = כמעט פטיש)</span>' : 'אין'}</div>`; })()}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}
     <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות. אם אחרי השיא שלאחר הפריצה נוצרו ≥2 שפלים שבועיים בטווח 0.5 ATR מעל הרמה ולא נשברו, האזור עולה למדף הזה (Weinstein; O'Neil base-on-base).</div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥2 ATR (ולפחות 4 שבועות) וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות. מדף גבוה יותר נחשב רק כ-Retest אמיתי: נגיעה ראשונה, עלייה של ≥2 ATR ולפחות 4 שבועות, וחזרה למדף; לפחות שבוע אחד נסגר באזור (לא רק זנבות). אז האזור עולה למדף (Weinstein; O'Neil base-on-base).</div>
     ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */

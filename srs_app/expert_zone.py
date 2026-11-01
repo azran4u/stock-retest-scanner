@@ -22,7 +22,9 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
        bottom  = the highest body top max(open, close) of the cluster
        width sanity: top - bottom < 0.25 A -> bottom = top - 0.25 A ('widened'); > 0.5 A -> top - 0.5 A ('clamped').
   3. A candidate is THE expert zone when (all of):
-       moved away : the highest high from b on >= top + 1 A        (Edwards & Magee: price must move away first)
+       moved away : the highest high from b on >= top + 2 A (MOVE_AWAY_ATR; was 1 A until v5) and >= 4 completed
+                    weeks since the breakout (RALLY_WEEKS)  (Edwards & Magee: price must move away first; Eyal v5: a
+                    retest is a return after weeks / months with a significant rise in between)
        not broken (completed weekly closes after b; tightened 2026-11-01, Eyal approved after KBWB):
                     (a) any close more than 3% under the bottom (< bottom x 0.97, Murphy 3%)       -> broken
                     (b) two CONSECUTIVE closes under the bottom (Murphy: two closes; Weinstein)    -> broken
@@ -33,21 +35,28 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
        stage 2   : the 30-week SMA of weekly closes is not falling (now >= 4 weeks ago). A falling 30-week MA during
                    the pullback = stage 3/4, no longer a retest (Weinstein; research page 'ביטול וסימני כישלון').
                    Added 2026-11-01 for all stocks (crashes of 50%+ fell back to old bases far under the high).
-  4. ACTIVE SUPPORT / HIGHER SHELF (v4, Eyal 2026-11-01 after STLD; Weinstein: trailing support under the latest higher
-     low; O'Neil: base-on-base). For the valid candidate, after price first moved >= 1 A above the top:
-       swing lows = completed weeks after the post-breakout high whose low <= the lows of the week before and after
-                    (the last completed week has no week after it and is not a swing low yet)
-       shelf      = >= 2 swing lows within 0.5 A of the lowest one (3+ lows preferred, then the highest, then the most
-                    recent), its
-                    lowest low L above the origin top + 0.5 A, and not broken by the same rules as the zone
-                    (no close < L x 0.97 after its first low, no two consecutive closes < L, price not < L x 0.97)
-       near       : when price is > 2 A above the origin top, the candidate is still valid if it is <= 2 A above the
-                    shelf top (the shelf is the active support; STLD 10/30 at 250.8)
-       zone       = bottom L, top = the lowest body bottom min(open, close) of the cluster weeks, width clamped to
-                    0.25-0.5 A. The breakout level is kept as 'origin' (shown on the stock page).
-       score on the shelf: time/volume from its first low on (volume vs the weeks since the breakout), touches = cluster
-       size, retest = visits of the shelf, recency = weeks since its last low, round / confluence / below on the
-       shelf; breakout quality and gap stay those of the original breakout. Trade re-derived on the shelf.
+  4. ACTIVE SUPPORT / HIGHER SHELF (v5, Eyal 2026-11-01 after KBWB; v4 after STLD. Weinstein: trailing support under
+     the latest higher low; O'Neil: base-on-base). "The method is a retest: a return to support counts only when price
+     comes back after weeks / months with a significant rise in between." For the valid candidate:
+       first touch = a completed swing low f after the breakout (low <= the weeks before and after), above origin top
+                     + 0.5 A. Provisional shelf: bottom L0 = its low, top0 = its body bottom clamped to L0 + 0.25..0.5 A.
+       touches     = later weeks whose low comes back to <= top0 + 0.25 A. A touch starts a NEW episode only if, since
+                     the previous touch, the high reached >= top0 + 2 A (RALLY_ATR) and >= 4 weeks passed
+                     (RALLY_WEEKS); otherwise it belongs to the same episode (lows of one pullback are ONE touch).
+                     A low more than 0.5 A under L0 ends the shelf.
+       valid shelf = >= 2 episodes (the formation + at least one real retest), at least one touch week CLOSED
+                     <= top0 + 0.5 A (support made by bodies, not wicks only: CLOSE_CONFIRM_ATR), not broken by
+                     the zone rules (no close < L x 0.97, no two consecutive closes < L, price not < L x 0.97).
+                     Weeks already touching an earlier first touch's shelf do not start a new one. Several shelves:
+                     most episodes (max 3), then the highest, then the newest.
+       zone        = bottom = the lowest wick of the touch weeks (edge only), top = the lowest body bottom
+                     min(open, close) of the touch weeks, width clamped to 0.25-0.5 A. Origin kept for the page.
+       near        : when price is > 2 A above the origin top, the candidate stays valid if it is <= 2 A above a
+                     valid shelf's top (STLD 10/30 at 250.8).
+       score on the shelf: time/volume from the first touch (volume vs the weeks since the breakout), touches =
+       episodes, retest = visits of the shelf, recency = weeks since its last touch episode, round / confluence /
+       below on the shelf; breakout quality and gap stay those of the original breakout. Trade re-derived on the shelf.
+       No valid shelf -> the breakout level if valid, else no expert level.
      The newest candidate that passes wins. None -> 'no expert level' with the reason of the newest candidate
      (no breakout in 3 years / broken / price too far above / never moved away / no pullback yet).
 
@@ -99,13 +108,16 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v4-2026-11-01"
+RULE_VERSION = "expert-v5-2026-11-01"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
 CLUSTER_ATR = 0.5
 MIN_W_ATR, MAX_W_ATR = 0.25, 0.5
-MOVE_AWAY_ATR = 1.0
+MOVE_AWAY_ATR = 2.0   # v5 (Eyal 2026-11-01, KBWB): a retest needs a significant rally away first (was 1.0)
+RALLY_ATR = 2.0       # shelf: between two touches the high must reach the shelf top + 2 A ...
+RALLY_WEEKS = 4       # ... and >= 4 weeks pass; also: the breakout-level retest comes >= 4 weeks after the breakout
+CLOSE_CONFIRM_ATR = 0.5   # shelf: >= 1 touch week closes <= shelf top + 0.5 A (support made by bodies, not wicks only)
 BREAK_PCT = 0.03
 PULLBACK_ATR = 1.0
 NEAR_ATR = 2.0
@@ -232,7 +244,9 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
         post_hi = max(x["high"] for x in Wall[b:])
         reason = None
         if post_hi < top + MOVE_AWAY_ATR * A:
-            reason = "never moved away (high after the breakout < top + 1 ATR)"
+            reason = f"never moved away (high after the breakout < top + {MOVE_AWAY_ATR:g} ATR)"
+        elif n - 1 - b < RALLY_WEEKS:
+            reason = f"too soon (< {RALLY_WEEKS} weeks since the breakout)"
         elif any(W[k]["close"] < bot * (1 - BREAK_PCT) for k in range(b + 1, n)) or last < bot * (1 - BREAK_PCT):
             reason = "broken (weekly close > 3% under the zone)"
         elif any(W[k]["close"] < bot and W[k + 1]["close"] < bot for k in range(b + 1, n - 1)):
@@ -253,38 +267,63 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
 
 
 def _shelf(Wall, W, b, z, A, last) -> Optional[Dict[str, Any]]:
-    """Higher shelf above the breakout level (module doc step 4), or None."""
-    n, top = len(W), z["top"]
-    if not any(W[k]["high"] >= top + MOVE_AWAY_ATR * A for k in range(b, n)):
-        return None
-    hi = max(range(b, n), key=lambda k: W[k]["high"])   # the post-breakout high: the shelf forms on the pullback after it
-    sw = [k for k in range(hi + 1, n - 1) if W[k]["low"] <= W[k - 1]["low"] and W[k]["low"] <= W[k + 1]["low"]
-          and W[k]["low"] > top + CLUSTER_ATR * A]
+    """Higher shelf above the breakout level (module doc step 4, v5), or None."""
+    n, o_top = len(W), z["top"]
     best = None
-    for i in sw:                                   # clusters anchored at each swing low (its lowest member)
-        L = W[i]["low"]
-        cl = [k for k in sw if L <= W[k]["low"] <= L + CLUSTER_ATR * A]
-        if len(cl) < 2:
+    covered = set()                               # touch weeks of an earlier first touch: the same support, not a new one
+    for f in range(b + 1, n - 1):                 # the first touch (support forming): a swing low above the origin
+        if f in covered:
             continue
-        first = min(cl)
-        if any(W[k]["close"] < L * (1 - BREAK_PCT) for k in range(first, n)) or last < L * (1 - BREAK_PCT):
+        L0 = W[f]["low"]
+        if not (L0 > o_top + CLUSTER_ATR * A and L0 <= W[f - 1]["low"] and L0 <= W[f + 1]["low"]):
             continue
-        if any(W[k]["close"] < L and W[k + 1]["close"] < L for k in range(first, n - 1)):
+        top0 = min(max(min(W[f]["open"], W[f]["close"]), L0 + MIN_W_ATR * A), L0 + MAX_W_ATR * A)
+        if top0 <= L0:
+            top0 = L0 + MIN_W_ATR * A
+        eps = [[f]]                               # touch episodes; a new one only after a significant rally
+        peak = -1e18
+        for k in range(f + 1, n):
+            w = W[k]
+            if w["low"] < L0 - CLUSTER_ATR * A:    # undercut by more than the band: not this shelf any more
+                eps = None
+                break
+            if w["low"] <= top0 + 0.25 * A:        # price back at the shelf
+                if peak >= top0 + RALLY_ATR * A and k - eps[-1][-1] >= RALLY_WEEKS:
+                    eps.append([k])
+                else:
+                    eps[-1].append(k)
+                peak = -1e18
+            else:
+                peak = max(peak, w["high"])
+        if eps:
+            covered.update(k for e in eps for k in e)
+        if not eps or len(eps) < 2:
             continue
-        key = (min(len(cl), 3), L, max(cl))      # 3+ lows preferred, then the highest, then the most recent
+        tw = sorted(k for e in eps for k in e)
+        L = min(W[k]["low"] for k in tw)
+        # support confirmed by bodies: at least one touch week CLOSED within the zone + 0.5 A (not wicks only)
+        conf = [k for k in tw if W[k]["close"] <= top0 + CLOSE_CONFIRM_ATR * A]
+        if not conf:
+            continue
+        if any(W[k]["close"] < L * (1 - BREAK_PCT) for k in range(f, n)) or last < L * (1 - BREAK_PCT):
+            continue
+        if any(W[k]["close"] < L and W[k + 1]["close"] < L for k in range(f, n - 1)):
+            continue
+        key = (min(len(eps), 3), L, tw[-1])        # most separated touches (max 3), then the highest, then the newest
         if best is None or key > best[0]:
-            best = (key, i, cl)
+            best = (key, eps, tw, L, conf)
     if not best:
         return None
-    _, i, cl = best
-    L = W[i]["low"]
-    body = min(min(W[k]["open"], W[k]["close"]) for k in cl)
+    _, eps, tw, L, conf = best
+    body = min(min(W[k]["open"], W[k]["close"]) for k in tw)   # bodies make the zone; the wick is only the bottom edge
     t, note = body, None
     if t - L < MIN_W_ATR * A:
         t, note = L + MIN_W_ATR * A, "widened"
     elif t - L > MAX_W_ATR * A:
         t, note = L + MAX_W_ATR * A, "clamped"
-    return {"top": t, "bottom": L, "cluster": sorted(cl), "width_note": note}
+    lows = [min(e, key=lambda k: W[k]["low"]) for e in eps]   # the low of each touch episode
+    return {"top": t, "bottom": L, "cluster": lows, "touch_weeks": tw, "episodes": eps,
+            "confirmed": conf, "width_note": note}
 
 
 HAMMER_WEEKS = 12   # weeks stored; the app filter looks at the last X <= 12 of them
@@ -340,7 +379,7 @@ def _result(Wall, W, b, z, A, last, post_hi, daily, sh=None) -> Dict[str, Any]:
     top, bot = (sh["top"], sh["bottom"]) if sh else (o_top, o_bot)
     n = len(W)
     base = range(lo, b)
-    s0 = sh["cluster"][0] if sh else None
+    s0 = sh["episodes"][0][0] if sh else None
     span = range(s0, n) if sh else base                # weeks that built the zone
     zone_w = [k for k in span if W[k]["low"] <= top and W[k]["high"] >= bot]
     F: List[Dict[str, Any]] = []
@@ -368,8 +407,11 @@ def _result(Wall, W, b, z, A, last, post_hi, daily, sh=None) -> Dict[str, Any]:
     visits = _runs(near)
     at_now = bool(near) and near[-1] == len(Wall) - 1
     no = visits if at_now else visits + 1
+    if sh:   # v5: visits of a shelf = its touch episodes (lows of one pullback are one visit)
+        at_now = sh["episodes"][-1][-1] >= n - 1
+        no = len(sh["episodes"]) if at_now else len(sh["episodes"]) + 1
     add("retest", 10 if no == 1 else 7 if no == 2 else 3 if no == 3 else 0, 10, f"#{no}")
-    age = n - 1 - (sh["cluster"][-1] if sh else b)
+    age = n - 1 - (sh["episodes"][-1][-1] if sh else b)
     add("recency", 5 if age <= 13 else 3 if age <= 26 else 1 if age <= 52 else 0, 5, f"{age} weeks since " + ("the last shelf low" if sh else "breakout"))
     st = round_step(top)
     rn = [st * k for k in range(int(math.floor((bot - 0.1 * A) / st)), int(math.ceil((top + 0.1 * A) / st)) + 1)
@@ -404,7 +446,9 @@ def _result(Wall, W, b, z, A, last, post_hi, daily, sh=None) -> Dict[str, Any]:
     trade = _trade(Wall, W, b, top, bot, A, post_hi, sw_lo)
     start = W[s0]["time"] if sh else W[min(z["cluster"])]["time"]
     origin = {"top": round(o_top, 2), "bottom": round(o_bot, 2), "base_start": W[min(z["cluster"])]["time"]}
-    shelf = ({"lows": [[W[k]["time"], round(W[k]["low"], 2)] for k in sh["cluster"]], "src": SRC["shelf"]} if sh else None)
+    shelf = ({"lows": [[W[k]["time"], round(W[k]["low"], 2)] for k in sh["cluster"]],
+              "episodes": [[W[e[0]]["time"], W[e[-1]]["time"]] for e in sh["episodes"]],
+              "closes_in": [W[k]["time"] for k in sh["confirmed"]], "src": SRC["shelf"]} if sh else None)
     return {
         "ok": True, "top": round(top, 2), "bottom": round(bot, 2), "atr_w": round(A, 4), "origin": origin, "shelf": shelf,
         "base_start": start, "pivot_week": W[z["pivot"]]["time"], "breakout_week": W[b]["time"],

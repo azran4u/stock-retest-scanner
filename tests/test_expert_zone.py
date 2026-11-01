@@ -222,29 +222,26 @@ def test_falling_30_week_ma_is_not_a_retest():
 
 
 def test_gpix_stop_is_one_weekly_atr_not_four_percent():
-    """Regression (Eyal 2026-11-01): GPIX (weekly ATR ~1.06) had its stop forced to 4% under the entry (52.36).
-    The minimum is now 1 weekly ATR: sl = min(structural, entry - 1 A) ~ 54.54 - 1.06 = 53.48."""
-    from pathlib import Path
-    rows = json.loads((Path(__file__).parent / "data" / "gpix_daily_20261030.json").read_text())["d"]
-    r = E.find(rows, asof="2026-11-01")
-    assert r["ok"], r
-    tr = r["trade"]
-    assert abs(tr["entry"] - 54.54) < 0.05
-    assert abs(tr["sl"] - (tr["entry"] - r["atr_w"])) < 0.02 and abs(tr["sl"] - 53.48) < 0.05, tr
-    assert tr["notes"] == ["widened to 1 weekly ATR"]
+    """GPIX (weekly ATR ~1.06): the 1-weekly-ATR minimum stop (53.48, not the old 4% 52.36) is checked on the synthetic
+    trade test. Since v5 (Eyal 2026-11-01, KBWB) GPIX has NO expert level: its breakouts never rallied 2 ATR away, so
+    there is no retest (a covered-call ETF that barely trends)."""
+    r = E.find(_fixture("gpix_daily_20261030.json"), asof="2026-11-01")
+    assert not r["ok"] and r["reason"].startswith("never moved away"), r
 
 
 def test_stld_moves_up_to_the_higher_shelf():
-    """Regression (Eyal 2026-11-01, v4): STLD broke out over 201.31-207.36 in April 2026, then weekly lows held at
-    216.36 (6/29), 217.5 (8/17), 219.1 (9/28) with no close under ~220. The active expert zone is that shelf
-    (Weinstein trailing support; O'Neil base-on-base); the breakout level is kept as the origin."""
-    from pathlib import Path
-    rows = json.loads((Path(__file__).parent / "data" / "stld_daily_20261030.json").read_text())["d"]
-    r = E.find(rows, asof="2026-11-01")
+    """Regression (Eyal 2026-11-01, v4/v5): STLD broke out over 201.31-207.36 in April 2026. Support at ~216-219 was
+    touched, price rallied >= 2 ATR away for >= 4 weeks (to 288 in June, to 273 in August) and came back: 5/18 (218.53),
+    6/29 (216.36), 8/17 (217.5; 9/28 219.1 is the same pullback, no 2-ATR rally between). Active zone = that shelf;
+    the breakout level is kept as the origin."""
+    r = E.find(_fixture("stld_daily_20261030.json"), asof="2026-11-01")
     assert r["ok"], r
     assert abs(r["bottom"] - 216.36) < 0.05 and 219.5 < r["top"] < 222.5, r
     assert r["origin"]["top"] == 207.36 and r["origin"]["bottom"] == 201.31
-    assert [x[1] for x in r["shelf"]["lows"]] == [216.36, 217.5, 219.1]
+    lows = dict((d, l) for d, l in r["shelf"]["lows"])
+    assert lows.get("2026-06-29") == 216.36 and lows.get("2026-08-17") == 217.5 and len(lows) == 3
+    assert any(a <= "2026-09-28" <= b for a, b in r["shelf"]["episodes"])    # 9/28 inside the 8/17 episode
+    assert r["shelf"]["closes_in"]                                          # bodies, not wicks only
     tr = r["trade"]
     assert tr["entry"] == r["top"] and tr["sl"] <= r["bottom"] - 0.1 * r["atr_w"] + 0.01
     assert tr["sl"] <= tr["entry"] - r["atr_w"] + 0.01 and tr["tp"] == r["post_high"]
@@ -283,11 +280,11 @@ def test_asb_hammers_on_the_expert_zone():
 
 
 def test_tgt_hammers_on_the_shelf_zone():
-    """TGT: the zone is the v4 shelf; textbook hammer in the last completed week + 2 near-hammers in 6 weeks."""
+    """TGT: the 150-154 lows (10/5-10/26) are ONE pullback from the 170 high, no 2-ATR rally between them -> not a shelf
+    (v5). The zone is the breakout level 140.23-143.30; the 10/26 textbook hammer (low 145.32) touches it."""
     r = E.find(_fixture("tgt_daily_20261030.json"), asof="2026-11-01")
-    assert r["ok"] and r["shelf"] is not None
-    h6 = {x["w"]: x["s"] for x in r["hammers"] if x["k"] <= 6}
-    assert h6.get("2026-10-26") == "H" and len(h6) >= 3
+    assert r["ok"] and r["shelf"] is None and (r["bottom"], r["top"]) == (140.23, 143.3), r
+    assert {x["w"]: x["s"] for x in r["hammers"] if x["k"] <= 6} == {"2026-10-26": "H"}
     assert all(x["k"] <= E.HAMMER_WEEKS for x in r["hammers"])
 
 
@@ -305,3 +302,32 @@ def test_refresh_stale_refreshes_only_exported_stale_tickers():
     got = X.refresh_stale(hist, ["OLD", "NEW", "MISSING"], target=pd.Timestamp("2026-10-30"), refresh=fake)
     assert got == ["OLD"] and seen["t"] == ["OLD"]
     assert hist["OLD"].index.max() == pd.Timestamp("2026-10-30") and hist["OTHER"].index.max() == pd.Timestamp("2026-10-01")
+
+
+
+def test_kbwb_pullback_lows_are_not_a_shelf():
+    """Regression (Eyal 2026-11-01, v5 rejects v4): KBWB 9/28 low 85.1 and 10/12 low 84.3 are two wicks of the SAME
+    pullback (the bounce between reached 89.04, under 2 ATR; closes 86.8-87.6): a base forming now, not a retest.
+    No shelf; the June breakout level 89.02-89.94 is broken (two closes under), so KBWB has no expert level."""
+    r = E.find(_fixture("kbwb_daily_20261030.json"), asof="2026-11-01")
+    assert not r["ok"] and "broken" in r["reason"], r
+
+
+def test_shelf_needs_a_rally_between_touches():
+    """Two lows at the same price inside one pullback (bounce < 2 ATR) are one touch; after a 2-ATR rally lasting
+    >= 4 weeks the return counts as a second touch."""
+    W = [{"open": 100, "high": 101, "low": 99, "close": 100.5, "time": f"w{i}"} for i in range(40)]
+    A = 1.0
+    z = {"top": 90.0}
+    for k, lo in ((20, 95.0), (24, 95.2)):                       # same pullback: bounce to 97 only
+        W[k] = {"open": 96, "high": 97, "low": lo, "close": 96.2, "time": f"w{k}"}
+    for k in range(21, 24):
+        W[k] = {"open": 96.5, "high": 97, "low": 96.3, "close": 96.8, "time": f"w{k}"}
+    for k in range(25, 40):
+        W[k] = {"open": 97, "high": 97.5, "low": 96.4, "close": 97, "time": f"w{k}"}
+    assert E._shelf(W, W, 5, z, A, 97) is None
+    for k in range(26, 32):                                      # rally to 99 (> top0 + 2 A) for 6 weeks, then back
+        W[k] = {"open": 98, "high": 99.5, "low": 97.5, "close": 99, "time": f"w{k}"}
+    W[33] = {"open": 96, "high": 96.8, "low": 95.1, "close": 95.9, "time": "w33"}
+    sh = E._shelf(W, W, 5, z, A, 97)
+    assert sh and len(sh["episodes"]) == 2 and abs(sh["bottom"] - 95.0) < 1e-9
