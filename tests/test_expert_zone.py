@@ -229,30 +229,15 @@ def test_gpix_stop_is_one_weekly_atr_not_four_percent():
     assert not r["ok"] and r["reason"].startswith("never moved away"), r
 
 
-def test_stld_moves_up_to_the_higher_shelf():
-    """Regression (Eyal 2026-11-01, v4-v6): STLD broke out over 201.31-207.36 in April 2026. 6/29 (216.36) is the lowest
-    low of +/- 4 weeks; price rallied to 273 (>= 2 ATR, 5+ weeks) and came back 8/17 (217.5; 9/28 219.1 is the same
-    pullback). Structure = base: weekly closes 4/27, 5/11, 6/29, 7/06 in / just above the zone (no older resistance
-    there: the highs before April were <= 207). Active zone = that shelf; the breakout level is kept as the origin."""
-    r = E.find(_fixture("stld_daily_20261030.json"), asof="2026-11-01")
-    assert r["ok"], r
-    assert abs(r["bottom"] - 216.36) < 0.05 and 219.5 < r["top"] < 222.5, r
-    assert r["origin"]["top"] == 207.36 and r["origin"]["bottom"] == 201.31
-    lows = dict((d, l) for d, l in r["shelf"]["lows"])
-    assert lows == {"2026-06-29": 216.36, "2026-08-17": 217.5}
-    assert any(a <= "2026-09-28" <= b for a, b in r["shelf"]["episodes"])    # 9/28 inside the 8/17 episode
-    assert r["shelf"]["closes_in"] and r["shelf"]["structure"]["type"] == "base"
-    tr = r["trade"]
-    assert tr["entry"] == r["top"] and tr["sl"] <= r["bottom"] - 0.1 * r["atr_w"] + 0.01
-    assert tr["sl"] <= tr["entry"] - r["atr_w"] + 0.01 and tr["tp"] == r["post_high"]
-    touches = next(f for f in r["factors"] if f["k"] == "touches")
-    assert touches["pts"] == 10 and touches["val"].startswith("2")
-
-
-def test_no_shelf_without_two_higher_lows():
-    """The synthetic base path has no higher shelf: the zone stays at the breakout level, origin == zone."""
-    r = E.find(daily(base_path()))
-    assert r["ok"] and r["shelf"] is None and r["origin"]["top"] == r["top"]
+def test_stld_v7_breakout_level_only():
+    """v7 (Eyal 2026-11-01): only broken resistance counts. STLD's April breakout level 201.31-207.36 is intact but
+    price 250.8 is > 2 ATR above it (no retest now); the newer May breakout over 243.18 was broken. No expert level
+    (the 216-221 support of v4-v6 is no longer used). On this fixture (through 10/22, price 239.9 = 1.9 ATR above)
+    the April level is still valid; the live 10/30 data (250.8) gives none."""
+    for name in ("stld_daily_20261030.json",):
+        r = E.find(_fixture(name), asof="2026-11-01")
+        assert not r["ok"] or (r["bottom"], r["top"]) == (201.31, 207.36), r
+    assert "shelf" not in r and "origin" not in r
 
 
 def test_hammer_shapes():
@@ -279,11 +264,11 @@ def test_asb_hammers_on_the_expert_zone():
     assert not [k for k in r["closes_below_k"] if k <= 6]
 
 
-def test_tgt_hammers_on_the_shelf_zone():
-    """TGT: the 150-154 lows (10/5-10/26) are ONE pullback from the 170 high, no 2-ATR rally between them -> not a shelf
-    (v5). The zone is the breakout level 140.23-143.30; the 10/26 textbook hammer (low 145.32) touches it."""
+def test_tgt_hammers_on_the_breakout_level():
+    """TGT: zone = the broken resistance 140.23-143.30 (v7: breakout level only); the 10/26 textbook hammer
+    (low 145.32) touches it."""
     r = E.find(_fixture("tgt_daily_20261030.json"), asof="2026-11-01")
-    assert r["ok"] and r["shelf"] is None and (r["bottom"], r["top"]) == (140.23, 143.3), r
+    assert r["ok"] and (r["bottom"], r["top"]) == (140.23, 143.3), r
     assert {x["w"]: x["s"] for x in r["hammers"] if x["k"] <= 6} == {"2026-10-26": "H"}
     assert all(x["k"] <= E.HAMMER_WEEKS for x in r["hammers"])
 
@@ -305,45 +290,15 @@ def test_refresh_stale_refreshes_only_exported_stale_tickers():
 
 
 
-def test_kbwb_pullback_lows_are_not_a_shelf():
-    """Regression (Eyal 2026-11-01, v5 rejects v4): KBWB 9/28 low 85.1 and 10/12 low 84.3 are two wicks of the SAME
-    pullback (the bounce between reached 89.04, under 2 ATR; closes 86.8-87.6): a base forming now, not a retest.
-    No shelf; the June breakout level 89.02-89.94 is broken (two closes under), so KBWB has no expert level."""
+def test_kbwb_no_expert_level():
+    """KBWB: the June breakout level 89.02-89.94 is broken (two consecutive weekly closes under it) and no older
+    broken resistance passes -> no expert level (the 9/28 + 10/12 pullback lows are not a retest of broken resistance)."""
     r = E.find(_fixture("kbwb_daily_20261030.json"), asof="2026-11-01")
     assert not r["ok"] and "broken" in r["reason"], r
 
 
-def test_shelf_needs_a_rally_between_touches():
-    """Two lows at the same price inside one pullback (bounce < 2 ATR) are one touch; after a 2-ATR rally lasting
-    >= 4 weeks the return counts as a second touch."""
-    W = [{"open": 100, "high": 101, "low": 99, "close": 100.5, "time": f"w{i}"} for i in range(40)]
-    A = 1.0
-    z = {"top": 90.0}
-    for k in range(8, 13):                                       # old resistance at ~95.5 (role reversal, v6)
-        W[k] = {"open": 94.5, "high": 95.5 if k == 10 else 95.2, "low": 94, "close": 94.8, "time": f"w{k}"}
-    for k, lo in ((20, 95.0), (24, 95.2)):                       # same pullback: bounce to 97 only
-        W[k] = {"open": 96, "high": 97, "low": lo, "close": 96.2, "time": f"w{k}"}
-    for k in range(21, 24):
-        W[k] = {"open": 96.5, "high": 97, "low": 96.3, "close": 96.8, "time": f"w{k}"}
-    for k in range(25, 40):
-        W[k] = {"open": 97, "high": 97.5, "low": 96.4, "close": 97, "time": f"w{k}"}
-    assert E._shelf(W, W, 5, z, A, 97) is None
-    for k in range(26, 32):                                      # rally to 99 (> top0 + 2 A) for 6 weeks, then back
-        W[k] = {"open": 98, "high": 99.5, "low": 97.5, "close": 99, "time": f"w{k}"}
-    W[33] = {"open": 96, "high": 96.8, "low": 95.1, "close": 95.9, "time": "w33"}
-    sh = E._shelf(W, W, 5, z, A, 97)
-    assert sh and len(sh["episodes"]) == 2 and abs(sh["bottom"] - 95.0) < 1e-9
-    assert sh["structure"]["type"] == "role_reversal"
-    for k in range(8, 13):                                       # no old resistance, no base -> no shelf (v6)
-        W[k] = {"open": 100, "high": 101, "low": 99, "close": 100.5, "time": f"w{k}"}
-    assert E._shelf(W, W, 5, z, A, 97) is None
-
-
-
-def test_armk_no_shelf_without_structure():
-    """Regression (Eyal 2026-11-01, v6): ARMK's v5 shelf 51.78-52.56 started at the 6/8 low 52.69, a dip inside the
-    5/18-6/22 drift (5/18 low 50.76 three weeks earlier): not the lowest low of +/- 4 weeks, no base / old resistance.
-    No shelf. The breakout levels: 6/22 (54.07-54.82) is broken; May 45.93-46.68 is intact but price is 2.4 ATR above it
-    (no retest now) -> no expert level."""
+def test_armk_no_expert_level():
+    """ARMK: the 6/22 breakout level 54.07-54.82 is broken; the May breakout level 45.93-46.68 is intact but price is
+    2.4 ATR above it (no retest now) -> no expert level."""
     r = E.find(_fixture("armk_daily_20261030.json"), asof="2026-11-01")
     assert not r["ok"], r

@@ -123,7 +123,6 @@ export interface ExpertZone {
   ok: boolean; reason?: string; top?: number; bottom?: number; atr_w?: number; base_start?: string; pivot_week?: string;
   breakout_week?: string; breakout_close?: number; post_high?: number; price?: number; dist_atr?: number;
   hammers?: { w: string; s: 'H' | 'h'; k: number }[]; closes_below_k?: number[]; last_week?: string;
-  origin?: { top: number; bottom: number; base_start: string }; shelf?: { lows: [string, number][]; episodes?: [string, string][]; closes_in?: string[]; structure?: { type: 'base' | 'role_reversal'; weeks: string[]; highs?: number[]; why: string }; src: string } | null;
   width_note?: string | null; score?: number; factors?: ExpertFactor[];
   /** single weekly close under the zone bottom since the breakout (not followed by a second): valid, flagged, -10 pts */
   warnings?: { k: string; date: string; he: string }[];
