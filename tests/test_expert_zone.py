@@ -230,23 +230,23 @@ def test_gpix_stop_is_one_weekly_atr_not_four_percent():
 
 
 def test_stld_moves_up_to_the_higher_shelf():
-    """Regression (Eyal 2026-11-01, v4/v5): STLD broke out over 201.31-207.36 in April 2026. Support at ~216-219 was
-    touched, price rallied >= 2 ATR away for >= 4 weeks (to 288 in June, to 273 in August) and came back: 5/18 (218.53),
-    6/29 (216.36), 8/17 (217.5; 9/28 219.1 is the same pullback, no 2-ATR rally between). Active zone = that shelf;
-    the breakout level is kept as the origin."""
+    """Regression (Eyal 2026-11-01, v4-v6): STLD broke out over 201.31-207.36 in April 2026. 6/29 (216.36) is the lowest
+    low of +/- 4 weeks; price rallied to 273 (>= 2 ATR, 5+ weeks) and came back 8/17 (217.5; 9/28 219.1 is the same
+    pullback). Structure = base: weekly closes 4/27, 5/11, 6/29, 7/06 in / just above the zone (no older resistance
+    there: the highs before April were <= 207). Active zone = that shelf; the breakout level is kept as the origin."""
     r = E.find(_fixture("stld_daily_20261030.json"), asof="2026-11-01")
     assert r["ok"], r
     assert abs(r["bottom"] - 216.36) < 0.05 and 219.5 < r["top"] < 222.5, r
     assert r["origin"]["top"] == 207.36 and r["origin"]["bottom"] == 201.31
     lows = dict((d, l) for d, l in r["shelf"]["lows"])
-    assert lows.get("2026-06-29") == 216.36 and lows.get("2026-08-17") == 217.5 and len(lows) == 3
+    assert lows == {"2026-06-29": 216.36, "2026-08-17": 217.5}
     assert any(a <= "2026-09-28" <= b for a, b in r["shelf"]["episodes"])    # 9/28 inside the 8/17 episode
-    assert r["shelf"]["closes_in"]                                          # bodies, not wicks only
+    assert r["shelf"]["closes_in"] and r["shelf"]["structure"]["type"] == "base"
     tr = r["trade"]
     assert tr["entry"] == r["top"] and tr["sl"] <= r["bottom"] - 0.1 * r["atr_w"] + 0.01
     assert tr["sl"] <= tr["entry"] - r["atr_w"] + 0.01 and tr["tp"] == r["post_high"]
     touches = next(f for f in r["factors"] if f["k"] == "touches")
-    assert touches["pts"] == 15 and touches["val"].startswith("3")
+    assert touches["pts"] == 10 and touches["val"].startswith("2")
 
 
 def test_no_shelf_without_two_higher_lows():
@@ -319,6 +319,8 @@ def test_shelf_needs_a_rally_between_touches():
     W = [{"open": 100, "high": 101, "low": 99, "close": 100.5, "time": f"w{i}"} for i in range(40)]
     A = 1.0
     z = {"top": 90.0}
+    for k in range(8, 13):                                       # old resistance at ~95.5 (role reversal, v6)
+        W[k] = {"open": 94.5, "high": 95.5 if k == 10 else 95.2, "low": 94, "close": 94.8, "time": f"w{k}"}
     for k, lo in ((20, 95.0), (24, 95.2)):                       # same pullback: bounce to 97 only
         W[k] = {"open": 96, "high": 97, "low": lo, "close": 96.2, "time": f"w{k}"}
     for k in range(21, 24):
@@ -331,3 +333,17 @@ def test_shelf_needs_a_rally_between_touches():
     W[33] = {"open": 96, "high": 96.8, "low": 95.1, "close": 95.9, "time": "w33"}
     sh = E._shelf(W, W, 5, z, A, 97)
     assert sh and len(sh["episodes"]) == 2 and abs(sh["bottom"] - 95.0) < 1e-9
+    assert sh["structure"]["type"] == "role_reversal"
+    for k in range(8, 13):                                       # no old resistance, no base -> no shelf (v6)
+        W[k] = {"open": 100, "high": 101, "low": 99, "close": 100.5, "time": f"w{k}"}
+    assert E._shelf(W, W, 5, z, A, 97) is None
+
+
+
+def test_armk_no_shelf_without_structure():
+    """Regression (Eyal 2026-11-01, v6): ARMK's v5 shelf 51.78-52.56 started at the 6/8 low 52.69, a dip inside the
+    5/18-6/22 drift (5/18 low 50.76 three weeks earlier): not the lowest low of +/- 4 weeks, no base / old resistance.
+    No shelf. The breakout levels: 6/22 (54.07-54.82) is broken; May 45.93-46.68 is intact but price is 2.4 ATR above it
+    (no retest now) -> no expert level."""
+    r = E.find(_fixture("armk_daily_20261030.json"), asof="2026-11-01")
+    assert not r["ok"], r

@@ -38,8 +38,8 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
   4. ACTIVE SUPPORT / HIGHER SHELF (v5, Eyal 2026-11-01 after KBWB; v4 after STLD. Weinstein: trailing support under
      the latest higher low; O'Neil: base-on-base). "The method is a retest: a return to support counts only when price
      comes back after weeks / months with a significant rise in between." For the valid candidate:
-       first touch = a completed swing low f after the breakout (low <= the weeks before and after), above origin top
-                     + 0.5 A. Provisional shelf: bottom L0 = its low, top0 = its body bottom clamped to L0 + 0.25..0.5 A.
+       first touch = a SIGNIFICANT swing low f after the breakout: the lowest low of +/- 4 completed weeks (SWING_W;
+                     v6, Eyal after ARMK: not a dip inside a drift), above origin top + 0.5 A. Provisional shelf: bottom L0 = its low, top0 = its body bottom clamped to L0 + 0.25..0.5 A.
        touches     = later weeks whose low comes back to <= top0 + 0.25 A. A touch starts a NEW episode only if, since
                      the previous touch, the high reached >= top0 + 2 A (RALLY_ATR) and >= 4 weeks passed
                      (RALLY_WEEKS); otherwise it belongs to the same episode (lows of one pullback are ONE touch).
@@ -49,6 +49,12 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
                      the zone rules (no close < L x 0.97, no two consecutive closes < L, price not < L x 0.97).
                      Weeks already touching an earlier first touch's shelf do not start a new one. Several shelves:
                      most episodes (max 3), then the highest, then the newest.
+       structure   = v6: the shelf must sit on real structure, one of (shown on the stock page):
+                     role reversal: within the 52 weeks before the first touch, a swing high (>= the highs of +/- 2
+                       weeks) or >= 2 weeks with highs in the zone +/- 0.5 A and closes under it (old resistance);
+                     base: >= 3 weekly closes in the zone or <= 0.5 A above it between the breakout and the end of the
+                       first touch episode + 4 weeks (bodies held there, BASE_MIN_W).
+                     Neither -> no shelf.
        zone        = bottom = the lowest wick of the touch weeks (edge only), top = the lowest body bottom
                      min(open, close) of the touch weeks, width clamped to 0.25-0.5 A. Origin kept for the page.
        near        : when price is > 2 A above the origin top, the candidate stays valid if it is <= 2 A above a
@@ -108,7 +114,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v5-2026-11-01"
+RULE_VERSION = "expert-v6-2026-11-01"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -117,6 +123,9 @@ MIN_W_ATR, MAX_W_ATR = 0.25, 0.5
 MOVE_AWAY_ATR = 2.0   # v5 (Eyal 2026-11-01, KBWB): a retest needs a significant rally away first (was 1.0)
 RALLY_ATR = 2.0       # shelf: between two touches the high must reach the shelf top + 2 A ...
 RALLY_WEEKS = 4       # ... and >= 4 weeks pass; also: the breakout-level retest comes >= 4 weeks after the breakout
+SWING_W = 4           # v6: the first touch is the lowest low of +/- 4 completed weeks (not a dip inside a drift)
+BASE_MIN_W = 3        # v6 base: >= 3 weekly closes in / <= 0.5 A above the zone around the first touch
+ROLE_LOOKBACK_W = 52  # v6 role reversal: an earlier swing high / resistance cluster in the zone, up to 52 weeks back
 CLOSE_CONFIRM_ATR = 0.5   # shelf: >= 1 touch week closes <= shelf top + 0.5 A (support made by bodies, not wicks only)
 BREAK_PCT = 0.03
 PULLBACK_ATR = 1.0
@@ -271,11 +280,11 @@ def _shelf(Wall, W, b, z, A, last) -> Optional[Dict[str, Any]]:
     n, o_top = len(W), z["top"]
     best = None
     covered = set()                               # touch weeks of an earlier first touch: the same support, not a new one
-    for f in range(b + 1, n - 1):                 # the first touch (support forming): a swing low above the origin
+    for f in range(b + 1, n - SWING_W):           # the first touch (support forming): a significant swing low
         if f in covered:
             continue
         L0 = W[f]["low"]
-        if not (L0 > o_top + CLUSTER_ATR * A and L0 <= W[f - 1]["low"] and L0 <= W[f + 1]["low"]):
+        if not (L0 > o_top + CLUSTER_ATR * A and L0 <= min(W[k]["low"] for k in range(max(0, f - SWING_W), f + SWING_W + 1))):
             continue
         top0 = min(max(min(W[f]["open"], W[f]["close"]), L0 + MIN_W_ATR * A), L0 + MAX_W_ATR * A)
         if top0 <= L0:
@@ -309,12 +318,15 @@ def _shelf(Wall, W, b, z, A, last) -> Optional[Dict[str, Any]]:
             continue
         if any(W[k]["close"] < L and W[k + 1]["close"] < L for k in range(f, n - 1)):
             continue
+        st = _structure(W, b, f, eps[0][-1], L, top0, A)
+        if not st:
+            continue
         key = (min(len(eps), 3), L, tw[-1])        # most separated touches (max 3), then the highest, then the newest
         if best is None or key > best[0]:
-            best = (key, eps, tw, L, conf)
+            best = (key, eps, tw, L, conf, st)
     if not best:
         return None
-    _, eps, tw, L, conf = best
+    _, eps, tw, L, conf, st = best
     body = min(min(W[k]["open"], W[k]["close"]) for k in tw)   # bodies make the zone; the wick is only the bottom edge
     t, note = body, None
     if t - L < MIN_W_ATR * A:
@@ -323,7 +335,26 @@ def _shelf(Wall, W, b, z, A, last) -> Optional[Dict[str, Any]]:
         t, note = L + MAX_W_ATR * A, "clamped"
     lows = [min(e, key=lambda k: W[k]["low"]) for e in eps]   # the low of each touch episode
     return {"top": t, "bottom": L, "cluster": lows, "touch_weeks": tw, "episodes": eps,
-            "confirmed": conf, "width_note": note}
+            "confirmed": conf, "structure": st, "width_note": note}
+
+
+def _structure(W, b, f, f_end, L, top0, A) -> Optional[Dict[str, Any]]:
+    """v6: the shelf must sit on real structure (module doc step 4). Role reversal first, then a base; None = neither."""
+    lo, hi = L - CLUSTER_ATR * A, top0 + CLUSTER_ATR * A
+    start = max(0, f - ROLE_LOOKBACK_W)
+    sh = [k for k in range(start + 2, f - 1)
+          if lo <= W[k]["high"] <= hi and W[k]["high"] >= max(W[j]["high"] for j in range(k - 2, k + 3))]
+    res = [k for k in range(start, f) if lo <= W[k]["high"] <= hi and W[k]["close"] < lo + CLUSTER_ATR * A]
+    if sh or len(res) >= 2:
+        ks = sh or res
+        return {"type": "role_reversal", "weeks": [W[k]["time"] for k in ks][-3:],
+                "highs": [round(W[k]["high"], 2) for k in ks][-3:],
+                "why": ("earlier swing high" if sh else "earlier resistance cluster (highs in the zone, closes under it)")}
+    bw = [k for k in range(b + 1, min(len(W), f_end + SWING_W + 1))      # from the breakout to the first touch episode
+          if L <= W[k]["close"] <= top0 + CLUSTER_ATR * A]
+    if len(bw) >= BASE_MIN_W:
+        return {"type": "base", "weeks": [W[k]["time"] for k in bw], "why": f"{len(bw)} weekly closes in / just above the zone"}
+    return None
 
 
 HAMMER_WEEKS = 12   # weeks stored; the app filter looks at the last X <= 12 of them
@@ -448,7 +479,7 @@ def _result(Wall, W, b, z, A, last, post_hi, daily, sh=None) -> Dict[str, Any]:
     origin = {"top": round(o_top, 2), "bottom": round(o_bot, 2), "base_start": W[min(z["cluster"])]["time"]}
     shelf = ({"lows": [[W[k]["time"], round(W[k]["low"], 2)] for k in sh["cluster"]],
               "episodes": [[W[e[0]]["time"], W[e[-1]]["time"]] for e in sh["episodes"]],
-              "closes_in": [W[k]["time"] for k in sh["confirmed"]], "src": SRC["shelf"]} if sh else None)
+              "closes_in": [W[k]["time"] for k in sh["confirmed"]], "structure": sh["structure"], "src": SRC["shelf"]} if sh else None)
     return {
         "ok": True, "top": round(top, 2), "bottom": round(bot, 2), "atr_w": round(A, 4), "origin": origin, "shelf": shelf,
         "base_start": start, "pivot_week": W[z["pivot"]]["time"], "breakout_week": W[b]["time"],

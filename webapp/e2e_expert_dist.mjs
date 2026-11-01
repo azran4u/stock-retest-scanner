@@ -71,7 +71,7 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
     ok(g && g.dTop < 1.5 && g.dBot < 1.5, `${name} STLD: chart zone = shelf ${sh.bottom}-${sh.top}`);
     await page.screenshot({ path: `${OUT}/${name}_STLD_shelf_weekly.png` });
     const tx = await page.locator('#secExpert [data-shelf]').textContent();
-    ok(tx.includes('216.36') && tx.includes(sh.origin.top.toFixed(2)) && tx.includes('Weinstein'), `${name} STLD: shelf lows + origin ${sh.origin.bottom}-${sh.origin.top} on the stock page`);
+    ok(tx.includes('216.36') && tx.includes(sh.origin.top.toFixed(2)) && tx.includes('Weinstein') && await page.locator('#secExpert [data-struct="base"]').count() === 1, `${name} STLD: shelf lows + origin ${sh.origin.bottom}-${sh.origin.top} on the stock page`);
     await page.locator('#secExpert').scrollIntoViewIfNeeded(); await page.waitForTimeout(150);
     await page.screenshot({ path: `${OUT}/${name}_STLD_shelf_panel.png` });
   } else ok(false, `${name}: STLD has no shelf`);
