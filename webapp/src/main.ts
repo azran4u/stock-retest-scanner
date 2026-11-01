@@ -338,6 +338,9 @@ function filtered(): Row[] {
     const pz = new Map(rows.map((r) => [r.ticker, badgesOf(r).includes('pass') ? 0 : 1]));
     rows = [...rows].sort((a, b) => zd.get(a.ticker)! - zd.get(b.ticker)! || pz.get(a.ticker)! - pz.get(b.ticker)! || a.ticker.localeCompare(b.ticker)); // no zone -> last; ties: PASS first
   }
+  else if (s === 'expert') {   // expert-zone score, highest first; no expert level -> last (Eyal 2026-11-01)
+    rows = [...rows].sort((a, b) => num(expertScoreOf(b.ticker)) - num(expertScoreOf(a.ticker)) || a.ticker.localeCompare(b.ticker));
+  }
   else if (s === 'hammer') {
     // only gated hammers (badge from export_data.hammer_ok) rank by hammer score
     const hs = (r: Row) => num(r.badges.includes('hammer') ? r.hammer_score : null);
@@ -394,6 +397,7 @@ function factsOf(r: Row): Facts {
     sector: (r.sector as string) || null,
     instOwn: numOrNull(r.inst_own_pct), shortFloat: numOrNull(r.short_float_pct),
     fib: !!fc && (fc.priceLevel != null || fc.zoneLevels.length > 0),
+    expertScore: expertScoreOf(r.ticker),
     today: td,
   };
 }
@@ -687,7 +691,7 @@ function renderList(root?: HTMLElement) {
     </div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span><button id="copyList" class="ghost small cpyall" title="העתק את הרשימה המסוננת כסימולים של TradingView">📋 העתק ל-TV</button>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
-        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
+        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['expert', 'ציון מומחים (גבוה תחילה)'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select></label></div>
   </div>
   <ul class="list">${listInner(rows)}</ul>`;
@@ -1606,14 +1610,16 @@ async function loadExpertZones() {
   if (cv && S.ticker) { applyExpert(); renderPanel(); }
 }
 const expertOf = (t: string | null): ExpertZone | null => (t && expertDoc?.tickers?.[t]) || null;
+const expertScoreOf = (t: string): number | null => { const e = expertOf(t); return e?.ok && e.score != null ? e.score : null; };
 function applyExpert() {
   if (!cv) return;
   const e = expertOf(S.ticker);
   cv.setExpert(S.ui.expert !== false && e?.ok && e.top != null && e.bottom != null && e.base_start
-    ? { top: e.top, bottom: e.bottom, start: e.base_start, score: e.score ?? null } : null);
+    ? { top: e.top, bottom: e.bottom, start: e.base_start, score: e.score ?? null,
+        trade: e.trade ? { entry: e.trade.entry, sl: e.trade.sl, tp: e.trade.tp, rr: e.trade.rr } : null } : null);
 }
 function expertBadgeHtml(t: string): string {
-  const e = expertOf(t); if (!e) return '';
+  const e = expertOf(t); if (!e?.ok) return '';   // badge only where there is an expert zone
   const warn = e.ok && e.warnings?.length ? ` ⚠` : '';
   return e.ok ? `<span class="badge b-expert" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100 (מידע בלבד)${warn ? ' · ' + e.warnings!.map((w) => w.he).join(', ') : ''}">מומחים ${e.score}${warn}</span>`
     : '<span class="badge b-expert off" title="אין רמת מומחים">מומחים —</span>';
@@ -1621,8 +1627,20 @@ function expertBadgeHtml(t: string): string {
 const EXPERT_REASON_HE: [RegExp, string][] = [
   [/two consecutive/, 'הרמה נשברה (שתי סגירות שבועיות רצופות מתחת לאזור)'], [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-1 ATR)'],
   [/^no pullback/, 'עדיין אין פולבק (המחיר בטווח 1 ATR מהשיא שאחרי הפריצה)'], [/ATR above/, 'המחיר רחוק מעל גג הבסיס (יותר מ-2 ATR)'],
-  [/^no breakout/, 'אין פריצה מעל בסיס של 26 שבועות ב-3 השנים האחרונות'], [/^short history|^no candles/, 'אין מספיק היסטוריה'],
+  [/^no breakout/, 'אין פריצה מעל בסיס של 26 שבועות ב-3 השנים האחרונות'], [/^30-week MA falling/, 'ממוצע 30 שבועות יורד: שלב 3/4, לא Retest (Weinstein)'], [/^short history|^no candles/, 'אין מספיק היסטוריה'],
 ];
+function tradeHtml(e: ExpertZone): string {
+  const tr = e.trade; if (!tr) return '';
+  const src = expertDoc?.sources || {};
+  const notes = { 'widened to 4% (Bulkowski)': 'הורחב ל-4% (Bulkowski)', 'risk > 8% (IBD max 7-8%)': 'סיכון מעל 8% (IBD: עד 7-8%)' } as Record<string, string>;
+  return `<div class="exptrade small">
+    <div class="extt"><b>עסקת מומחים</b> <span class="badge b-expert">R:R <bdi dir="ltr">${tr.rr != null ? tr.rr.toFixed(2) : '—'}</bdi></span>${tr.confirmed ? ' <span class="muted">(השבוע האחרון נסגר מעל גג האזור)</span>' : ''}</div>
+    <div class="exrow"><span>כניסה</span><b dir="ltr">${tr.entry.toFixed(2)}</b><span class="muted">גג האזור: קונים אחרי סגירה שבועית חזרה מעליו</span></div>
+    <div class="exrow"><span>SL</span><b dir="ltr">${tr.sl.toFixed(2)}</b><span class="muted">מתחת לשפל ה-Retest (<bdi dir="ltr">${tr.retest_low.toFixed(2)}</bdi>) ולתחתית האזור, <bdi dir="ltr">${tr.risk_pct}%</bdi>${tr.notes.length ? ' · ' + tr.notes.map((n) => esc(notes[n] || n)).join(' · ') : ''}</span></div>
+    <div class="exrow"><span>TP</span><b dir="ltr">${tr.tp.toFixed(2)}</b><span class="muted">השיא שאחרי הפריצה (ההתנגדות הבאה) · מהלך מדוד <bdi dir="ltr">${tr.tp_mm.toFixed(2)}</bdi></span></div>
+    <div class="muted exsrc" dir="ltr">${['trade_entry', 'trade_sl', 'trade_tp'].map((k) => esc(src[k] || '')).filter(Boolean).join('<br/>')}</div>
+    <div class="muted">מוצג על הגרף כקופסה סגולה מקווקוות "מומחים". לא לונג, לא נכנס ל-PASS, ל-R:R, לסינון או לגודל הפוזיציה.</div></div>`;
+}
 function expertPanelHtml(t: string): string {
   const e = expertOf(t); if (!e) return '';
   const head = `<h3>אזור מומחים <span class="badge b-expert">${e.ok ? `ציון ${e.score}/100` : 'אין רמה'}</span></h3>`;
@@ -1638,8 +1656,9 @@ function expertPanelHtml(t: string): string {
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi>${e.dist_atr ? ` (<bdi dir="ltr">${e.dist_atr > 0 ? '+' : ''}${e.dist_atr}</bdi> ATR)` : ' (בתוך האזור)'}</div>
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
+    ${tradeHtml(e)}
     <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות.</div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥1 ATR וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות.</div>
     ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */

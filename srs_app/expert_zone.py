@@ -30,6 +30,9 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
                         'סגירה שבועית מתחת לאזור' with its date, and -10 points per such week (max -20)
                     the current (running) price more than 3% under the bottom also counts as broken
        pulled back toward it from above: last close <= post-breakout high - 1 A, and last close <= top + 2 A
+       stage 2   : the 30-week SMA of weekly closes is not falling (now >= 4 weeks ago). A falling 30-week MA during
+                   the pullback = stage 3/4, no longer a retest (Weinstein; research page 'ביטול וסימני כישלון').
+                   Added 2026-11-01 for all stocks (crashes of 50%+ fell back to old bases far under the high).
      The newest candidate that passes wins. None -> 'no expert level' with the reason of the newest candidate
      (no breakout in 3 years / broken / price too far above / never moved away / no pullback yet).
 
@@ -52,6 +55,18 @@ Which tickers: the CURRENT starred list (Supabase table watchlist). Python has n
 from /workspace/stock-screener/app_state.json, which the routine writes from SQL_WATCHLIST before the export (README
 'App state'). The nightly export rebuilds the file for exactly that list (unstarred tickers drop out).
 
+EXPERT TRADE (Eyal 2026-11-01 20:48; research page 'כניסה וסטופ' / 'אישור וטריגר באזור'), a separate overlay as well:
+  entry = the zone top: buy when a week closes back above the top of the pattern (Bulkowski, Throwback entry: the best
+          of the three entries tested, 89% wins / 10% stopped); 'confirmed' when the last weekly close is above it.
+  SL    = under the retest low AND under the zone bottom: min(lowest low since the post-breakout high, bottom) - 0.1 ATR,
+          moved under a round number sitting just above it (Murphy: stop beyond the round number, not on it);
+          then at least 4% under the entry (Bulkowski: stops < 4% under the breakout are hit about half the time within
+          a month, 8% about a quarter); deeper than 8% is flagged (IBD: a leader rarely falls > 7-8% under the buy point).
+  TP    = the high after the breakout, the pre-pullback high = the next resistance (IBD: enter before price returns to
+          the high before the pullback); the measured move (top + base height, base height = top - base low) is shown
+          as a secondary target only.  R:R = (TP - entry) / (entry - SL).
+
+  python -m srs_app.expert_zone --all                          # nightly: every exported ticker + the starred list
   python -m srs_app.expert_zone --starred                      # whole file = the starred list in app_state.json
   python -m srs_app.expert_zone --add KNX                      # newly starred: compute KNX, keep the others
   python -m srs_app.expert_zone --remove KNX                   # unstarred: drop KNX now (the nightly would anyway)
@@ -68,7 +83,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v2-2026-11-01"
+RULE_VERSION = "expert-v3-2026-11-01"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -91,6 +106,9 @@ SRC = {
     "round": "Murphy; Bulkowski: round numbers stop moves",
     "gap": "Murphy: a breakaway gap acts as support on the pullback",
     "confluence": "Weinstein: 30-week MA; Murphy: Fib 38-62% retracement",
+    "trade_entry": "Bulkowski (Throwback entry): buy after a close back above the top of the pattern; 89% wins, 10% stopped",
+    "trade_sl": "AlphaMethodX / Wyckoff: under the retest low and the level; Murphy: beyond a round number; Bulkowski: < 4% gets hit ~half the time; IBD: max ~7-8%",
+    "trade_tp": "IBD: the high before the pullback (next resistance); measured move = base height added to the breakout (secondary)",
     "below": "Murphy: a close beyond the level weakens it (2 closes / 3% = broken); Weinstein: weekly close",
 }
 LABEL_HE = {
@@ -179,6 +197,12 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
     if not A:
         return {"ok": False, "reason": "short history"}
     last = Wall[-1]["close"]                  # current price (the running week counts for 'where is price now')
+    if n >= 34:
+        ma_now = sum(x["close"] for x in W[-30:]) / 30
+        ma_4 = sum(x["close"] for x in W[-34:-4]) / 30
+        if ma_now < ma_4:
+            return {"ok": False, "reason": f"30-week MA falling ({ma_4:.2f} -> {ma_now:.2f}): stage 3/4, not a retest (Weinstein)",
+                    "atr_w": round(A, 4)}
     first_reason = None
     for b in range(n - 1, max(BASE_W, n - LOOKBACK_W) - 1, -1):
         R = max(W[k]["high"] for k in range(b - BASE_W, b))
@@ -281,6 +305,7 @@ def _result(Wall, W, b, z, A, last, post_hi, daily) -> Dict[str, Any]:
     add("below", -min(20, 10 * len(below)), 0, ", ".join(below) or "-")
     add("confluence", conf, 10, ", ".join(parts) or (f"MA30 {ma:.2f} (outside)" if ma is not None else "-"))
     score = max(0, int(round(sum(f["pts"] for f in F))))
+    trade = _trade(Wall, W, b, top, bot, A, post_hi, sw_lo)
     start = W[min(z["cluster"])]["time"]
     return {
         "ok": True, "top": round(top, 2), "bottom": round(bot, 2), "atr_w": round(A, 4),
@@ -288,8 +313,33 @@ def _result(Wall, W, b, z, A, last, post_hi, daily) -> Dict[str, Any]:
         "breakout_close": round(W[b]["close"], 2), "post_high": round(post_hi, 2), "price": round(last, 2),
         "dist_atr": round((last - top) / A, 2) if last > top else (0.0 if last >= bot else round((last - bot) / A, 2)),
         "width_note": z["width_note"], "score": score, "factors": F,
+        "trade": trade,
         "warnings": [{"k": "close_below", "date": d, "he": f"סגירה שבועית מתחת לאזור ({d})"} for d in below],
     }
+
+
+def _trade(Wall, W, b, top, bot, A, post_hi, base_low) -> Dict[str, Any]:
+    """Expert entry / SL / TP (see module doc 'EXPERT TRADE')."""
+    hi_i = max(range(b, len(Wall)), key=lambda k: Wall[k]["high"])
+    retest_low = min(x["low"] for x in Wall[hi_i:])
+    entry = top
+    sl = min(retest_low, bot) - 0.1 * A
+    st = round_step(top)
+    rn = math.floor(sl / st) * st + st                      # the round number just above the structural stop
+    if rn - sl < 0.1 * A and rn <= bot:                     # a round number right above it -> go under the round number
+        sl = rn - 0.1 * A
+    notes = []
+    if sl > entry * 0.96:
+        sl, notes = entry * 0.96, ["widened to 4% (Bulkowski)"]
+    risk_pct = (entry - sl) / entry * 100
+    if risk_pct > 8:
+        notes.append("risk > 8% (IBD max 7-8%)")
+    tp = post_hi
+    mm = top + (top - base_low)
+    rr = (tp - entry) / (entry - sl) if entry > sl else None
+    return {"entry": round(entry, 2), "sl": round(sl, 2), "tp": round(tp, 2), "rr": round(rr, 2) if rr is not None else None,
+            "tp_mm": round(mm, 2), "retest_low": round(retest_low, 2), "risk_pct": round(risk_pct, 1),
+            "confirmed": Wall[-1]["close"] > top, "notes": notes}
 
 
 def overlap(a_top: float, a_bot: float, b_top: Optional[float], b_bot: Optional[float]) -> Optional[bool]:
@@ -334,8 +384,14 @@ def _load(data_dir: Path) -> Dict[str, Any]:
 
 def _save(data_dir: Path, tickers: Dict[str, Any]) -> Path:
     p = data_dir / "expert_zones.json"
+    slim = {}
+    for t in sorted(tickers):   # factor labels / sources once per file (doc 'labels' / 'sources'), not per ticker
+        r = dict(tickers[t])
+        if r.get("factors"):
+            r["factors"] = [{k: f[k] for k in ("k", "pts", "max", "val")} for f in r["factors"]]
+        slim[t] = r
     doc = {"rule_version": RULE_VERSION, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "tickers": {t: tickers[t] for t in sorted(tickers)}}
+           "labels": LABEL_HE, "sources": SRC, "tickers": slim}
     p.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     return p
 
@@ -367,6 +423,18 @@ def write(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fe
     return p
 
 
+def sync_all(data_dir: Path, asof: Optional[str] = None, state_path: Optional[str] = None, fetch: bool = True) -> Path:
+    """Nightly (Eyal 2026-11-01 20:47: 'add it to all the stocks'): every ticker the export wrote candles for (all app rows,
+    ETFs too) + the starred list (outside the universe: yfinance in memory when no candles). Per-ticker errors become
+    'no expert level' with the reason; never raises for one ticker."""
+    ts = {f.stem for f in (data_dir / "candles").glob("*.json")}
+    try:
+        ts |= set(starred(state_path))
+    except Exception:
+        pass
+    return write(sorted(ts), data_dir, asof, fetch)
+
+
 def sync_starred(data_dir: Path, asof: Optional[str] = None, state_path: Optional[str] = None, fetch: bool = False) -> Optional[Path]:
     """Nightly: the file = the current starred list (unstarred drop out). No list (state missing) -> keep the file's set."""
     ts = starred(state_path)
@@ -386,6 +454,7 @@ def main(argv=None):
     ap.add_argument("--tickers", default="")
     ap.add_argument("--refresh", action="store_true")
     ap.add_argument("--starred", action="store_true")
+    ap.add_argument("--all", action="store_true")
     ap.add_argument("--add", default="")
     ap.add_argument("--remove", default="")
     ap.add_argument("--data", default=str(Path(__file__).resolve().parent.parent / "app" / "data"))
@@ -397,6 +466,8 @@ def main(argv=None):
         p = add(lst(a.add), d, a.asof)
     elif a.remove:
         p = remove(lst(a.remove), d)
+    elif a.all:
+        p = sync_all(d, a.asof)
     elif a.starred:
         p = sync_starred(d, a.asof, fetch=True)
     elif a.refresh:

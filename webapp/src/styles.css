@@ -429,3 +429,6 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .expertbox td.src { color: #787b86; font-size: 11px; min-width: 160px; }
 .expertbox b.ok { color: #26a69a; } .expertbox b.warn { color: #ffa726; }
 .expertbox .expwarn { color: #ffa726; }
+.expertbox .exptrade { border: 1px dashed #ba68c8; border-radius: 8px; padding: 6px 8px; margin: 6px 0; background: rgba(186,104,200,.06); }
+.expertbox .exrow { display: grid; grid-template-columns: 44px 70px 1fr; gap: 6px; align-items: baseline; padding: 2px 0; }
+.expertbox .exsrc { font-size: 10.5px; margin-top: 4px; text-align: left; }

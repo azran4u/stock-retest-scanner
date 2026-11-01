@@ -125,10 +125,16 @@ export interface ExpertZone {
   width_note?: string | null; score?: number; factors?: ExpertFactor[];
   /** single weekly close under the zone bottom since the breakout (not followed by a second): valid, flagged, -10 pts */
   warnings?: { k: string; date: string; he: string }[];
+  /** expert Entry / SL / TP (srs_app/expert_zone._trade): separate overlay, never a Long / PASS / sizing input */
+  trade?: { entry: number; sl: number; tp: number; rr: number | null; tp_mm: number; retest_low: number; risk_pct: number; confirmed: boolean; notes: string[] } | null;
 }
-export interface ExpertDoc { rule_version: string; generated_at: string; tickers: Record<string, ExpertZone> }
+export interface ExpertDoc { rule_version: string; generated_at: string; labels?: Record<string, string>; sources?: Record<string, string>; tickers: Record<string, ExpertZone> }
 let expertP: Promise<ExpertDoc | null> | null = null;
 export function loadExpert(): Promise<ExpertDoc | null> {
-  expertP ??= fetcher('expert_zones.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  // factor labels / sources are stored once per file (doc.labels / doc.sources) -> filled back into every factor
+  expertP ??= fetcher('expert_zones.json').then((r) => (r.ok ? r.json() : null)).then((d: ExpertDoc | null) => {
+    if (d) for (const z of Object.values(d.tickers || {})) for (const f of z.factors || []) { f.he ??= d.labels?.[f.k] ?? f.k; f.src ??= d.sources?.[f.k] ?? ''; }
+    return d;
+  }).catch(() => null);
   return expertP;
 }

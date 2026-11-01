@@ -58,6 +58,10 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
+/** expert zone + optional expert trade (Entry / SL / TP), drawn as separate dashed purple overlays */
+export interface ExpertOverlay { top: number; bottom: number; start: string; score: number | null; trade?: { entry: number; sl: number; tp: number; rr: number | null } | null }
+const EXPERT_TRADE_W = (weekly: boolean) => (weekly ? 8 : 14);
+
 export class ChartView {
   chart: IChartApi;
   candles: ISeriesApi<'Candlestick'>;
@@ -338,8 +342,8 @@ export class ChartView {
 
   /** Expert zone overlay (Eyal 2026-11-01): a separate, read-only dashed box (purple) from the base start to the right
    *  edge, label 'אזור מומחים <score>'. Not a drawing: no handles, no selection, never saved, never part of PASS / R:R. */
-  expert: { top: number; bottom: number; start: string; score: number | null } | null = null;
-  setExpert(e: { top: number; bottom: number; start: string; score: number | null } | null) {
+  expert: ExpertOverlay | null = null;
+  setExpert(e: ExpertOverlay | null) {
     this.expert = e;
     this.lastKey = '';
   }
@@ -357,6 +361,7 @@ export class ChartView {
     for (const d of this.drawings) [d.zone_top, d.zone_bottom, d.entry, d.stop, d.target].forEach((x) => x != null && lv.push(+x));
     lv.push(...this.extraLevels.filter((x) => Number.isFinite(x)));
     if (this.expert) lv.push(this.expert.top, this.expert.bottom);
+    if (this.expert?.trade) lv.push(this.expert.trade.sl, this.expert.trade.tp);
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
         const r = orig();
@@ -434,6 +439,14 @@ export class ChartView {
     const w = Math.max(this.weekly ? 6 : 10, Math.min(sp.e - sp.s, LONG_W_BARS));
     return { s: minS, e: minS + w, shifted: true };
   }
+  /** Expert trade box (bar indices): right of the last candle like the Long box (longGapBars), and right of any Long
+   *  box that reaches the present so the two never overlap. */
+  expertTradeSpan(): { s: number; e: number } | null {
+    const n = this.bars.length; if (!n || !this.expert?.trade) return null;
+    let s = n - 1 + longGapBars(this.weekly);
+    for (const d of this.drawings) if (d.kind === 'long') { const sp = this.longDisplaySpan(d); if (sp.e >= n - 1) s = Math.max(s, sp.e + 1); }
+    return { s, e: s + EXPERT_TRADE_W(this.weekly) };
+  }
   /** Make the shifted boxes visible once after a stock / timeframe opens (the default view ends a few bars after the
    *  last candle): widen the visible range to the right only, and only while the view still shows the present. */
   private revealLongs = false;
@@ -446,6 +459,8 @@ export class ChartView {
       // show at least ~18% of the view (min 8 weekly / 12 daily bars) of the box, so its price labels fit inside it
       if (sp.e >= n - 1) need = Math.max(need, sp.s + Math.min(sp.e - sp.s, Math.max(this.weekly ? 8 : 12, 0.18 * (+lr.to - +lr.from))) + 1);
     }
+    const xs = this.expertTradeSpan();
+    if (xs) need = Math.max(need, xs.e + 1);
     this.revealLongs = false;
     if (need > +lr.to && +lr.to >= n - 1) ts.setVisibleLogicalRange({ from: +lr.from, to: need });
   }
@@ -481,7 +496,7 @@ export class ChartView {
   }
 
   render() {
-    if (this.revealLongs && this.drawings.some((d) => d.kind === 'long')) { this.revealLongsNow(); this.lastKey = ''; return; }
+    if (this.revealLongs && (this.drawings.some((d) => d.kind === 'long') || this.expert?.trade)) { this.revealLongsNow(); this.lastKey = ''; return; }
     const W = this.paneW(), H = this.paneH();
     // ATR box fills the corner under the price axis
     const psW = this.chart.priceScale('right').width();
@@ -533,6 +548,26 @@ export class ChartView {
         s += `<g class="expert" pointer-events="none"><rect x="${ex1}" y="${y}" width="${Math.max(0, W - ex1)}" height="${h}" fill="rgba(186,104,200,.12)" stroke="#ba68c8" stroke-width="1.5" stroke-dasharray="7 4"/>` +
           `<rect x="${tx}" y="${y + h + 2}" width="${w}" height="16" rx="4" fill="rgba(74,20,90,.85)" stroke="#ba68c8" stroke-width="1"/>` +
           `<text x="${tx + w / 2}" y="${y + h + 14}" text-anchor="middle" style="fill:#e1bee7;font-size:11px">${esc(txt)}</text></g>`;
+      }
+      // expert trade (Entry / SL / TP): dashed purple outline, green-ish target and red-ish risk, labelled 'מומחים R:R'
+      const sp = this.expertTradeSpan(), tr = e.trade;
+      if (sp && tr) {
+        const ts = this.chart.timeScale(), a = ts.logicalToCoordinate(sp.s as any), b2 = ts.logicalToCoordinate(sp.e as any);
+        const ye = this.Y(tr.entry), ys = this.Y(tr.sl), yt = this.Y(tr.tp);
+        if (a != null && b2 != null && ye != null && ys != null && yt != null && b2 > 0 && a < W) {
+          const x1 = Math.max(-2, a), x2 = Math.min(W + 2, b2), bw = Math.max(0, x2 - x1);
+          const rr = 'מומחים R:R ' + (tr.rr != null ? tr.rr.toFixed(2) : '—');
+          const lw = rr.length * 6.4 + 12, lx = Math.max(2, Math.min(W - lw - 2, x2 - lw));
+          const val = (yy: number, t: string) => `<text x="${x1 + 4}" y="${yy}" style="fill:#e1bee7;font-size:10.5px" direction="ltr">${esc(t)}</text>`;
+          s += `<g class="experttrade" pointer-events="none">` +
+            `<rect x="${x1}" y="${Math.min(yt, ye)}" width="${bw}" height="${Math.max(1, Math.abs(ye - yt))}" fill="rgba(38,166,154,.10)" stroke="#ba68c8" stroke-width="1.5" stroke-dasharray="7 4"/>` +
+            `<rect x="${x1}" y="${Math.min(ye, ys)}" width="${bw}" height="${Math.max(1, Math.abs(ys - ye))}" fill="rgba(239,83,80,.10)" stroke="#ba68c8" stroke-width="1.5" stroke-dasharray="7 4"/>` +
+            `<line x1="${x1}" x2="${x2}" y1="${ye}" y2="${ye}" stroke="#ba68c8" stroke-width="1.5"/>` +
+            `<rect x="${lx}" y="${yt - 20}" width="${lw}" height="16" rx="4" fill="rgba(74,20,90,.85)" stroke="#ba68c8" stroke-width="1"/>` +
+            `<text x="${lx + lw / 2}" y="${yt - 8}" text-anchor="middle" style="fill:#e1bee7;font-size:11px">${esc(rr)}</text>` +
+            (bw > 50 ? val(yt + 13, 'TP ' + tr.tp.toFixed(2)) + val(ye - 4, 'E ' + tr.entry.toFixed(2)) + val(ys - 4, 'SL ' + tr.sl.toFixed(2)) : '') +
+            `</g>`;
+        }
       }
     }
     for (const d of this.drawings) {

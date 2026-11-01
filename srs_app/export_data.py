@@ -558,10 +558,14 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         if dc or wc:
             revc[r["ticker"]] = {"d": dc, "w": wc}
     (out / "revc.json").write_text(json.dumps(revc, separators=(",", ":")))
-    try:  # expert zone overlay for the CURRENT starred list (Eyal 2026-11-01; app_state.json synced from Supabase watchlist)
-        from srs_app.expert_zone import sync_starred
-        if sync_starred(out, report_date, fetch=True):
-            print("  [app data] expert zones = starred list (separate overlay, not a PASS input)")
+    try:  # expert zone overlay for EVERY exported ticker + the starred list (Eyal 2026-11-01 20:47); separate file,
+        # never a drawing / PASS / R:R / sizing / filter input
+        import time as _t
+        from srs_app.expert_zone import sync_all
+        _t0 = _t.time()
+        _ez = json.loads(sync_all(out, report_date).read_text())["tickers"]
+        print(f"  [app data] expert zones: {sum(1 for v in _ez.values() if v.get('ok'))} of {len(_ez)} tickers "
+              f"({_t.time() - _t0:.1f}s, separate overlay)")
     except Exception as e:  # never block the export
         print(f"  [app data] expert zones skipped: {e}")
     try:

@@ -185,3 +185,37 @@ def test_two_consecutive_closes_below_break_the_level():
     assert not (r["ok"] and r["top"] == r0["top"])
     if not r["ok"]:
         assert "broken" in r["reason"]
+
+
+def test_sync_all_covers_every_exported_ticker_and_stars(tmp_path, monkeypatch):
+    (tmp_path / "candles").mkdir()
+    for t in ("AAA", "BBB"):
+        (tmp_path / "candles" / f"{t}.json").write_text(json.dumps({"d": daily(base_path())}))
+    (tmp_path / "candles" / "BAD.json").write_text('{"d": [["x"]]}')           # broken file -> reason, not a crash
+    st = tmp_path / "app_state.json"
+    st.write_text(json.dumps({"watchlist": ["OUT"]}))                        # starred, outside the universe
+    monkeypatch.setattr(E, "_yf_rows", lambda t: daily(base_path()) if t == "OUT" else None)
+    doc = json.loads(E.sync_all(tmp_path, state_path=str(st)).read_text())
+    assert set(doc["tickers"]) == {"AAA", "BBB", "BAD", "OUT"}
+    assert doc["tickers"]["OUT"]["ok"] and doc["tickers"]["AAA"]["ok"]
+    assert doc["tickers"]["BAD"]["ok"] is False and doc["tickers"]["BAD"]["reason"]
+    f = doc["tickers"]["AAA"]["factors"][0]
+    assert set(f) == {"k", "pts", "max", "val"} and doc["labels"][f["k"]] and doc["sources"][f["k"]]   # slim file
+
+
+def test_expert_trade_entry_sl_tp():
+    r = E.find(daily(base_path()))
+    tr = r["trade"]
+    assert tr["entry"] == r["top"]                                   # Bulkowski: close back above the pattern top
+    assert tr["sl"] < min(r["bottom"], tr["retest_low"])             # under the retest low and the zone
+    assert tr["sl"] <= tr["entry"] * 0.96 + 1e-6                     # Bulkowski: never tighter than 4%
+    assert tr["tp"] == r["post_high"]                                # IBD: the pre-pullback high
+    assert abs(tr["rr"] - (tr["tp"] - tr["entry"]) / (tr["entry"] - tr["sl"])) < 0.02
+    assert tr["tp_mm"] > r["top"] and isinstance(tr["confirmed"], bool)
+
+
+def test_falling_30_week_ma_is_not_a_retest():
+    """Stage 3/4 (Weinstein): a spike then a crash back to the old base top is not a retest even if the base held."""
+    path = base_path()[:-4] + rally(3, 115, 200) + [(200, 201, 199, 200)] * 20 + rally(12, 200, 102)
+    r = E.find(daily(path))
+    assert not r["ok"] and r["reason"].startswith("30-week MA falling")

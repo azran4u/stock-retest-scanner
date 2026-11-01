@@ -42,6 +42,10 @@ ok(F.matches(base, { dvol: { on: true } }) && !F.matches(base, { dvol: { on: tru
 ok(F.matches(base, { smooth: { on: true } }) && !F.matches(base, { smooth: { on: true, x: 8 } }), 'smooth ≥ N');
 ok(F.matches(base, { mine: { on: true }, tradable: { on: true }, fromAbove: { on: true }, noInvHammer: { on: true }, noRedVol: { on: true }, history: { on: true } }), 'boolean toggles');
 ok(!F.matches(base, { fib: { on: true } }) && !F.matches(base, { starred: { on: true } }), 'fib / starred off');
+// expert zone (Eyal 2026-11-01): has one (score >= X, default 0); none / not loaded fails; never touches status
+ok(F.matches(f({ expertScore: 0 }), { expert: { on: true } }) && !F.matches(f({ expertScore: null }), { expert: { on: true } }) && !F.matches(base, { expert: { on: true } }), 'expert zone: has one (score 0 counts), none fails');
+ok(F.matches(f({ expertScore: 60 }), { expert: { on: true, x: 50 } }) && !F.matches(f({ expertScore: 45 }), { expert: { on: true, x: 50 } }), 'expert zone min score');
+ok(F.matches(f({ expertScore: null }), { expert: { on: false, x: 50 } }), 'expert filter off = ignored');
 ok(F.activeCount({}) === 0 && F.activeCount({ rr: { on: true }, unfit: { on: true, mode: 'hide' }, sector: { on: true, v: '' } }) === 1
   && F.activeCount({ unfit: { on: true, mode: 'only' }, earn: { on: true } }) === 2, 'active count');
 // Eyal 2026-10-26: no earnings in any source (ETF) passes 'days to earnings'; a known date within 14d still fails
