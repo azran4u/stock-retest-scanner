@@ -336,6 +336,14 @@ export class ChartView {
   /** called after the user may have changed the view (pan / zoom / price-axis drag) */
   onViewChange: (() => void) | null = null;
 
+  /** Expert zone overlay (Eyal 2026-11-01): a separate, read-only dashed box (purple) from the base start to the right
+   *  edge, label 'אזור מומחים <score>'. Not a drawing: no handles, no selection, never saved, never part of PASS / R:R. */
+  expert: { top: number; bottom: number; start: string; score: number | null } | null = null;
+  setExpert(e: { top: number; bottom: number; start: string; score: number | null } | null) {
+    this.expert = e;
+    this.lastKey = '';
+  }
+
   setDrawings(ds: Drawing[], selected: string | null) {
     if (this.dragging) return; // keep the drag copy until pointerup
     this.drawings = ds.map((d) => ({ ...d }));
@@ -348,6 +356,7 @@ export class ChartView {
     const lv: number[] = [];
     for (const d of this.drawings) [d.zone_top, d.zone_bottom, d.entry, d.stop, d.target].forEach((x) => x != null && lv.push(+x));
     lv.push(...this.extraLevels.filter((x) => Number.isFinite(x)));
+    if (this.expert) lv.push(this.expert.top, this.expert.bottom);
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
         const r = orig();
@@ -465,7 +474,7 @@ export class ChartView {
     const lr = this.chart.timeScale().getVisibleLogicalRange();
     const key = [lr?.from, lr?.to, this.Y(this.bars[this.bars.length - 1].close), this.Y((this.bars[this.bars.length - 1].close) * 1.1),
       this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings), this.dragging?.key, this.atrVal,
-      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag, this.earnings.length, this.earnings[0]?.d, this.earnTipIdx, this.weekly].join('|');
+      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag, this.earnings.length, this.earnings[0]?.d, this.earnTipIdx, this.weekly, JSON.stringify(this.expert)].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.render();
@@ -513,6 +522,19 @@ export class ChartView {
         : `<g class="h" data-id="${id}" data-key="${key}"><circle cx="${x}" cy="${yy}" r="22" fill="transparent"/><circle cx="${x}" cy="${yy}" r="8" fill="${color}" stroke="#fff" stroke-width="2"/></g>`);
     };
 
+    // expert zone first (under his / the bot's drawings): dashed purple outline, light fill, no pointer events
+    if (this.expert) {
+      const e = this.expert, ya = this.Y(e.top), yb = this.Y(e.bottom);
+      if (ya != null && yb != null) {
+        const xs0 = this.X(this.weekly ? mondayOf(e.start) : e.start);
+        const ex1 = clampX(xs0, 0), y = Math.min(ya, yb), h = Math.max(2, Math.abs(yb - ya));
+        const txt = 'אזור מומחים' + (e.score != null ? ' ' + e.score : '');
+        const w = txt.length * 6.4 + 12, tx = Math.max(2, Math.min(W - w - 2, ex1 + 4));
+        s += `<g class="expert" pointer-events="none"><rect x="${ex1}" y="${y}" width="${Math.max(0, W - ex1)}" height="${h}" fill="rgba(186,104,200,.12)" stroke="#ba68c8" stroke-width="1.5" stroke-dasharray="7 4"/>` +
+          `<rect x="${tx}" y="${y + h + 2}" width="${w}" height="16" rx="4" fill="rgba(74,20,90,.85)" stroke="#ba68c8" stroke-width="1"/>` +
+          `<text x="${tx + w / 2}" y="${y + h + 14}" text-anchor="middle" style="fill:#e1bee7;font-size:11px">${esc(txt)}</text></g>`;
+      }
+    }
     for (const d of this.drawings) {
       const sel = d.id === this.selected;
       const bot = d.source === 'bot';

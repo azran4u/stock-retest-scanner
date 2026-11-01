@@ -417,3 +417,14 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .own bdi { color: var(--fg); font-weight: 600; }
 #tkown { margin-inline-start: 6px; white-space: nowrap; font-size: 12px; }
 @media (max-width: 600px) { #tkown { display: block; margin: 0; line-height: 1.2; } }
+/* expert zone (Eyal 2026-11-01): separate overlay + score breakdown */
+.badge.b-expert { background: rgba(186,104,200,.22); color: #e1bee7; border: 1px dashed #ba68c8; }
+.badge.b-expert.off { opacity: .55; }
+.chip.ind .xico { display: inline-block; width: 12px; height: 8px; border: 1.5px dashed #ba68c8; background: rgba(186,104,200,.15); margin-inline-end: 4px; vertical-align: middle; }
+.expertbox h3 .badge { margin-inline-start: 6px; }
+.expertbox .exptbl { overflow-x: auto; margin: 6px 0; -webkit-overflow-scrolling: touch; }
+.expertbox table { border-collapse: collapse; width: 100%; }
+.expertbox th, .expertbox td { text-align: start; padding: 3px 6px; border-bottom: 1px solid #2a2e39; vertical-align: top; }
+.expertbox td.num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.expertbox td.src { color: #787b86; font-size: 11px; min-width: 160px; }
+.expertbox b.ok { color: #26a69a; } .expertbox b.warn { color: #ffa726; }

@@ -114,3 +114,19 @@ export function rr(entry: number | null | undefined, stop: number | null | undef
   if (risk <= 0) return null;
   return (target - entry) / risk;
 }
+
+/** Expert zone per starred ticker (Eyal 2026-11-01, srs_app/expert_zone.py -> expert_zones.json): the base top of the last
+ *  breakout (wick -> body) + a 0-100 significance score with its factors. A separate overlay only: never a drawing,
+ *  never part of PASS / sizing / R:R / filters. */
+export interface ExpertFactor { k: string; he: string; pts: number; max: number; val: string; src: string }
+export interface ExpertZone {
+  ok: boolean; reason?: string; top?: number; bottom?: number; atr_w?: number; base_start?: string; pivot_week?: string;
+  breakout_week?: string; breakout_close?: number; post_high?: number; price?: number; dist_atr?: number;
+  width_note?: string | null; score?: number; factors?: ExpertFactor[];
+}
+export interface ExpertDoc { rule_version: string; generated_at: string; tickers: Record<string, ExpertZone> }
+let expertP: Promise<ExpertDoc | null> | null = null;
+export function loadExpert(): Promise<ExpertDoc | null> {
+  expertP ??= fetcher('expert_zones.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return expertP;
+}

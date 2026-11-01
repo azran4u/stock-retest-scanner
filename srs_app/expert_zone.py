@@ -1,0 +1,326 @@
+"""Expert zone ('אזור מומחים', Eyal 2026-11-01): a SECOND, independent support zone for the starred stocks, computed
+by the textbook rules for the level a weekly retest comes back to. Informational overlay only: it never replaces,
+edits or moves his / TV / bot zone and Long drawings, it is stored in its own file (app/data/expert_zones.json, NOT
+the drawings table) and it does not count toward PASS, sizing, R:R or any filter.
+
+Sources (research page 'חישוב הרמה: כללי המומחים מול הכלל שלנו'):
+  level = the top of the base / the highest high of the pattern that was broken (Weinstein, Bulkowski; IBD: the last
+  resistance / pivot before the breakout); a breakout is a weekly CLOSE above it (Weinstein; Murphy: Friday close).
+  zone, not a line: from the highest wick (outer edge) down to the highest body of the bars that made the top
+  (inner edge) (practitioner convention, LuxAlgo / getalphacharts), width sanity 0.25..0.5 weekly ATR.
+  broken only on a weekly close more than 3% under the zone (Murphy: 3% for major levels; Weinstein: weekly close).
+
+RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, only COMPLETED weeks for structure):
+  A  = Wilder ATR(14) of the weekly bars at the last completed week (same as the app's ATR(W)).
+  1. Breakout candidates, newest first, within the last LOOKBACK_W (156) weeks:
+       week b is a breakout when close[b] > R  and  close[b-1] <= R, where
+       R = max high of the BASE_W (26) weeks before b, made at week p (the base top, last occurrence if tied),
+       and the top is at least MIN_BASE_GAP (2) weeks before b (at least one full week failed under it -> a base / handle,
+       not a bar-after-bar run of new highs; IBD handles are 1-2 weeks).
+  2. Zone of a candidate: top = R (the highest wick).
+       cluster = weeks in [b-26, b-1] whose high >= top - 0.5 A (the bars that made the resistance)
+       bottom  = the highest body top max(open, close) of the cluster
+       width sanity: top - bottom < 0.25 A -> bottom = top - 0.25 A ('widened'); > 0.5 A -> top - 0.5 A ('clamped').
+  3. A candidate is THE expert zone when (all of):
+       moved away : the highest high from b on >= top + 1 A        (Edwards & Magee: price must move away first)
+       not broken : no completed weekly close after b < bottom x 0.97 (Murphy 3% / Weinstein weekly close)
+       pulled back toward it from above: last close <= post-breakout high - 1 A, and last close <= top + 2 A
+     The newest candidate that passes wins. None -> 'no expert level' with the reason of the newest candidate
+     (no breakout in 3 years / broken / price too far above / never moved away / no pullback yet).
+
+SIGNIFICANCE SCORE 0-100 (transparent: each factor's points, max, measured value and source):
+  time      20  weeks of the base whose range overlaps the zone, 2.5 pts/week (Murphy: longer = stronger)
+  touches   15  separate visits of the top (runs of cluster weeks): 1->4, 2->10, 3+->15 (StockCharts; Investopedia)
+  volume    10  avg volume of the zone weeks / avg volume of the base: >=1.3 ->10, >=1.0 ->6, else 2
+                (Murphy, Edwards & Magee: volume is the first criterion; Bulkowski found the opposite, weighted lightly)
+  breakout  20  breakout-week volume / 10-week average: >=2 ->10 (Weinstein >=2x), >=1.5 ->6, >=1 ->3; close >= 1%
+                above the top +5 (Murphy 1%); close in the upper half of the week's range +5
+  retest    10  this is visit no. 1 ->10, 2 ->7, 3 ->3, 4+ ->0 (IBD: the 1st and 2nd pullbacks are the best)
+  recency    5  weeks since the breakout <= 13 ->5, <= 26 ->3, <= 52 ->1 (Murphy; Bulkowski: age does not matter -> light)
+  round      5  a round number (step by price) inside the zone +/- 0.1 A (Murphy; Bulkowski)
+  gap        5  a daily gap up in the breakout week or the next one that starts at the zone (Murphy: breakaway gap = support)
+  confluence 10 30-week SMA inside the zone +/- 0.5 A ->5 (Weinstein); Fib 0.382-0.618 of base low -> post-breakout
+                high overlaps the zone ->5 (Murphy)
+
+  python -m srs_app.expert_zone --tickers ARM,BNY            # -> app/data/expert_zones.json
+  python -m srs_app.expert_zone --refresh                      # recompute the tickers already in the file (nightly)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
+
+RULE_VERSION = "expert-v1-2026-11-01"
+LOOKBACK_W = 156
+BASE_W = 26
+MIN_BASE_GAP = 2
+CLUSTER_ATR = 0.5
+MIN_W_ATR, MAX_W_ATR = 0.25, 0.5
+MOVE_AWAY_ATR = 1.0
+BREAK_PCT = 0.03
+PULLBACK_ATR = 1.0
+NEAR_ATR = 2.0
+ATR_N = 14
+
+SRC = {
+    "level": "Weinstein; Bulkowski; IBD (pivot = last resistance before the breakout)",
+    "time": "Murphy: the longer price traded at a level, the stronger it is",
+    "touches": "StockCharts / Investopedia: more separate tests = more significant (Bulkowski: not proven)",
+    "volume": "Murphy; Edwards & Magee: volume at the level is the first criterion (Bulkowski disagrees)",
+    "breakout": "Weinstein: breakout volume >= 2x average; Murphy: close >= 1% beyond the level",
+    "retest": "IBD: the 1st and 2nd pullbacks to the pivot are the best, 3rd+ weaker",
+    "recency": "Murphy: recent trading at the level = stronger (Bulkowski: age does not matter)",
+    "round": "Murphy; Bulkowski: round numbers stop moves",
+    "gap": "Murphy: a breakaway gap acts as support on the pullback",
+    "confluence": "Weinstein: 30-week MA; Murphy: Fib 38-62% retracement",
+}
+LABEL_HE = {
+    "time": "שבועות באזור", "touches": "נגיעות נפרדות", "volume": "נפח ברמה", "breakout": "איכות הפריצה",
+    "retest": "מספר הבדיקה", "recency": "עדכניות", "round": "מספר עגול", "gap": "גאפ ברמה", "confluence": "חפיפה (MA30 / פיבו)",
+}
+
+
+def _monday(d: str) -> str:
+    t = date.fromisoformat(d[:10])
+    return (t - timedelta(days=t.weekday())).isoformat()
+
+
+def weekly(daily: Sequence[Sequence[Any]]) -> List[Dict[str, Any]]:
+    """Daily rows [date, o, h, l, c, v] -> Mon-Fri weekly bars (time = Monday) with volume and the daily rows kept."""
+    out: List[Dict[str, Any]] = []
+    for r in daily:
+        d, o, h, l, c = str(r[0])[:10], float(r[1]), float(r[2]), float(r[3]), float(r[4])
+        v = float(r[5]) if len(r) > 5 and r[5] is not None else 0.0
+        w = _monday(d)
+        if not out or out[-1]["time"] != w:
+            out.append({"time": w, "open": o, "high": h, "low": l, "close": c, "volume": v, "last": d, "days": [r]})
+            continue
+        b = out[-1]
+        b["high"], b["low"], b["close"], b["last"] = max(b["high"], h), min(b["low"], l), c, d
+        b["volume"] += v
+        b["days"].append(r)
+    return out
+
+
+def wilder_atr(bars: Sequence[Dict[str, Any]], n: int = ATR_N) -> Optional[float]:
+    if len(bars) < n + 1:
+        return None
+    a = 0.0
+    for i in range(1, len(bars)):
+        h, l, pc = bars[i]["high"], bars[i]["low"], bars[i - 1]["close"]
+        tr = max(h - l, abs(h - pc), abs(l - pc))
+        a = a + tr / n if i <= n else (a * (n - 1) + tr) / n
+    return a
+
+
+def week_complete(last_daily: str, asof: Optional[str] = None) -> bool:
+    """The last weekly bar is complete when its last session is a Friday, or `asof` is in a later week."""
+    if asof and _monday(asof) > _monday(last_daily):
+        return True
+    return date.fromisoformat(last_daily[:10]).weekday() == 4
+
+
+def round_step(p: float) -> float:
+    return 1.0 if p < 25 else 5.0 if p < 100 else 10.0 if p < 500 else 50.0
+
+
+def _runs(idx: Sequence[int]) -> int:
+    n, prev = 0, None
+    for i in idx:
+        if prev is None or i != prev + 1:
+            n += 1
+        prev = i
+    return n
+
+
+def _zone_of(W: List[Dict[str, Any]], b: int, A: float) -> Dict[str, Any]:
+    lo = max(0, b - BASE_W)
+    R = max(W[k]["high"] for k in range(lo, b))
+    p = max(k for k in range(lo, b) if W[k]["high"] == R)
+    cluster = [k for k in range(lo, b) if W[k]["high"] >= R - CLUSTER_ATR * A]
+    body = max(max(W[k]["open"], W[k]["close"]) for k in cluster)
+    body = min(body, R)
+    width_note = None
+    if R - body < MIN_W_ATR * A:
+        body, width_note = R - MIN_W_ATR * A, "widened"
+    elif R - body > MAX_W_ATR * A:
+        body, width_note = R - MAX_W_ATR * A, "clamped"
+    return {"top": R, "bottom": body, "pivot": p, "cluster": cluster, "base_lo": lo, "width_note": width_note}
+
+
+def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str, Any]:
+    """The expert zone + significance score of one ticker (see module doc). {'ok': False, 'reason': ...} when none."""
+    Wall = weekly(daily)
+    if len(Wall) < BASE_W + 10:
+        return {"ok": False, "reason": "short history"}
+    done = week_complete(Wall[-1]["last"], asof)
+    W = Wall if done else Wall[:-1]           # structure from completed weeks only
+    n = len(W)
+    A = wilder_atr(W)
+    if not A:
+        return {"ok": False, "reason": "short history"}
+    last = Wall[-1]["close"]                  # current price (the running week counts for 'where is price now')
+    first_reason = None
+    for b in range(n - 1, max(BASE_W, n - LOOKBACK_W) - 1, -1):
+        R = max(W[k]["high"] for k in range(b - BASE_W, b))
+        if not (W[b]["close"] > R >= W[b - 1]["close"]):
+            continue
+        z = _zone_of(W, b, A)
+        if b - z["pivot"] < MIN_BASE_GAP:
+            continue
+        top, bot = z["top"], z["bottom"]
+        post_hi = max(x["high"] for x in Wall[b:])
+        reason = None
+        if post_hi < top + MOVE_AWAY_ATR * A:
+            reason = "never moved away (high after the breakout < top + 1 ATR)"
+        elif any(W[k]["close"] < bot * (1 - BREAK_PCT) for k in range(b + 1, n)) or last < bot * (1 - BREAK_PCT):
+            reason = "broken (weekly close > 3% under the zone)"
+        elif last > post_hi - PULLBACK_ATR * A:
+            reason = "no pullback yet (price within 1 ATR of the post-breakout high)"
+        elif last > top + NEAR_ATR * A:
+            reason = f"price {(last - top) / A:.1f} ATR above the base top"
+        if reason:
+            first_reason = first_reason or f"{reason}; latest breakout {W[b]['time']} over {top:.2f}"
+            continue
+        return _result(Wall, W, b, z, A, last, post_hi, daily)
+    return {"ok": False, "reason": first_reason or "no breakout above a 26-week base in 3 years", "atr_w": round(A, 4)}
+
+
+def _avg(xs: Sequence[float]) -> float:
+    xs = [x for x in xs if x is not None]
+    return sum(xs) / len(xs) if xs else 0.0
+
+
+def _sma30_close(Wall: List[Dict[str, Any]]) -> Optional[float]:
+    if len(Wall) < 30:
+        return None
+    return _avg([x["close"] for x in Wall[-30:]])
+
+
+def _result(Wall, W, b, z, A, last, post_hi, daily) -> Dict[str, Any]:
+    top, bot, lo = z["top"], z["bottom"], z["base_lo"]
+    n = len(W)
+    base = range(lo, b)
+    zone_w = [k for k in base if W[k]["low"] <= top and W[k]["high"] >= bot]
+    F: List[Dict[str, Any]] = []
+
+    def add(k, pts, mx, val):
+        F.append({"k": k, "he": LABEL_HE[k], "pts": pts, "max": mx, "val": val, "src": SRC[k]})
+
+    add("time", min(20.0, 2.5 * len(zone_w)), 20, f"{len(zone_w)} weeks")
+    t = _runs(z["cluster"])
+    add("touches", 15 if t >= 3 else 10 if t == 2 else 4, 15, f"{t}")
+    vb = _avg([W[k]["volume"] for k in base])
+    vz = _avg([W[k]["volume"] for k in zone_w])
+    vr = vz / vb if vb else 0.0
+    add("volume", 10 if vr >= 1.3 else 6 if vr >= 1.0 else 2, 10, f"x{vr:.2f}")
+    v10 = _avg([W[k]["volume"] for k in range(max(0, b - 10), b)])
+    bv = W[b]["volume"] / v10 if v10 else 0.0
+    beyond = (W[b]["close"] - top) / top
+    rng = W[b]["high"] - W[b]["low"]
+    upper = rng > 0 and (W[b]["close"] - W[b]["low"]) / rng >= 0.5
+    pts = (10 if bv >= 2 else 6 if bv >= 1.5 else 3 if bv >= 1 else 0) + (5 if beyond >= 0.01 else 0) + (5 if upper else 0)
+    add("breakout", pts, 20, f"vol x{bv:.2f}, close +{beyond * 100:.1f}%{', upper half' if upper else ''}")
+    # retest number: runs of weeks after the breakout whose low came within 0.25 ATR of the top (from above);
+    # if price is not at the zone now, the next visit counts as one more
+    near = [k for k in range(b + 1, len(Wall)) if Wall[k]["low"] <= top + 0.25 * A]
+    visits = _runs(near)
+    at_now = bool(near) and near[-1] == len(Wall) - 1
+    no = visits if at_now else visits + 1
+    add("retest", 10 if no == 1 else 7 if no == 2 else 3 if no == 3 else 0, 10, f"#{no}")
+    age = n - 1 - b
+    add("recency", 5 if age <= 13 else 3 if age <= 26 else 1 if age <= 52 else 0, 5, f"{age} weeks since breakout")
+    st = round_step(top)
+    rn = [st * k for k in range(int(math.floor((bot - 0.1 * A) / st)), int(math.ceil((top + 0.1 * A) / st)) + 1)
+          if bot - 0.1 * A <= st * k <= top + 0.1 * A]
+    add("round", 5 if rn else 0, 5, f"{rn[0]:g}" if rn else "-")
+    gap = None
+    days = [d for k in range(b, min(b + 2, len(Wall))) for d in Wall[k]["days"]]
+    first = Wall[b]["days"][0]
+    prev_days = [r for r in daily if str(r[0])[:10] < str(first[0])[:10]]
+    seq = prev_days[-1:] + days
+    for i in range(1, len(seq)):
+        ph, l = float(seq[i - 1][2]), float(seq[i][3])
+        if l > ph and ph <= top + 0.5 * A and l >= bot:
+            gap = str(seq[i][0])[:10]
+            break
+    add("gap", 5 if gap else 0, 5, gap or "-")
+    conf = 0
+    parts = []
+    ma = _sma30_close(Wall)
+    if ma is not None and bot - 0.5 * A <= ma <= top + 0.5 * A:
+        conf += 5
+        parts.append(f"MA30 {ma:.2f}")
+    sw_lo = min(W[k]["low"] for k in base)
+    f38, f62 = post_hi - 0.382 * (post_hi - sw_lo), post_hi - 0.618 * (post_hi - sw_lo)
+    if f62 <= top and f38 >= bot:
+        conf += 5
+        parts.append(f"Fib {f62:.2f}-{f38:.2f}")
+    add("confluence", conf, 10, ", ".join(parts) or (f"MA30 {ma:.2f} (outside)" if ma is not None else "-"))
+    score = int(round(sum(f["pts"] for f in F)))
+    start = W[min(z["cluster"])]["time"]
+    return {
+        "ok": True, "top": round(top, 2), "bottom": round(bot, 2), "atr_w": round(A, 4),
+        "base_start": start, "pivot_week": W[z["pivot"]]["time"], "breakout_week": W[b]["time"],
+        "breakout_close": round(W[b]["close"], 2), "post_high": round(post_hi, 2), "price": round(last, 2),
+        "dist_atr": round((last - top) / A, 2) if last > top else (0.0 if last >= bot else round((last - bot) / A, 2)),
+        "width_note": z["width_note"], "score": score, "factors": F,
+    }
+
+
+def overlap(a_top: float, a_bot: float, b_top: Optional[float], b_bot: Optional[float]) -> Optional[bool]:
+    if b_top is None or b_bot is None:
+        return None
+    return min(a_top, max(b_top, b_bot)) >= max(a_bot, min(b_top, b_bot))
+
+
+def build(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for t in tickers:
+        f = data_dir / "candles" / f"{t}.json"
+        if not f.exists():
+            out[t] = {"ok": False, "reason": "no candles"}
+            continue
+        try:
+            out[t] = find(json.loads(f.read_text())["d"], asof)
+        except Exception as e:  # never block the export
+            out[t] = {"ok": False, "reason": f"error: {e}"}
+    return out
+
+
+def write(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None) -> Path:
+    p = data_dir / "expert_zones.json"
+    doc = {"rule_version": RULE_VERSION, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "tickers": build(sorted(set(tickers)), data_dir, asof)}
+    p.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+    return p
+
+
+def refresh(data_dir: Path, asof: Optional[str] = None) -> Optional[Path]:
+    """Nightly: recompute the tickers already in expert_zones.json (the starred set it was built for)."""
+    p = data_dir / "expert_zones.json"
+    if not p.exists():
+        return None
+    return write(list(json.loads(p.read_text()).get("tickers", {})), data_dir, asof)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tickers", default="")
+    ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--data", default=str(Path(__file__).resolve().parent.parent / "app" / "data"))
+    ap.add_argument("--asof", default=None)
+    a = ap.parse_args(argv)
+    d = Path(a.data)
+    p = refresh(d, a.asof) if a.refresh else write([t.strip().upper() for t in a.tickers.split(",") if t.strip()], d, a.asof)
+    if p:
+        for t, r in json.loads(p.read_text())["tickers"].items():
+            print(t, (f"{r['bottom']}-{r['top']} score {r['score']} breakout {r['breakout_week']}" if r["ok"] else "no expert level: " + r["reason"]))
+
+
+if __name__ == "__main__":
+    main()

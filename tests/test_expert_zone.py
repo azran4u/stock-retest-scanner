@@ -1,0 +1,121 @@
+"""Expert zone (srs_app/expert_zone.py, Eyal 2026-11-01): base-top level of the last breakout, zone wick -> body,
+validity checks, transparent 0-100 score. Synthetic weekly paths -> one daily bar per weekday."""
+import json
+from datetime import date, timedelta
+
+from srs_app import expert_zone as E
+
+
+def daily(weeks, start=date(2023, 1, 2), vol=None):
+    """weeks = [(open, high, low, close)] -> Mon..Fri daily rows; Mon opens, Tue high, Wed low, Fri closes."""
+    rows, d = [], start
+    for i, (o, h, l, c) in enumerate(weeks):
+        v = (vol[i] if vol else 1000) / 5
+        m = (o + c) / 2
+        for k in range(5):
+            day = d + timedelta(days=k)
+            oo = o if k == 0 else m
+            cc = c if k == 4 else m
+            hh = h if k == 1 else max(oo, cc)
+            ll = l if k == 2 else min(oo, cc)
+            rows.append([day.isoformat(), oo, hh, ll, cc, v])
+        d += timedelta(days=7)
+    return rows
+
+
+def rally(n, a, b):
+    """n weeks drifting from a to b, 2-point ranges (ATR ~ 2-3)."""
+    out = []
+    for i in range(n):
+        c = a + (b - a) * (i + 1) / n
+        o = a + (b - a) * i / n
+        out.append((o, max(o, c) + 1, min(o, c) - 1, c))
+    return out
+
+
+def base_path(pull_to=101.0, after=None):
+    """uptrend -> 12-week base under 100 (top 100 twice) -> breakout close 104 -> run to 115 -> pullback to pull_to."""
+    w = rally(30, 60, 92)
+    base = [(92, 100, 91, 97), (97, 99, 93, 94), (94, 97, 92, 95), (95, 98, 93, 96), (96, 100, 94, 98),
+            (98, 99, 95, 96), (96, 98, 93, 95), (95, 97, 92, 96), (96, 98.5, 94, 97), (97, 99, 95, 98),
+            (98, 99.2, 96, 98.5), (98.5, 99.5, 97, 99)]
+    bo = [(99, 105, 98.5, 104)]
+    run = rally(5, 104, 115)
+    pb = rally(4, 115, pull_to)
+    return w + base + bo + run + pb + (after or [])
+
+
+def test_zone_is_base_top_wick_to_body():
+    rows = daily(base_path())
+    r = E.find(rows)
+    assert r["ok"], r
+    assert r["top"] == 100.0                      # highest wick of the base
+    assert r["bottom"] < r["top"]
+    A = r["atr_w"]
+    assert 0.25 * A - 1e-6 <= r["top"] - r["bottom"] <= 0.5 * A + 1e-6   # width sanity
+    assert r["breakout_week"] == (date(2023, 1, 2) + timedelta(weeks=42)).isoformat()
+    assert 0 <= r["score"] <= 100
+    assert r["score"] == round(sum(f["pts"] for f in r["factors"]))
+    assert {f["k"] for f in r["factors"]} == {"time", "touches", "volume", "breakout", "retest", "recency", "round", "gap", "confluence"}
+    assert sum(f["max"] for f in r["factors"]) == 100
+    assert all(f["src"] for f in r["factors"])
+    t = {f["k"]: f for f in r["factors"]}
+    n = int(t["touches"]["val"])
+    assert n >= 2 and t["touches"]["pts"] == (15 if n >= 3 else 10)     # top visited more than once (separate runs)
+    assert t["round"]["pts"] == 5                                         # 100 is round
+    assert t["retest"]["val"] == "#1"
+
+
+def test_broken_level_gives_no_expert_level():
+    rows = daily(base_path(pull_to=90.0))   # weekly closes > 3% under the zone
+    r = E.find(rows)
+    assert not r["ok"] and "broken" in r["reason"]
+
+
+def test_no_pullback_yet():
+    path = base_path()[:-4] + rally(2, 115, 116)
+    r = E.find(daily(path))
+    assert not r["ok"] and "no pullback" in r["reason"]
+
+
+def test_never_moved_away():
+    w = rally(30, 60, 92)
+    base = [(92, 100, 91, 97)] + [(97, 99, 93, 96)] * 8
+    path = w + base + [(96, 101, 95, 100.5), (100.5, 101, 99, 100)]
+    r = E.find(daily(path))
+    assert not r["ok"]
+
+
+def test_breakout_volume_counts_in_score():
+    p = base_path()
+    v = [1000] * len(p)
+    v[42] = 3000                                    # breakout week 3x the 10-week average
+    r = E.find(daily(p, vol=v))
+    b = {f["k"]: f for f in r["factors"]}["breakout"]
+    assert b["pts"] >= 10 and "x3.00" in b["val"]
+
+
+def test_running_week_not_used_for_structure():
+    rows = daily(base_path())
+    rows = rows[:-2]                                  # last week ends on a Wednesday -> partial
+    assert not E.week_complete(rows[-1][0])
+    r = E.find(rows)
+    assert r["ok"] and r["top"] == 100.0
+
+
+def test_overlap_and_round_step():
+    assert E.overlap(10, 9, 9.5, 8) is True
+    assert E.overlap(10, 9, 8.9, 8) is False
+    assert E.overlap(10, 9, None, None) is None
+    assert E.round_step(12) == 1 and E.round_step(60) == 5 and E.round_step(300) == 10 and E.round_step(700) == 50
+
+
+def test_build_writes_only_requested(tmp_path):
+    (tmp_path / "candles").mkdir()
+    (tmp_path / "candles" / "AAA.json").write_text(json.dumps({"d": daily(base_path())}))
+    p = E.write(["AAA", "ZZZ"], tmp_path)
+    doc = json.loads(p.read_text())
+    assert doc["rule_version"] == E.RULE_VERSION
+    assert set(doc["tickers"]) == {"AAA", "ZZZ"}
+    assert doc["tickers"]["AAA"]["ok"] and doc["tickers"]["ZZZ"] == {"ok": False, "reason": "no candles"}
+    assert E.refresh(tmp_path) == p and set(json.loads(p.read_text())["tickers"]) == {"AAA", "ZZZ"}

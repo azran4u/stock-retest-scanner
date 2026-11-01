@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
-import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, rr, toWeekly, type Spark } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, rr, toWeekly, type Spark, type ExpertDoc, type ExpertZone } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -32,7 +32,7 @@ const S = {
   drawings: new Map<string, Drawing>(),
   labels: [] as Label[],
   commands: [] as Command[],
-  ui: { q: '', f: {} as Filters, list: 'all' as string, lastT: null as string | null, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, earn: true as boolean, ...JSON.parse(localStorage.getItem(LS) || '{}') },
+  ui: { q: '', f: {} as Filters, list: 'all' as string, lastT: null as string | null, fOpen: false as boolean, sort: 'default', tf: 'W' as 'W' | 'D', niWeeks: 8 as number, researchOpen: true as boolean, ma: [] as number[], fib: false, earn: true as boolean, expert: true as boolean, ...JSON.parse(localStorage.getItem(LS) || '{}') },
   ticker: null as string | null,
   selected: null as string | null,
   tap: null as null | { kind: 'zone' | 'long'; pts: number[]; date: string | null },
@@ -878,6 +878,7 @@ function rowHtml(r: Row) {
   const pend = S.commands.filter((c) => c.ticker === r.ticker && c.status === 'pending').length;
   const extra = [
     mine.length ? `<span class="badge b-mine">✎ ${mine.length}</span>` : '',
+    expertBadgeHtml(r.ticker),
     tech ? `<span class="badge ${tech.value === 'yes' ? 'b-pass' : 'b-obs'}">${tech.value === 'yes' ? 'טכנית' : 'לא טכנית'}</span>` : '',
     pend ? `<span class="badge b-review">⌛ ${pend}</span>` : '',
     isNi(r.ticker) && latestLabel(r.ticker, 'not_interesting')?.until ? `<span class="muted small">חוזרת ב-${ddmm(latestLabel(r.ticker, 'not_interesting')!.until)}</span>` : '',
@@ -999,7 +1000,7 @@ function shell() {
 }
 
 // ---------------- stock page section jumps (Eyal 2026-10-27, mobile: the overview / bot box were below the fold) ----------------
-const JUMPS: [string, string][] = [['research', 'סקירה'], ['secDraw', 'שרטוטים'], ['secCmd', '💬 פקודה לבוט'], ['secFib', 'פיבונאצי'], ['secUnfit', 'לא מתאימה'], ['secNote', 'הערה'], ['secData', 'נתונים']];
+const JUMPS: [string, string][] = [['research', 'סקירה'], ['secDraw', 'שרטוטים'], ['secCmd', '💬 פקודה לבוט'], ['secExpert', 'מומחים'], ['secFib', 'פיבונאצי'], ['secUnfit', 'לא מתאימה'], ['secNote', 'הערה'], ['secData', 'נתונים']];
 function jumpTo(id: string) {
   const el = document.getElementById(id); if (!el) return;
   if (el instanceof HTMLDetailsElement) el.open = true;
@@ -1018,7 +1019,8 @@ function indChipsHtml(): string {
   return `<button class="chip ind earnchip ${S.ui.earn ? 'on' : ''}" data-earn="1" title="תאריכי דוחות על הגרף"><i class="eico">E</i>דוחות</button>`
     + SMA_PERIODS.map((n) => `<button class="chip ind ${ma.includes(n) ? 'on' : ''}" data-ma="${n}"><i style="background:${SMA_COLORS[n]}"></i><span dir="ltr">MA${n}</span></button>`).join('')
     + `<button class="chip ind ${all ? 'on' : ''}" data-ma="all">כל הממוצעים</button>`
-    + `<button class="chip ind fibchip ${S.ui.fib ? 'on' : ''}" data-fib="1">פיבונאצי</button>`;
+    + `<button class="chip ind fibchip ${S.ui.fib ? 'on' : ''}" data-fib="1">פיבונאצי</button>`
+    + `<button class="chip ind expchip ${S.ui.expert !== false ? 'on' : ''}" data-expert="1" title="אזור לפי כללי המומחים (שכבה נפרדת, לא משנה את האזור)"><i class="xico"></i>אזור מומחים</button>`;
 }
 function bindIndChips() {
   const bar = $('#indbar'); if (!bar) return;
@@ -1037,6 +1039,8 @@ function bindIndChips() {
   };
   const eb = bar.querySelector<HTMLButtonElement>('[data-earn]');
   if (eb) eb.onclick = () => { S.ui.earn = !S.ui.earn; saveUi(); bindIndChips(); applyEarnings(); };
+  const xb = bar.querySelector<HTMLButtonElement>('[data-expert]');
+  if (xb) xb.onclick = () => { S.ui.expert = S.ui.expert === false; saveUi(); bindIndChips(); applyExpert(); cv?.fitLevels(); };
 }
 let curFib: { t: string; f: Fib | null } | null = null;
 function fibAuto(): Fib | null {
@@ -1146,6 +1150,7 @@ function applyIndicators() {
   // Eyal 2026-10-24: no edit button - whenever the Fib is shown its two end lines (and end dots) are grabbed directly
   cv.setFibEdit(f ? { low: { time: tm(f.low_date), price: f.low }, high: { time: tm(f.high_date), price: f.high } } : null);
   void applyEarnings();
+  applyExpert();
 }
 function fibPanelHtml(r: Row | undefined): string {
   const t = S.ticker; if (!t) return '';
@@ -1461,6 +1466,7 @@ function renderPanel() {
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
     ${researchHtml(S.research.get(t), S.ui.researchOpen !== false)}
+    ${expertPanelHtml(t)}
     ${fibPanelHtml(r)}
     <section class="unfitsec" id="secUnfit">
       <h3>לא מתאימה לשיטה</h3>
@@ -1589,6 +1595,50 @@ async function loadAll() {
   await loadLists();
   loadPositions();
   loadResearch();
+  loadExpertZones();
+}
+// ---------------- expert zone (Eyal 2026-11-01): separate overlay for the starred stocks, never a drawing / PASS input ----------------
+let expertDoc: ExpertDoc | null = null;
+async function loadExpertZones() {
+  expertDoc = await loadExpert();
+  if (!expertDoc) return;
+  if ($('.list')) updateListBody();
+  if (cv && S.ticker) { applyExpert(); renderPanel(); }
+}
+const expertOf = (t: string | null): ExpertZone | null => (t && expertDoc?.tickers?.[t]) || null;
+function applyExpert() {
+  if (!cv) return;
+  const e = expertOf(S.ticker);
+  cv.setExpert(S.ui.expert !== false && e?.ok && e.top != null && e.bottom != null && e.base_start
+    ? { top: e.top, bottom: e.bottom, start: e.base_start, score: e.score ?? null } : null);
+}
+function expertBadgeHtml(t: string): string {
+  const e = expertOf(t); if (!e) return '';
+  return e.ok ? `<span class="badge b-expert" title="אזור מומחים ${e.bottom}–${e.top}, ציון ${e.score}/100 (מידע בלבד)">מומחים ${e.score}</span>`
+    : '<span class="badge b-expert off" title="אין רמת מומחים">מומחים —</span>';
+}
+const EXPERT_REASON_HE: [RegExp, string][] = [
+  [/^broken/, 'הרמה נשברה (סגירה שבועית יותר מ-3% מתחת לאזור)'], [/^never moved away/, 'המחיר לא התרחק מהרמה אחרי הפריצה (פחות מ-1 ATR)'],
+  [/^no pullback/, 'עדיין אין פולבק (המחיר בטווח 1 ATR מהשיא שאחרי הפריצה)'], [/ATR above/, 'המחיר רחוק מעל גג הבסיס (יותר מ-2 ATR)'],
+  [/^no breakout/, 'אין פריצה מעל בסיס של 26 שבועות ב-3 השנים האחרונות'], [/^short history|^no candles/, 'אין מספיק היסטוריה'],
+];
+function expertPanelHtml(t: string): string {
+  const e = expertOf(t); if (!e) return '';
+  const head = `<h3>אזור מומחים <span class="badge b-expert">${e.ok ? `ציון ${e.score}/100` : 'אין רמה'}</span></h3>`;
+  const foot = `<div class="muted small">שכבה נפרדת לקריאה בלבד: לא משנה את האזור הנוכחי ולא נכנסת ל-PASS, ל-R:R, לגודל הפוזיציה או לסינון. ${expertDoc?.rule_version ? `<bdi dir="ltr">${esc(expertDoc.rule_version)}</bdi>` : ''}</div>`;
+  if (!e.ok) {
+    const he = EXPERT_REASON_HE.find(([re]) => re.test(e.reason || ''))?.[1] || '';
+    return `<section class="expertbox" id="secExpert">${head}<div class="small">אין רמת מומחים: ${esc(he)}</div><div class="muted small" dir="ltr">${esc(e.reason || '')}</div>${foot}</section>`;
+  }
+  const z = liveZoneOf(t, S.byT.get(t));
+  const ov = z ? Math.min(e.top!, z.top) >= Math.max(e.bottom!, z.bottom) : null;
+  const rows = (e.factors || []).map((f) => `<tr><td>${esc(f.he)}</td><td dir="ltr" class="num">${+f.pts.toFixed(1)}/${f.max}</td><td dir="ltr" class="val">${esc(f.val)}</td><td class="src" dir="ltr">${esc(f.src)}</td></tr>`).join('');
+  return `<section class="expertbox" id="secExpert">${head}
+    <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi>${e.dist_atr ? ` (<bdi dir="ltr">${e.dist_atr > 0 ? '+' : ''}${e.dist_atr}</bdi> ATR)` : ' (בתוך האזור)'}</div>
+    ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
+    <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם המחיר התרחק ≥1 ATR, לא נסגר יותר מ-3% מתחת, וחזר אליו מלמעלה (עד 2 ATR מעליו).</div>
+    ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */
 async function loadResearch() {
@@ -1672,7 +1722,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, get expertDoc() { return expertDoc; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

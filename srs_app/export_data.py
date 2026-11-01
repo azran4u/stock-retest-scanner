@@ -558,6 +558,12 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         if dc or wc:
             revc[r["ticker"]] = {"d": dc, "w": wc}
     (out / "revc.json").write_text(json.dumps(revc, separators=(",", ":")))
+    try:  # expert zone overlay for the starred set (Eyal 2026-11-01): refresh only the tickers already in the file
+        from srs_app.expert_zone import refresh as refresh_expert
+        if refresh_expert(out, report_date):
+            print("  [app data] expert zones refreshed (separate overlay, not a PASS input)")
+    except Exception as e:  # never block the export
+        print(f"  [app data] expert zones skipped: {e}")
     try:
         print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
     except Exception as e:  # never block the export
