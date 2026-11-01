@@ -42,8 +42,16 @@ SIGNIFICANCE SCORE 0-100 (transparent: each factor's points, max, measured value
   confluence 10 30-week SMA inside the zone +/- 0.5 A ->5 (Weinstein); Fib 0.382-0.618 of base low -> post-breakout
                 high overlaps the zone ->5 (Murphy)
 
-  python -m srs_app.expert_zone --tickers ARM,BNY            # -> app/data/expert_zones.json
-  python -m srs_app.expert_zone --refresh                      # recompute the tickers already in the file (nightly)
+Which tickers: the CURRENT starred list (Supabase table watchlist). Python has no Supabase access, so the list comes
+from /workspace/stock-screener/app_state.json, which the routine writes from SQL_WATCHLIST before the export (README
+'App state'). The nightly export rebuilds the file for exactly that list (unstarred tickers drop out).
+
+  python -m srs_app.expert_zone --starred                      # whole file = the starred list in app_state.json
+  python -m srs_app.expert_zone --add KNX                      # newly starred: compute KNX, keep the others
+  python -m srs_app.expert_zone --remove KNX                   # unstarred: drop KNX now (the nightly would anyway)
+  python -m srs_app.expert_zone --tickers ARM,BNY              # explicit list (replaces the file)
+  python -m srs_app.expert_zone --refresh                      # recompute the tickers already in the file
+A ticker without app candles yet (starred today, not exported) is downloaded in memory from yfinance (5y daily).
 """
 from __future__ import annotations
 
@@ -278,26 +286,79 @@ def overlap(a_top: float, a_bot: float, b_top: Optional[float], b_bot: Optional[
     return min(a_top, max(b_top, b_bot)) >= max(a_bot, min(b_top, b_bot))
 
 
-def build(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None) -> Dict[str, Any]:
+def _yf_rows(t: str) -> Optional[List[List[Any]]]:
+    """5y daily rows [date, o, h, l, c, v] from yfinance for a ticker the export has no candles for (kept in memory)."""
+    try:
+        import yfinance as yf
+        df = yf.Ticker(t).history(period="5y", interval="1d", auto_adjust=True)
+        df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+        return [[i.strftime("%Y-%m-%d"), *(round(float(x), 4) for x in r[:4]), float(r[4])] for i, r in zip(df.index, df.values)] or None
+    except Exception:
+        return None
+
+
+def build(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fetch: bool = False) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for t in tickers:
         f = data_dir / "candles" / f"{t}.json"
-        if not f.exists():
+        rows = json.loads(f.read_text())["d"] if f.exists() else (_yf_rows(t) if fetch else None)
+        if not rows:
             out[t] = {"ok": False, "reason": "no candles"}
             continue
         try:
-            out[t] = find(json.loads(f.read_text())["d"], asof)
+            out[t] = find(rows, asof)
         except Exception as e:  # never block the export
             out[t] = {"ok": False, "reason": f"error: {e}"}
     return out
 
 
-def write(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None) -> Path:
+def _load(data_dir: Path) -> Dict[str, Any]:
+    p = data_dir / "expert_zones.json"
+    try:
+        return json.loads(p.read_text()).get("tickers", {}) if p.exists() else {}
+    except Exception:
+        return {}
+
+
+def _save(data_dir: Path, tickers: Dict[str, Any]) -> Path:
     p = data_dir / "expert_zones.json"
     doc = {"rule_version": RULE_VERSION, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "tickers": build(sorted(set(tickers)), data_dir, asof)}
+           "tickers": {t: tickers[t] for t in sorted(tickers)}}
     p.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     return p
+
+
+def starred(state_path: Optional[str] = None) -> List[str]:
+    """The current starred list as the routine last synced it from Supabase (app_state.json)."""
+    from srs_app.sync import APP_STATE, watchlist_from_state
+    import os
+    return [t for t in watchlist_from_state(state_path or os.environ.get("SRS_APP_STATE", APP_STATE)) if t]
+
+
+def add(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fetch: bool = True) -> Path:
+    """Newly starred: compute these tickers and merge them into the file (others kept as they are)."""
+    cur = _load(data_dir)
+    cur.update(build(sorted({t.upper() for t in tickers}), data_dir, asof, fetch))
+    return _save(data_dir, cur)
+
+
+def remove(tickers: Sequence[str], data_dir: Path) -> Path:
+    cur = _load(data_dir)
+    for t in tickers:
+        cur.pop(t.upper(), None)
+    return _save(data_dir, cur)
+
+
+def write(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fetch: bool = False) -> Path:
+    """Replace the file with exactly these tickers."""
+    p = _save(data_dir, build(sorted(set(tickers)), data_dir, asof, fetch))
+    return p
+
+
+def sync_starred(data_dir: Path, asof: Optional[str] = None, state_path: Optional[str] = None, fetch: bool = False) -> Optional[Path]:
+    """Nightly: the file = the current starred list (unstarred drop out). No list (state missing) -> keep the file's set."""
+    ts = starred(state_path)
+    return write(ts, data_dir, asof, fetch) if ts else refresh(data_dir, asof)
 
 
 def refresh(data_dir: Path, asof: Optional[str] = None) -> Optional[Path]:
@@ -312,11 +373,24 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--tickers", default="")
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--starred", action="store_true")
+    ap.add_argument("--add", default="")
+    ap.add_argument("--remove", default="")
     ap.add_argument("--data", default=str(Path(__file__).resolve().parent.parent / "app" / "data"))
     ap.add_argument("--asof", default=None)
     a = ap.parse_args(argv)
     d = Path(a.data)
-    p = refresh(d, a.asof) if a.refresh else write([t.strip().upper() for t in a.tickers.split(",") if t.strip()], d, a.asof)
+    lst = lambda x: [t.strip().upper() for t in x.split(",") if t.strip()]
+    if a.add:
+        p = add(lst(a.add), d, a.asof)
+    elif a.remove:
+        p = remove(lst(a.remove), d)
+    elif a.starred:
+        p = sync_starred(d, a.asof, fetch=True)
+    elif a.refresh:
+        p = refresh(d, a.asof)
+    else:
+        p = write(lst(a.tickers), d, a.asof)
     if p:
         for t, r in json.loads(p.read_text())["tickers"].items():
             print(t, (f"{r['bottom']}-{r['top']} score {r['score']} breakout {r['breakout_week']}" if r["ok"] else "no expert level: " + r["reason"]))

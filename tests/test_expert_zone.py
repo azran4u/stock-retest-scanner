@@ -119,3 +119,32 @@ def test_build_writes_only_requested(tmp_path):
     assert set(doc["tickers"]) == {"AAA", "ZZZ"}
     assert doc["tickers"]["AAA"]["ok"] and doc["tickers"]["ZZZ"] == {"ok": False, "reason": "no candles"}
     assert E.refresh(tmp_path) == p and set(json.loads(p.read_text())["tickers"]) == {"AAA", "ZZZ"}
+
+
+def test_follows_the_starred_list(tmp_path, monkeypatch):
+    (tmp_path / "candles").mkdir()
+    for t in ("AAA", "BBB", "CCC"):
+        (tmp_path / "candles" / f"{t}.json").write_text(json.dumps({"d": daily(base_path())}))
+    st = tmp_path / "app_state.json"
+    st.write_text(json.dumps({"watchlist": ["AAA", "BBB"]}))
+    p = E.sync_starred(tmp_path, state_path=str(st))
+    assert set(json.loads(p.read_text())["tickers"]) == {"AAA", "BBB"}
+    st.write_text(json.dumps({"watchlist": ["BBB", "CCC"]}))          # AAA unstarred, CCC starred
+    E.sync_starred(tmp_path, state_path=str(st))
+    assert set(json.loads(p.read_text())["tickers"]) == {"BBB", "CCC"}
+    st.write_text(json.dumps({}))                                      # no list synced -> keep the file's set
+    E.sync_starred(tmp_path, state_path=str(st))
+    assert set(json.loads(p.read_text())["tickers"]) == {"BBB", "CCC"}
+
+
+def test_add_and_remove_merge(tmp_path, monkeypatch):
+    (tmp_path / "candles").mkdir()
+    (tmp_path / "candles" / "AAA.json").write_text(json.dumps({"d": daily(base_path())}))
+    E.write(["AAA"], tmp_path)
+    monkeypatch.setattr(E, "_yf_rows", lambda t: daily(base_path()) if t == "NEW" else None)
+    p = E.add(["new"], tmp_path)
+    doc = json.loads(p.read_text())["tickers"]
+    assert set(doc) == {"AAA", "NEW"} and doc["NEW"]["ok"]            # no app candles -> downloaded in memory
+    assert not (tmp_path / "candles" / "NEW.json").exists()
+    E.remove(["AAA"], tmp_path)
+    assert set(json.loads(p.read_text())["tickers"]) == {"NEW"}

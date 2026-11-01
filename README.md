@@ -278,6 +278,11 @@ TradingView is being retired: the app becomes the only drawing source. `drawings
    ```
    → `/workspace/stock-screener/app_drawings.json` (accepts the connector's raw output). When it exists `export_daily_report.py` uses it instead of `tv_drawings.json` (`--tv-store` forces the old store), so PASS / R:R / needs drawing / review come from the app. Newest row per ticker+kind; user, tv and approved bot rows count (owner user); bot proposals in review stay "bot drawing (review needed)"; zone without long = partial "Rectangle only, no Long Position" (long without zone = "LP only, no Rectangle"); a ticker whose drawings were all deleted becomes "no drawing".
 4. The daily export then writes `app/data` (incl. watchlist tickers: candles downloaded from yfinance when not in the scanner cache). Commit `app/data` with the report.
+5. **Expert zones (Eyal 2026-11-01)** follow the starred list: the export rebuilds `app/data/expert_zones.json` for exactly the watchlist in `app_state.json` (step 2), so unstarred tickers drop out. Newly starred during the day (App command handler, after the research step):
+   ```bash
+   cd /workspace/publish-stock-retest-scanner && /workspace/.venv/bin/python -m srs_app.expert_zone --add TICKER && /workspace/.venv/bin/python -m srs_app.publish_data
+   ```
+   (unstar: `--remove TICKER`). Separate overlay only, never a drawing or a PASS / R:R input.
 
 ```sql
 -- converter input (app_drawings.SQL_APP_DRAWINGS)
