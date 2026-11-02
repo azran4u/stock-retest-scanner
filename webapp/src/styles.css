@@ -443,3 +443,5 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .alstat.dry { color: #ffb74d; border-color: #ffb74d; }
 .alstat.err { color: #e57373; border-color: #e57373; }
 @media (max-width: 480px) { .alstat { font-size: 11px; padding: 1px 6px; } }
+.badge.b-expert { background: #4a148c; color: #e1bee7; }
+.srcline { margin: 4px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

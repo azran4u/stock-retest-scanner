@@ -1,5 +1,10 @@
 // Pure logic of the real-time price alerts (srs-price-alerts). No I/O here so it is unit-tested with `deno test`.
-export const NEAR_ATR = 0.25;          // "מתקרבת": |price - entry| <= 0.25 weekly ATR
+// Actionable-only alerts (Eyal 2026-11-02: "אל תשלח הודעה אם אין לי מה לעשות איתה"). Rules: supabase/README.md.
+export const NEAR_ATR = 0.25;          // a limit at the entry is suggested while price is <= 0.25 weekly ATR above it (approaching)
+export const RUN_ATR = 0.5;            // "entry triggered" only while price is still <= 0.5 ATR above the entry (not run away)
+export const MIN_RR = 2;
+export const RISK_USD = 55;
+export const COOLDOWN_DAYS: Record<string, number> = { limit: 5, triggered: 5, cancel: 30 };
 export const EARN_DAYS = 14;
 export const APP_URL = 'https://retest-scanner.vercel.app/';
 
@@ -29,70 +34,118 @@ export function marketOpen(c: NyClock): { open: boolean; why: string } {
   return { open: true, why: 'open' };
 }
 
-export interface Level { ticker: string; entry: number; stop: number | null; target: number | null; rr: number | null; src: 'own' | 'expert' | 'bot'; atr: number | null }
-export const SRC_HE: Record<Level['src'], string> = { own: 'ה-Long שלך', expert: 'אזור המומחים', bot: 'Long של הבוט' };
+export type Kind = 'limit' | 'triggered' | 'cancel';
+export type Src = 'own' | 'expert';
+export const SRC_HE: Record<Src, string> = { own: 'שלך', expert: 'מומחים' };
 
-const rrOf = (e: number, s: number | null, t: number | null) => (s != null && t != null && e > s ? Math.round(((t - e) / (e - s)) * 100) / 100 : null);
-/** Entry level of one starred ticker: Eyal's own Long (drawn in the app = 'user', or in TradingView = 'tv', newest first),
- *  else the expert trade (expert_zones.json, valid zone), else the bot's Long as a last resort. */
-export function pickLevel(ticker: string, longs: any[], zone: any): Level | null {
-  const atr = zone?.atr_w ?? null;
-  const mine = longs.filter((d) => d.source === 'user' || d.source === 'tv').sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-  const n = (v: any) => (v == null ? null : Number(v));
-  if (mine.length && mine[0].entry != null) {
-    const d = mine[0]; const e = Number(d.entry);
-    return { ticker, entry: e, stop: n(d.stop), target: n(d.target), rr: rrOf(e, n(d.stop), n(d.target)), src: 'own', atr };
+/** The setup of one tracked ticker: Eyal's own Long (+ his zone) overrides the expert trade + zone. */
+export interface Setup {
+  ticker: string; src: Src; entry: number; stop: number; target: number; rr: number;
+  zoneTop: number; zoneBottom: number; atr: number | null;
+  starred: boolean; hot: boolean; expertOk: boolean; uptrend: boolean | null;
+}
+const rrOf = (e: number, s: number, t: number) => (e > s ? Math.round(((t - e) / (e - s)) * 100) / 100 : 0);
+const num = (v: any) => (v == null || v === '' ? null : Number(v));
+const newest = (xs: any[]) => [...xs].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
+
+export function buildSetup(ticker: string, drawings: any[], zone: any, o: { starred: boolean; hot: boolean; uptrend: boolean | null }): Setup | null {
+  const mine = drawings.filter((d) => d.source === 'user' || d.source === 'tv');
+  const myLong = newest(mine.filter((d) => d.kind === 'long' && d.entry != null && d.stop != null && d.target != null));
+  const myZone = newest(mine.filter((d) => d.kind === 'zone' && d.zone_top != null));
+  const ok = !!(zone?.ok && zone.trade);
+  const atr = num(zone?.atr_w);
+  if (myLong) {
+    const e = Number(myLong.entry), s = Number(myLong.stop), t = Number(myLong.target);
+    const zt = myZone ? Number(myZone.zone_top) : ok ? zone.top : e, zb = myZone ? Number(myZone.zone_bottom) : ok ? zone.bottom : e;
+    return { ticker, src: 'own', entry: e, stop: s, target: t, rr: rrOf(e, s, t), zoneTop: zt, zoneBottom: zb, atr, ...o, expertOk: ok };
   }
-  if (zone?.ok && zone.trade?.entry != null) {
-    const t = zone.trade;
-    return { ticker, entry: t.entry, stop: t.sl ?? null, target: t.tp ?? null, rr: t.rr ?? rrOf(t.entry, t.sl, t.tp), src: 'expert', atr };
-  }
-  const bot = longs.filter((d) => d.source === 'bot' && d.entry != null).sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-  if (bot.length) { const d = bot[0]; const e = Number(d.entry); return { ticker, entry: e, stop: n(d.stop), target: n(d.target), rr: rrOf(e, n(d.stop), n(d.target)), src: 'bot', atr }; }
-  return null;
+  if (!ok) return null;                     // no clear retest -> no zone, no Long -> nothing to do
+  const tr = zone.trade;
+  return { ticker, src: 'expert', entry: tr.entry, stop: tr.sl, target: tr.tp, rr: tr.rr ?? rrOf(tr.entry, tr.sl, tr.tp),
+           zoneTop: zone.top, zoneBottom: zone.bottom, atr, ...o, expertOk: true };
 }
 
-export interface Quote { price: number; dayHigh: number; dayLow: number; prevClose: number | null; hi?: number; lo?: number }
-/** 'touch' = the session's range reached the entry (intraday high/low, so a quick touch between two runs is not missed),
- *  or price crossed it vs the previous close (gap through the level); 'near' = within NEAR_ATR weekly ATR. */
-export function classify(l: Level, q: Quote): { touch: boolean; near: boolean; distAtr: number | null; crossed: boolean } {
-  const lo = Math.min(q.dayLow, q.lo ?? Infinity), hi = Math.max(q.dayHigh, q.hi ?? -Infinity);
-  const crossed = q.prevClose != null && (q.prevClose - l.entry) * (q.price - l.entry) < 0;
-  const inRange = lo <= l.entry && l.entry <= hi;
-  const touch = inRange || crossed;
-  const distAtr = l.atr ? Math.round(((q.price - l.entry) / l.atr) * 1000) / 1000 : null;
-  const near = !touch && distAtr != null && Math.abs(distAtr) <= NEAR_ATR;
-  return { touch, near, distAtr, crossed: crossed && !inRange };
-}
-
-/** Earnings note: next report within EARN_DAYS days, or a report in the current Mon-Fri week. earnings.json {T: {p:[{d,t}], n, nt}}. */
-export function earningsNote(em: any, today: string): string | null {
+/** Earnings blocks a new entry: next report within EARN_DAYS days, or a report reacted to this week / in the last
+ *  completed week (amc -> next weekday). earnings.json {T: {p: [{d, t}], n, nt}}. */
+export function earningsBlock(em: any, today: string): string | null {
   if (!em) return null;
   const day = (s: string) => Date.parse(s.slice(0, 10) + 'T00:00:00Z') / 86400000;
   const t0 = day(today), dow = (new Date(t0 * 86400000).getUTCDay() + 6) % 7, mon = t0 - dow;
-  if (em.n) {
-    const dd = day(em.n) - t0;
-    if (dd >= 0 && dd < EARN_DAYS) return `⚠️ דוחות בעוד ${dd} ימים (${em.n}${em.nt ? ' ' + em.nt : ''})`;
-  }
-  for (const p of [...(em.p || []), ...(em.n ? [{ d: em.n }] : [])]) {
-    const d = day(p.d);
-    if (d >= mon && d <= mon + 4) return `⚠️ שבוע דוחות (${p.d.slice(0, 10)})`;
+  if (em.n) { const dd = day(em.n) - t0; if (dd >= 0 && dd < EARN_DAYS) return `דוחות בעוד ${dd} ימים (${em.n})`; }
+  for (const p of [...(em.p || []), ...(em.n ? [{ d: em.n, t: em.nt }] : [])]) {
+    let d = day(p.d); const wd = (new Date(d * 86400000).getUTCDay() + 6) % 7;
+    if (p.t === 'amc') d += wd === 4 ? 3 : 1;
+    if (d >= mon - 7 && d <= t0) return `שבוע דוחות (${String(p.d).slice(0, 10)})`;
   }
   return null;
 }
 
+/** Why the setup is not tradable now (null = valid): zone intact, R:R >= 2, earnings clear, uptrend. */
+export function invalidWhy(s: Setup, earn: string | null): string | null {
+  if (s.src === 'expert' && !s.expertOk) return 'אין אזור מומחים תקף';
+  if (!(s.rr >= MIN_RR)) return `R:R ${s.rr.toFixed(2)} < ${MIN_RR}`;
+  if (earn) return earn;
+  if (s.uptrend === false) return 'לא במגמת עלייה ראשית';
+  return null;
+}
+
+export interface Quote { price: number; dayHigh: number; dayLow: number; prevClose: number | null }
+export interface Decision { kind: Kind | null; why: string; distAtr: number | null }
+/** Trader rules (supabase/README.md):
+ *  cancel    - price <= SL (or the expert zone is no longer valid) and an order may be working: a limit / triggered
+ *              alert was sent for this entry, or the stock is starred. Once per level.
+ *  triggered - the session traded at / under the entry and price is back above it, still <= RUN_ATR above (the
+ *              limit would have filled and the trade is still enterable). Setup must be valid.
+ *  limit     - price inside the zone or <= NEAR_ATR above the entry, not triggered today, setup valid: place a buy
+ *              limit at the entry (price above it) or a buy-stop at the entry (price inside the zone, under it).
+ *  nothing   - setup invalid, price ran away (> NEAR_ATR above), price under the zone but above SL (moving away /
+ *              breaking down, no order to place), or no ATR. */
+export function decide(s: Setup, q: Quote, earn: string | null, hadOrder: boolean): Decision {
+  const A = s.atr; const distAtr = A ? Math.round(((q.price - s.entry) / A) * 1000) / 1000 : null;
+  if (q.price <= s.stop || (s.src === 'expert' && !s.expertOk)) {
+    return (hadOrder || s.starred) ? { kind: 'cancel', why: q.price <= s.stop ? 'price <= SL' : 'zone invalid', distAtr } : { kind: null, why: 'broken, no order', distAtr };
+  }
+  const bad = invalidWhy(s, earn);
+  if (bad) return { kind: null, why: 'invalid: ' + bad, distAtr };
+  if (!A || distAtr == null) return { kind: null, why: 'no ATR', distAtr };
+  if (q.price < s.zoneBottom) return { kind: null, why: 'under the zone', distAtr };
+  if (q.dayLow <= s.entry && q.price > s.entry && distAtr <= RUN_ATR) return { kind: 'triggered', why: 'filled today, still near', distAtr };
+  if (distAtr > NEAR_ATR) return { kind: null, why: 'ran away / far above', distAtr };
+  return { kind: 'limit', why: q.price > s.entry ? 'near above the entry' : 'inside the zone', distAtr };
+}
+
+export const shares = (s: Setup) => (s.entry > s.stop ? Math.floor(RISK_USD / (s.entry - s.stop)) : 0);
 const f2 = (v: number | null | undefined) => (v == null || !isFinite(v) ? '—' : v.toFixed(2));
-export function message(kind: 'near' | 'touch', l: Level, q: Quote, distAtr: number | null, earn: string | null, crossed = false): string {
-  const head = kind === 'touch' ? `🎯 ${l.ticker} נגעה בכניסה` : `⏳ ${l.ticker} מתקרבת לכניסה`;
-  const dist = distAtr == null ? '' : `${Math.abs(distAtr).toFixed(2)} ATR שבועי ${distAtr >= 0 ? 'מעל' : 'מתחת'} לכניסה`;
-  const lines = [
-    head,
-    `מחיר: ${f2(q.price)} · כניסה: ${f2(l.entry)} (${SRC_HE[l.src]})`,
-    dist && `מרחק: ${dist}`,
-    kind === 'touch' ? (crossed ? `חצתה את הכניסה בפער מסגירה קודמת ${f2(q.prevClose)} (טווח היום ${f2(q.dayLow)}–${f2(q.dayHigh)})` : `טווח היום: ${f2(q.dayLow)}–${f2(q.dayHigh)}`) : '',
-    `SL ${f2(l.stop)} · TP ${f2(l.target)} · R:R ${l.rr == null ? '—' : l.rr.toFixed(2)}`,
-    earn || '',
-    `${APP_URL}#/t/${encodeURIComponent(l.ticker)}`,
-  ];
+export function message(kind: Kind, s: Setup, q: Quote, d: Decision, note: string | null = null): string {
+  const n = shares(s), tag = [s.starred ? '⭐' : '', s.hot ? '🔥 רשימה חמה' : ''].filter(Boolean).join(' ');
+  const dist = d.distAtr == null ? '' : `${Math.abs(d.distAtr).toFixed(2)} ATR ${d.distAtr >= 0 ? 'מעל ה' : 'מתחת ל'}כניסה`;
+  const plan = `SL ${f2(s.stop)} · TP ${f2(s.target)} · R:R ${s.rr.toFixed(2)} · ${n} מניות (סיכון $${RISK_USD})`;
+  const link = `${APP_URL}#/t/${encodeURIComponent(s.ticker)}`;
+  const zone = `אזור ${f2(s.zoneBottom)}–${f2(s.zoneTop)} (${SRC_HE[s.src]})`;
+  let lines: string[];
+  if (kind === 'limit') {
+    const order = q.price > s.entry ? `לימיט קנייה ב-${f2(s.entry)}` : `Buy-Stop ב-${f2(s.entry)} (המחיר בתוך האזור, נכנסים כשחוזר מעל)`;
+    lines = [`📌 ${s.ticker} — שווה לשים פקודה ${tag}`, `מחיר ${f2(q.price)} · ${dist}`, `פקודה: ${order}`, plan, zone];
+  } else if (kind === 'triggered') {
+    lines = [`✅ ${s.ticker} — הכניסה הופעלה ${tag}`, `נגעה היום ב-${f2(q.dayLow)} וחזרה ל-${f2(q.price)} (${dist})`,
+      `כניסה ${f2(s.entry)} עדיין בטווח (עד ${RUN_ATR} ATR). אם אין לך פוזיציה — אפשר להיכנס עכשיו`, plan, zone];
+  } else {
+    lines = [`❌ ${s.ticker} — בטל את הפקודה ${tag}`,
+      q.price <= s.stop ? `המחיר ${f2(q.price)} ירד מתחת ל-SL ${f2(s.stop)} — הסטאפ נשבר` : `אזור המומחים כבר לא תקף — הסטאפ בוטל`,
+      `אם יש פקודת קנייה פתוחה ב-${f2(s.entry)} — לבטל`, zone];
+  }
+  if (note) lines.push(note);
+  lines.push(link);
   return lines.filter(Boolean).join('\n');
 }
+
+/** Cross-day cooldown: the same kind for the same entry level is not repeated for COOLDOWN_DAYS[kind] days unless the
+ *  levels changed (entry / SL / TP moved > 0.5%). recent = earlier live alerts of this ticker {kind, entry, stop, target, trade_day}. */
+export function coolingDown(kind: Kind, s: Setup, recent: any[], today: string): boolean {
+  const same = (a: any, b: number) => a != null && Math.abs(Number(a) - b) <= Math.abs(b) * 0.005;
+  const t0 = Date.parse(today + 'T00:00:00Z');
+  return recent.some((r) => r.kind === kind && same(r.entry, s.entry) && same(r.stop, s.stop) && same(r.target, s.target)
+    && (t0 - Date.parse(String(r.trade_day).slice(0, 10) + 'T00:00:00Z')) / 86400000 < COOLDOWN_DAYS[kind]);
+}
+/** an order may be working for this level: a limit / triggered alert was sent for it in the last 30 days */
+export const hadOrder = (s: Setup, recent: any[]) => recent.some((r) => (r.kind === 'limit' || r.kind === 'triggered') && Math.abs(Number(r.entry) - s.entry) <= Math.abs(s.entry) * 0.005);

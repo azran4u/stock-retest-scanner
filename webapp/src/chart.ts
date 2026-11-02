@@ -582,7 +582,8 @@ export class ChartView {
     for (const d of this.drawings) {
       const sel = d.id === this.selected;
       const bot = d.source === 'bot';
-      const pre = d.source === 'tv' ? 'TV ' : bot ? 'BOT ' : '';
+      const expert = bot && !!(d as any).meta?.expert;
+      const pre = d.source === 'tv' ? 'TV ' : expert ? 'מומחים ' : bot ? 'BOT ' : '';
       const review = d.status === 'review';
       let x1 = clampX(this.X(d.t_start), 0);
       let x2 = clampX(d.t_end ? this.X(d.t_end) : null, W);

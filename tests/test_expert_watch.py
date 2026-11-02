@@ -3,6 +3,13 @@ import json
 
 from srs_app import expert_watch as X
 
+MH = {"f_technical": True, "f_dollar_vol": True, "f_history": True}
+
+
+def _mh(rows):
+    """report rows that pass the 2026-11-02 must-haves (uptrend, $vol > 50M, history) unless the test says otherwise"""
+    return [{**MH, **r} for r in rows]
+
 
 def _z(top=100.0, bot=99.0, A=2.0, rr=3.0, entry=100.0, sl=98.0, risk_pct=2.0, score=50, hammers=()):
     return {"ok": True, "top": top, "bottom": bot, "atr_w": A, "score": score, "price": top, "last_week": "2026-10-26",
@@ -45,7 +52,7 @@ def test_criteria_and_tiers(tmp_path):
             {"ticker": "FAR", "current_price": 110.0}, {"ticker": "LOWRR", "current_price": 100.5},
             {"ticker": "BIGRISK", "current_price": 1001}, {"ticker": "EARN", "current_price": 100.5, "f_no_earnings_14d": False}]
     _write(tmp_path, tickers, {"READY": flat, "WAIT": _daily([(102.5, 103)] * 7), "FAR": far})
-    res = X.build(tmp_path, rows, {}, "2026-11-01")
+    res = X.build(tmp_path, _mh(rows), {}, "2026-11-01")
     got = {x["t"]: x for x in res["items"]}
     assert set(got) == {"READY", "WAIT"}
     assert got["READY"]["tier"] == X.TIER_READY and got["READY"]["rank"] == 1
@@ -97,10 +104,10 @@ def test_earnings_gate_live_irm_rok_mufg(tmp_path):
             {"ticker": "WKAMC", "current_price": 101.0}, {"ticker": "WKBMO", "current_price": 101.0},
             {"ticker": "CLEAN", "current_price": 101.0, "earnings_date": "2026-11-15"}]   # 14 days -> clear
     _write(tmp_path, {t: _z() for t in names}, {t: flat for t in names}, earn)
-    res = X.build(tmp_path, rows, {}, "2026-11-01")
+    res = X.build(tmp_path, _mh(rows), {}, "2026-11-01")
     assert {x["t"] for x in res["items"]} == {"SLG", "CLEAN"}
     ex = res["earn_excluded"]
-    assert set(ex) == {"IRM", "ROK", "MUFG", "WKAMC", "WKBMO", "OFFROW"}
+    assert set(ex) == {"IRM", "ROK", "MUFG", "WKAMC", "WKBMO"} and "OFFROW" in res["must_have_excluded"]   # no report row
     assert "4 ימים" in ex["IRM"] and "12 ימים" in ex["MUFG"]
 
 
@@ -109,8 +116,23 @@ def test_reason_line_is_short(tmp_path):
     _write(tmp_path, {"A": _z(hammers=[{"w": "2026-10-26", "s": "H", "k": 1}]), "B": _z()},
            {"A": flat, "B": _daily([(102.5, 103)] * 7)})
     rv = {"A": {"d": [[1, 1, 99.8, 100.5, 2.0]], "w": []}}
-    res = X.build(tmp_path, [{"ticker": "A", "current_price": 101.0}, {"ticker": "B", "current_price": 101.0}], rv, "2026-11-01")
+    res = X.build(tmp_path, _mh([{"ticker": "A", "current_price": 101.0}, {"ticker": "B", "current_price": 101.0}]), rv, "2026-11-01")
     got = {x["t"]: x["reason_he"] for x in res["items"]}
     assert got["A"] == "סגירה שבועית מעל האזור אחרי נגיעה · R:R 3.0 · 0.5 ATR מעל"
     assert got["B"].startswith("ממתינה לסימן היפוך · R:R 3.0")
     assert got["A"].count("·") == 2
+
+
+def test_must_haves_uptrend_dollar_volume_history(tmp_path):
+    """Eyal 2026-11-02: hot list = primary uptrend, daily $ volume > $50M, >= 3 years of history; no report row -> out."""
+    flat = _daily([(103, 104)] * 6 + [(99.5, 101)])
+    names = ["OK", "DOWN", "THIN", "YOUNG", "NOROW"]
+    _write(tmp_path, {t: _z() for t in names}, {t: flat for t in names})
+    rows = _mh([{"ticker": "OK", "current_price": 101.0}, {"ticker": "DOWN", "current_price": 101.0, "f_technical": False},
+                {"ticker": "THIN", "current_price": 101.0, "f_dollar_vol": False},
+                {"ticker": "YOUNG", "current_price": 101.0, "f_history": "False"}])
+    res = X.build(tmp_path, rows, {}, "2026-11-01")
+    assert [x["t"] for x in res["items"]] == ["OK"]
+    g = res["must_have_excluded"]
+    assert set(g) == {"DOWN", "THIN", "YOUNG", "NOROW"} and "מגמת עלייה" in g["DOWN"] and "$50M" in g["THIN"]
+    assert res["criteria"]["min_dollar_vol_m"] == 50

@@ -1,13 +1,14 @@
 // Real-time price alerts to Telegram (stock-retest-scanner, Eyal 2026-11-02).
 // pg_cron (job 'srs-price-alerts', every 10 min Mon-Fri 13-21 UTC) POSTs here with header x-srs-cron (Vault secret).
-// For every ticker starred in the app (public.watchlist): entry level = Eyal's own Long (drawings kind 'long', source
-// user/tv), else the expert trade (app-data/expert_zones.json), else the bot's Long. Quotes: Yahoo chart API (5m bars,
-// regular session high/low). Alerts: 'near' (within 0.25 weekly ATR) and 'touch' (session range reached the entry),
-// at most one per type / ticker / NY trading day (public.price_alerts unique key).
+// Tracked: starred tickers (public.watchlist) + the hot list (app-data/expert_watch.json). Setup = Eyal's own Long / zone
+// (drawings source user / tv = his override) else the expert trade / zone (app-data/expert_zones.json). Quotes: Yahoo
+// chart API (5m bars). ACTIONABLE alerts only (Eyal 2026-11-02): 'limit' (place a buy limit / buy-stop at the entry),
+// 'triggered' (filled today, still <= 0.5 ATR above), 'cancel' (setup broke while an order may be working). Rules in
+// logic.ts decide() and supabase/README.md. Once per type / ticker / NY day + a cross-day cooldown per level.
 // Telegram: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from function secrets, else Supabase Vault. Missing -> dry-run (logged).
 // Manual: POST ?dry=1 (never sends) &force=1 (ignore market hours) &tickers=A,B  -> JSON with the messages.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { classify, earningsNote, marketOpen, message, nyClock, pickLevel, type Level, type Quote } from './logic.ts';
+import { buildSetup, coolingDown, decide, earningsBlock, hadOrder, marketOpen, message, nyClock, type Quote, type Setup } from './logic.ts';
 
 const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b, null, 1), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
@@ -75,40 +76,49 @@ Deno.serve(async (req: Request) => {
   const live = !!(botTok && chat) && !dryParam;
   const mode = live ? 'live' : (botTok ? (chat ? 'dry (manual)' : 'dry (waiting for /start)') : 'dry (no token)');
   try {
-    let tickers = ((await sb.from('watchlist').select('ticker')).data || []).map((r: any) => String(r.ticker));
+    const starred = new Set(((await sb.from('watchlist').select('ticker')).data || []).map((r: any) => String(r.ticker)));
+    const [ez, earn, hotDoc, idx] = [await readJson('expert_zones.json'), await readJson('earnings.json'), await readJson('expert_watch.json'), await readJson('index.json')];
+    const hot = new Set(((hotDoc?.items || []) as any[]).map((x) => String(x.t)));
+    let tickers = [...new Set([...starred, ...hot])].sort();
     const only = u.searchParams.get('tickers'); if (only) tickers = only.split(',').map((s) => s.trim().toUpperCase());
-    const { data: longs } = await sb.from('drawings').select('ticker,source,entry,stop,target,updated_at')
-      .in('ticker', tickers).eq('kind', 'long').not('status', 'in', '(deleted,rejected,obsolete)');
-    const [ez, earn] = [await readJson('expert_zones.json'), await readJson('earnings.json')];
-    const levels = tickers.map((t) => pickLevel(t, (longs || []).filter((d: any) => d.ticker === t), ez?.tickers?.[t])).filter(Boolean) as Level[];
-    const { data: done } = await sb.from('price_alerts').select('ticker,kind').eq('trade_day', clock.date).eq('live', live);
-    const sent = new Set((done || []).map((r: any) => `${r.ticker}:${r.kind}`));
+    const rowBy = new Map(((idx?.rows || []) as any[]).map((r) => [String(r.ticker), r]));
+    const tf = (v: any) => (v === true || v === 'True' || v === 'true' ? true : v === false || v === 'False' || v === 'false' ? false : null);
+    const { data: draws } = await sb.from('drawings').select('ticker,kind,source,entry,stop,target,zone_top,zone_bottom,updated_at')
+      .in('ticker', tickers).in('source', ['user', 'tv']).in('status', ['active', 'approved', 'review']);
+    const setups = tickers.map((t) => buildSetup(t, (draws || []).filter((d: any) => d.ticker === t), ez?.tickers?.[t],
+      { starred: starred.has(t), hot: hot.has(t), uptrend: tf(rowBy.get(t)?.f_technical) })).filter(Boolean) as Setup[];
+    const since = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+    const { data: past } = await sb.from('price_alerts').select('ticker,kind,entry,stop,target,trade_day').eq('live', live).gte('trade_day', since).in('ticker', tickers);
+    const pastBy = new Map<string, any[]>(); for (const r of past || []) pastBy.set(r.ticker, [...(pastBy.get(r.ticker) || []), r]);
     const errors: string[] = [], out: any[] = [], checked: any[] = [];
-    await pool(levels, 6, async (l) => {
+    await pool(setups, 6, async (s) => {
       let q: Quote | null = null;
-      try { q = await quote(l.ticker, clock.date); } catch (e) { errors.push(String(e)); return; }
-      if (!q) { checked.push({ t: l.ticker, note: 'no quote today' }); return; }
-      const c = classify(l, q);
-      checked.push({ t: l.ticker, price: q.price, lo: q.dayLow, hi: q.dayHigh, entry: l.entry, src: l.src, dist_atr: c.distAtr, touch: c.touch, near: c.near });
-      const kind = c.touch ? 'touch' : c.near ? 'near' : null;
-      if (!kind || sent.has(`${l.ticker}:${kind}`) || (kind === 'near' && sent.has(`${l.ticker}:touch`))) return;
-      const text = message(kind, l, q, c.distAtr, earningsNote(earn?.[l.ticker], clock.date), c.crossed);
+      try { q = await quote(s.ticker, clock.date); } catch (e) { errors.push(String(e)); return; }
+      if (!q) { checked.push({ t: s.ticker, note: 'no quote today' }); return; }
+      const recent = pastBy.get(s.ticker) || [];
+      const eb = earningsBlock(earn?.[s.ticker], clock.date);
+      const d = decide(s, q, eb, hadOrder(s, recent));
+      checked.push({ t: s.ticker, src: s.src, price: q.price, lo: q.dayLow, entry: s.entry, sl: s.stop, rr: s.rr, dist_atr: d.distAtr, kind: d.kind, why: d.why });
+      if (!d.kind) return;
+      if (recent.some((r) => r.kind === d.kind && String(r.trade_day).slice(0, 10) === clock.date)) return;   // once per type / day
+      if (coolingDown(d.kind, s, recent, clock.date)) { checked[checked.length - 1].why += ' (cooldown)'; return; }
+      const text = message(d.kind, s, q, d, s.uptrend == null ? 'מגמה: אין נתון בדוח' : null);
       let tg: any = null;
       if (live) {
         const r = await fetch(`https://api.telegram.org/bot${botTok}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true }) });
-        tg = await r.json().catch(() => ({ ok: false })); if (!tg?.ok) { errors.push(`telegram ${l.ticker}: ${tg?.description || r.status}`); return; }
+        tg = await r.json().catch(() => ({ ok: false })); if (!tg?.ok) { errors.push(`telegram ${s.ticker}: ${tg?.description || r.status}`); return; }
         tg = { ok: true, message_id: tg.result?.message_id };
       } else console.log('[dry-run]\n' + text);
-      if (!dryParam || !force) {      // manual dry tests (?dry=1&force=1) do not consume the daily slot
-        const { error } = await sb.from('price_alerts').insert({ ticker: l.ticker, kind, trade_day: clock.date, live, price: q.price, entry: l.entry,
-          stop: l.stop, target: l.target, rr: l.rr, dist_atr: c.distAtr, source: l.src, message: text, telegram: tg });
+      if (!dryParam) {      // manual dry tests (?dry=1) never consume a slot / cooldown
+        const { error } = await sb.from('price_alerts').insert({ ticker: s.ticker, kind: d.kind, trade_day: clock.date, live, price: q.price, entry: s.entry,
+          stop: s.stop, target: s.target, rr: s.rr, dist_atr: d.distAtr, source: s.src, message: text, telegram: tg });
         if (error && !String(error.message).includes('duplicate')) errors.push('insert ' + error.message);
       }
-      out.push({ ticker: l.ticker, kind, live, text });
+      out.push({ ticker: s.ticker, kind: d.kind, live, text });
     });
-    await status({ mode, checked: checked.length, sent: out.filter((x) => x.live).length, note: `${out.length} alert(s)`, error: errors.join('; ').slice(0, 500) || null });
-    return json({ ny: clock, market: mk.why, mode, tickers: tickers.length, levels: levels.length, alerts: out, checked, errors });
+    await status({ mode, checked: checked.length, sent: out.filter((x) => x.live).length, note: `${out.length} alert(s) · ${starred.size} starred + ${hot.size} hot`, error: errors.join('; ').slice(0, 500) || null });
+    return json({ ny: clock, market: mk.why, mode, tickers: tickers.length, setups: setups.length, alerts: out, checked, errors });
   } catch (e) {
     await status({ mode, error: String(e).slice(0, 500) });
     return json({ error: String(e) }, 500);

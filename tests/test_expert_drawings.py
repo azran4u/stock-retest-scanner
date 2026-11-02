@@ -9,6 +9,7 @@ Z = {"rule_version": "expert-v7-2026-11-01", "tickers": {
              "trade": {"entry": 20.0, "sl": 18.0, "tp": 26.0, "rr": 3.0}},
     "MINE": {"ok": True, "top": 30.0, "bottom": 29.0, "last_week": "2026-10-26", "atr_w": 1, "trade": {"entry": 30.0, "sl": 28.0, "tp": 36.0}},
     "GONE": {"ok": False, "reason": "broken"},
+    "HALF": {"ok": True, "top": 40.0, "bottom": 39.0, "last_week": "2026-10-26", "atr_w": 1, "trade": {"entry": 40.0, "sl": 38.0, "tp": 46.0}},
 }}
 D = [
     {"id": "o1", "ticker": "NEW", "kind": "zone", "source": "bot", "status": "active", "meta": {"rule_version": "v5-2026-10-26"}},
@@ -19,23 +20,27 @@ D = [
     {"id": "t1", "ticker": "MINE", "kind": "long", "source": "tv", "status": "active", "entry": 31, "stop": 29, "target": 35},
     {"id": "b9", "ticker": "MINE", "kind": "zone", "source": "bot", "status": "active", "meta": {"rule_version": "v5"}},
     {"id": "g1", "ticker": "GONE", "kind": "zone", "source": "bot", "status": "active", "meta": {"expert": True}},
+    {"id": "h1", "ticker": "HALF", "kind": "zone", "source": "user", "status": "active", "zone_top": 41, "zone_bottom": 40},
+    {"id": "h2", "ticker": "HALF", "kind": "zone", "source": "bot", "status": "active", "meta": {"expert": True}},
     {"id": "r1", "ticker": "OLD", "kind": "zone", "source": "bot", "status": "rejected", "meta": {"rule_version": "v3d"}},
 ]
 
 
 def test_plan_expert_primary_his_override_and_retire(tmp_path):
     pl = X.plan(D, Z)
-    assert [lv["ticker"] for lv in pl["insert"]] == ["NEW"] and pl["keep"] == ["SAME"] and pl["his"] == ["MINE"]
-    assert {t: sorted(d["id"] for d in rs) for t, rs in pl["retire"].items()} == {"NEW": ["o1", "o2"], "MINE": ["b9"], "GONE": ["g1"]}
+    assert [(lv["ticker"], lv["kinds"]) for lv in pl["insert"]] == [("HALF", ["long"]), ("NEW", ["zone", "long"])]
+    assert pl["keep"] == ["SAME"] and pl["his"] == ["HALF", "MINE"]
+    assert {t: sorted(d["id"] for d in rs) for t, rs in pl["retire"].items()} == {"NEW": ["o1", "o2"], "MINE": ["b9"], "GONE": ["g1"], "HALF": ["h2"]}
     assert pl["none"] == ["GONE"]
-    lv = pl["insert"][0]
+    lv = pl["insert"][1]
     assert (lv["entry"], lv["stop"], lv["target"], lv["t_start"], lv["t_end"]) == (10.0, 9.0, 13.0, "2026-11-02", "2027-03-22")
     sql = X.emit_sql(pl)
     assert not any("'u1'" in s or "'t1'" in s for s in sql)                       # his rows are never touched
     assert all("source = 'bot'" in s for s in sql if s.startswith("update"))
-    assert sum(s.startswith("insert") for s in sql) == 2 and '"expert":true' in sql[-1]
+    assert sum(s.startswith("insert") for s in sql) == 3 and '"expert":true' in sql[-1]   # HALF: expert Long only
+    assert not any("'h1'" in s for s in sql)
     p = X.backup(pl, "2026-11-02", tmp_path)
-    assert p and len(__import__("json").loads(p.read_text())["rows"]) == 4
+    assert p and len(__import__("json").loads(p.read_text())["rows"]) == 5
 
 
 def test_bot_pipeline_routes_to_expert_and_never_redraws_his():

@@ -33,6 +33,10 @@ from typing import Any, Dict, List, Optional
 from srs_app import expert_zone as E
 
 WATCH_MAX_DIST_ATR = 1.0
+# Eyal 2026-11-02 must-haves (the scanner's own gates on the report row; a ticker without a report row is out):
+#   primary uptrend = f_technical (after his overrides), daily $ volume > $50M = f_dollar_vol (30-day average),
+#   history = f_history (>= 150 weekly bars, ~3 years)
+MUST_HAVE = {"f_technical": "לא במגמת עלייה ראשית", "f_dollar_vol": "מחזור יומי < $50M", "f_history": "היסטוריה < 3 שנים"}
 WATCH_MIN_RR = 2.0
 WATCH_MAX_RISK_PCT = 10.0
 MAX_RISK_USD = 55.0
@@ -134,11 +138,19 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
     ad = date.fromisoformat(asof) if asof else date.today()
     items = []
     excluded: Dict[str, str] = {}
+    gated: Dict[str, str] = {}      # must-haves (uptrend / $vol / history) failed
     for t, z in doc.get("tickers", {}).items():
         if not z.get("ok") or not z.get("trade"):
             continue
         try:
             r = by.get(t, {})
+            if not r:
+                gated[t] = "אין שורה בדוח (אין נתוני מגמה / מחזור / היסטוריה)"
+                continue
+            miss = [he for k, he in MUST_HAVE.items() if str(r.get(k)).strip().lower() not in ("true", "1", "1.0", "yes")]
+            if miss:
+                gated[t] = ", ".join(miss)
+                continue
             cf = out / "candles" / f"{t}.json"
             daily = json.loads(cf.read_text())["d"] if cf.exists() else []
             px = r.get("current_price")
@@ -180,10 +192,10 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
         x["rank"] = i
     res = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "asof": asof or ad.isoformat(),
            "rule_version": doc.get("rule_version"),
-           "criteria": {"max_dist_atr": WATCH_MAX_DIST_ATR, "min_rr": WATCH_MIN_RR, "max_risk_pct": WATCH_MAX_RISK_PCT,
+           "criteria": {"uptrend": True, "min_dollar_vol_m": 50, "min_history_years": 3, "max_dist_atr": WATCH_MAX_DIST_ATR, "min_rr": WATCH_MIN_RR, "max_risk_pct": WATCH_MAX_RISK_PCT,
                         "max_risk_usd": MAX_RISK_USD, "earn_days": EARN_DAYS, "ready_weeks": READY_WEEKS, "ready_days": READY_DAYS,
                         "ready_min_pts": READY_MIN_PTS},
-           "items": items, "earn_excluded": excluded}
+           "items": items, "earn_excluded": excluded, "must_have_excluded": gated}
     (out / "expert_watch.json").write_text(json.dumps(res, ensure_ascii=False, separators=(",", ":")))
     return res
 

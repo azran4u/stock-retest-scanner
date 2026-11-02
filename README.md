@@ -2,6 +2,15 @@
 
 Weekly retest stock screener maintained with Grok Bot for Eyal.
 
+
+> **2026-11-02 — expert method is primary (Eyal):** the zone / Long of every stock is the expert-v7 retest zone and
+> expert trade (`srs_app/expert_zone.py`, synced into `public.drawings` as source `bot` + `meta.expert` by
+> `srs_app/expert_drawings.py`; the nightly `python -m srs_app.bot_drawings --drawings-json D --emit-sql` step now routes
+> there — `EXPERT_MODE`). No clear retest → no zone, no Long → not PASS. The v3d–v5 bot drawing rules below are
+> RETIRED (kept for history / research; 717 live bot rows retired 2026-11-02 as `obsolete` + `meta.obsolete`, backup
+> `/workspace/backups/bot_drawings_retired_2026-11-02.json`). `REDRAW_BROKEN_USER` is off: his own drawings (app /
+> TradingView) are his override per kind and are never modified; "↺ חזרה לרמות המומחים" on the stock page resets them.
+
 ## Live dashboard (GitHub Pages)
 
 **https://azran4u.github.io/stock-retest-scanner/** — main dashboard = TradingView chart gallery (`index.html`, since 2026-10-04)

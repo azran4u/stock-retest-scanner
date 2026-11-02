@@ -10,8 +10,8 @@ Replaces the bot drawing computation (srs_app.bot_drawings v5) in the nightly pi
   - every live bot drawing of the old method (v3d / v3e / v4 / v5, no meta.expert) is retired: status 'obsolete' +
     meta.obsolete {why: 'expert method 2026-11-02', at}. Nothing is hard-deleted; a JSON backup of the retired rows
     goes to /workspace/backups/bot_drawings_retired_<date>.json.
-  - Eyal's own drawings (source user / tv, live) are HIS OVERRIDE: never modified, deleted or superseded, and the
-    ticker gets no expert drawing while one is live (his version wins). To go back to the expert levels he presses
+  - Eyal's own drawings (source user / tv, live) are HIS OVERRIDE: never modified, deleted or superseded; per kind -
+    his zone replaces the expert zone, his Long the expert Long (his zone + the expert Long is possible). To go back to the expert levels he presses
     "חזרה לאזור המומחים" in the app (his rows -> obsolete with meta.reset_to_expert; the next sync / the app draws
     the expert pair).
   - an expert pair whose levels changed (zone moved / trade updated) is replaced; same levels -> kept.
@@ -67,12 +67,13 @@ def levels(t: str, z: Dict[str, Any], rule_version: str) -> Optional[Dict[str, A
             "meta": {"rule_version": rule_version, "expert": True, "why": why}}
 
 
-def _same(rows: List[Dict[str, Any]], lv: Dict[str, Any]) -> bool:
+def _same(rows: List[Dict[str, Any]], lv: Dict[str, Any], kinds=("zone", "long")) -> bool:
     near = lambda a, b: a is not None and b is not None and abs(float(a) - float(b)) <= TOL
     z = [d for d in rows if d.get("kind") == "zone"]
     lg = [d for d in rows if d.get("kind") == "long"]
-    return len(z) == 1 and len(lg) == 1 and near(z[0].get("zone_top"), lv["zone_top"]) and near(z[0].get("zone_bottom"), lv["zone_bottom"]) \
-        and near(lg[0].get("entry"), lv["entry"]) and near(lg[0].get("stop"), lv["stop"]) and near(lg[0].get("target"), lv["target"])
+    zok = len(z) == 1 and near(z[0].get("zone_top"), lv["zone_top"]) and near(z[0].get("zone_bottom"), lv["zone_bottom"]) if "zone" in kinds else not z
+    lok = len(lg) == 1 and near(lg[0].get("entry"), lv["entry"]) and near(lg[0].get("stop"), lv["stop"]) and near(lg[0].get("target"), lv["target"]) if "long" in kinds else not lg
+    return zok and lok
 
 
 def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -94,12 +95,17 @@ def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any]) -> Dict[
         if old:
             out["retire"].setdefault(t, []).extend(old)
             out["why"][t] = RETIRE_WHY
-        if his:                                   # his override wins; an expert pair next to it is retired
+        his_kinds = {d.get("kind") for d in his if d.get("kind") in ("zone", "long")}
+        if his:
             out["his"].append(t)
-            if exp:
-                out["retire"].setdefault(t, []).extend(exp)
+        if his_kinds:                             # his override wins per kind (his zone + expert Long is possible)
+            dup = [d for d in exp if d.get("kind") in his_kinds]
+            if dup:
+                out["retire"].setdefault(t, []).extend(dup)
                 out["why"][t] = "his own drawing is the override"
-            continue
+            exp = [d for d in exp if d.get("kind") not in his_kinds]
+            if his_kinds == {"zone", "long"}:
+                continue
         if lv is None:
             if t in zones:
                 out["none"].append(t)
@@ -107,13 +113,14 @@ def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any]) -> Dict[
                 out["retire"].setdefault(t, []).extend(exp)
                 out["why"][t] = "no expert zone: " + str((zones.get(t) or {}).get("reason") or "not evaluated")[:120]
             continue
-        if exp and _same(exp, lv):
+        kinds = [k for k in ("zone", "long") if k not in his_kinds]
+        if exp and _same(exp, lv, kinds):
             out["keep"].append(t)
             continue
         if exp:
             out["retire"].setdefault(t, []).extend(exp)
             out["why"][t] = "expert levels changed"
-        out["insert"].append(lv)
+        out["insert"].append({**lv, "kinds": kinds})
     return out
 
 
@@ -131,10 +138,13 @@ def emit_sql(pl: Dict[str, Any]) -> List[str]:
         out += [sql_retire(str(d["id"]), pl["why"].get(t, RETIRE_WHY)) for d in rows if d.get("source") == "bot"]
     for lv in pl["insert"]:
         note = f"EXPERT {lv['meta']['rule_version']}: retest of the {lv['meta']['why'].get('breakout_week')} breakout"
-        out.append(sql_insert_bot_drawing(lv["ticker"], "zone", zone_top=lv["zone_top"], zone_bottom=lv["zone_bottom"],
-                                          t_start=lv["zone_t_start"], note=note, meta=lv["meta"]))
-        out.append(sql_insert_bot_drawing(lv["ticker"], "long", entry=lv["entry"], stop=lv["stop"], target=lv["target"],
-                                          t_start=lv["t_start"], t_end=lv["t_end"], note=note, meta=lv["meta"]))
+        ks = lv.get("kinds", ("zone", "long"))
+        if "zone" in ks:
+            out.append(sql_insert_bot_drawing(lv["ticker"], "zone", zone_top=lv["zone_top"], zone_bottom=lv["zone_bottom"],
+                                              t_start=lv["zone_t_start"], note=note, meta=lv["meta"]))
+        if "long" in ks:
+            out.append(sql_insert_bot_drawing(lv["ticker"], "long", entry=lv["entry"], stop=lv["stop"], target=lv["target"],
+                                              t_start=lv["t_start"], t_end=lv["t_end"], note=note, meta=lv["meta"]))
     return out
 
 

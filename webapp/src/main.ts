@@ -1403,9 +1403,9 @@ async function followZone(z: Drawing) {
   const t = z.ticker;
   const lg = countedOf(t, 'long');
   if (!lg) { toast('אין לונג — R:R לא ידוע, המניה לא ב-PASS'); refreshLive(); return; }
-  if (lg.source !== 'bot') {
+  if (lg.source !== 'bot' || isExpertRow(lg)) {   // his Long, or the expert Long (expert method 2026-11-02): never moved
     const q = rr(lg.entry, lg.stop, lg.target);
-    toast(`הלונג שלך לא זז · R:R ${q == null ? '—' : q.toFixed(2)}${q != null && q < RR_MIN ? ' < 2 → לא PASS' : ''}`);
+    toast(`${lg.source === 'bot' ? 'לונג המומחים' : 'הלונג שלך'} לא זז · R:R ${q == null ? '—' : q.toFixed(2)}${q != null && q < RR_MIN ? ' < 2 → לא PASS' : ''}`);
     refreshLive(); return;
   }
   let daily: Bar[] | null = null;
@@ -1444,15 +1444,19 @@ function levelsText(d: Drawing): string {
   if (d.kind === 'long') return `E ${fmt(d.entry)} · SL ${fmt(d.stop)} · TP ${fmt(d.target)}`;
   return fmt(d.entry);
 }
+const isExpertRow = (d: Drawing) => d.source === 'bot' && (!!d.meta?.expert || String(d.meta?.rule_version || '').startsWith('expert'));
+/** Eyal 2026-11-02: the expert zone / Long is THE zone of every stock; his own drawings (app / TV) override it. */
+const srcBadge = (d: Drawing) => isExpertRow(d) ? ['b-expert', 'מומחים'] : d.source === 'bot' ? ['b-review', 'בוט (ישן)']
+  : d.source === 'tv' ? ['b-tv', 'שלך (TV)'] : ['b-mine', d.meta?.bot_before ? 'שלך (נערך)' : 'שלך'];
 function cardHtml(d: Drawing) {
   const bot = d.source === 'bot';
-  const st = { active: bot ? 'פעיל (מאושר אוטומטית)' : 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
+  const st = { active: 'פעיל', review: 'לבדיקה', approved: 'אושר', rejected: 'נדחה', obsolete: 'ישן', deleted: 'נמחק' }[d.status];
   const kind = { zone: 'אזור', long: 'לונג', line: 'קו', note: 'הערה' }[d.kind];
   const fb = feedbackHtml(d);
   return `<div class="card dline ${d.id === S.selected ? 'sel' : ''} ${bot ? 'bot' : ''}" data-id="${d.id}">
     <div class="ch1">
       <button class="ghost selbtn dsum" title="${d.id === S.selected ? 'בטל בחירה' : 'בחר על הגרף לגרירה'}"><b>${kind}</b> <bdi class="lv" dir="ltr">${levelsText(d)}</bdi>${d.kind === 'long' ? ` <b class="rr" dir="ltr">${rrText(d)}</b>` : ''}</button>
-      <span class="badge ${bot ? 'b-review' : d.source === 'tv' ? 'b-tv' : 'b-mine'}">${bot ? 'בוט' : d.source === 'tv' ? 'TV' : d.meta?.bot_before ? 'שלי (מבוט)' : 'שלי'}</span> <span class="badge">${st}</span>
+      <span class="badge ${srcBadge(d)[0]}">${srcBadge(d)[1]}</span> <span class="badge">${st}</span>
       <span class="acts">
         ${d.status === 'review' ? '<button class="ok small act" data-act="approve">אשר</button><button class="bad small act" data-act="reject">דחה</button>' : ''}
         ${d.status === 'rejected' ? '<button class="small act" data-act="reopen">החזר לבדיקה</button>' : ''}
@@ -1462,6 +1466,35 @@ function cardHtml(d: Drawing) {
     ${d.note ? `<div class="muted small">${esc(d.note)}</div>` : ''}
     ${fb ? `<div class="fbwrap" ${fbOpen.has(d.id) ? '' : 'hidden'}>${fb}</div>` : ''}
   </div>`;
+}
+/** Which levels count now: "מומחים" or "שלך" (his override), + reset to the expert levels (Eyal 2026-11-02). */
+function sourceLineHtml(t: string): string {
+  const z = countedOf(t, 'zone'), lg = countedOf(t, 'long'), ez = expertOf(t);
+  const lab = (d: Drawing | null) => (!d ? 'אין' : isExpertRow(d) ? 'מומחים' : d.source === 'bot' ? 'בוט (ישן)' : 'שלך');
+  const mine = [...S.drawings.values()].some((d) => d.ticker === t && (d.source === 'user' || d.source === 'tv') && (d.kind === 'zone' || d.kind === 'long') && (d.status === 'active' || d.status === 'approved'));
+  const canReset = mine && !!(ez?.ok && ez.trade);
+  const none = !z && !lg ? ' · אין ריטסט ברור → אין אזור מומחים ואין לונג' : '';
+  return `<div class="srcline small" id="srcLine" data-zone="${lab(z)}" data-long="${lab(lg)}">פעיל: אזור <b>${lab(z)}</b> · לונג <b>${lab(lg)}</b>${none}
+    ${canReset ? '<button id="resetExpert" class="ghost small">↺ חזרה לרמות המומחים</button>' : ''}</div>`;
+}
+async function resetToExpert(t: string) {
+  const ez = expertOf(t); if (!ez?.ok || !ez.trade || ez.top == null || ez.bottom == null) return;
+  if (!confirm('להחליף את האזור והלונג שלך ברמות המומחים? השרטוטים שלך יישמרו כ"ישן" (ניתן לשחזר).')) return;
+  const now = new Date().toISOString();
+  const mine = [...S.drawings.values()].filter((d) => d.ticker === t && (d.source === 'user' || d.source === 'tv') && (d.kind === 'zone' || d.kind === 'long') && (d.status === 'active' || d.status === 'approved'));
+  for (const d of mine) {
+    const meta = { ...(d.meta || {}), reset_to_expert: { at: now } };
+    d.status = 'obsolete'; d.meta = meta;
+    await guard(api.updateDrawing(d.id, { status: 'obsolete', meta }));
+  }
+  const have = (k: string) => [...S.drawings.values()].some((d) => d.ticker === t && d.kind === k && isExpertRow(d) && (d.status === 'active' || d.status === 'approved'));
+  const meta = { rule_version: expertDoc?.rule_version || 'expert', expert: true, why: { reset_by_user: now } };
+  const lw = ez.last_week ? new Date(ez.last_week + 'T00:00:00Z') : new Date();
+  const ts = new Date(lw.getTime() + 7 * 86400000).toISOString().slice(0, 10), te = new Date(lw.getTime() + 7 * 21 * 86400000).toISOString().slice(0, 10);
+  const note = `EXPERT ${meta.rule_version}: reset by Eyal`;
+  if (!have('zone')) { const d = await guard(api.insertDrawing({ ticker: t, kind: 'zone', zone_top: ez.top, zone_bottom: ez.bottom, t_start: ez.pivot_week || ez.base_start || null, source: 'bot', status: 'active', note, meta })); if (d) S.drawings.set(d.id, d); }
+  if (!have('long')) { const d = await guard(api.insertDrawing({ ticker: t, kind: 'long', entry: ez.trade.entry, stop: ez.trade.sl, target: ez.trade.tp, t_start: ts, t_end: te, source: 'bot', status: 'active', note, meta })); if (d) S.drawings.set(d.id, d); }
+  toast('חזרה לרמות המומחים'); refreshLive();
 }
 const fbOpen = new Set<string>();
 function updateCardValues(d: Drawing) {
@@ -1491,6 +1524,7 @@ function renderPanel() {
     ${r && waitLong(r) ? `<section class="wait-box"><h3>אזהרה על הנר השבועי האחרון (מידע בלבד)</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section class="drawsec" id="secDraw">
       ${r ? statusLineHtml(r) : ''}
+      ${sourceLineHtml(t)}
       ${ds.map(cardHtml).join('') || '<div class="muted small">אין שרטוטים באפליקציה. "+ אזור" / "+ לונג" והקש על הגרף.</div>'}
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
@@ -1543,6 +1577,7 @@ function renderPanel() {
       }
     }));
   });
+  const rb = $('#resetExpert', p) as HTMLButtonElement | null; if (rb) rb.onclick = () => resetToExpert(t);
   bindUnfit($('.unfitsec', p)!, t);
   const noteEl = $('#note') as HTMLTextAreaElement;
   noteEl.addEventListener('change', async () => {
