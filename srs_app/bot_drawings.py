@@ -82,7 +82,10 @@ ZONE_SCORING = "v5"   # "v5" | "touches" (v4) | "v3d"
 # the v4 tie-breakers. Weights from a sweep against his 126 own zones (python -m srs_app.zone_eval, 2026-10-26): his
 # zones sit close to the price, so a level 1 ATR nearer must beat ~80 points; larger shifts (0.25 / 0.5 ATR) or a
 # points-first pick (PROX 1-3) matched his drawings far less (9-27 of 126 vs 48).
-REDRAW_BROKEN_USER = True  # Eyal 2026-10-27: a broken drawing of his (user / tv) is redrawn by the bot
+REDRAW_BROKEN_USER = False  # 2026-11-02: retired - his drawings are overrides, never touched (was True since 2026-10-27)
+# Eyal 2026-11-02: the expert zone is THE zone of every stock; the bot no longer computes its own zones / Longs.
+# main() routes the nightly step to srs_app.expert_drawings (the v5 code below stays for history / research only).
+EXPERT_MODE = True
 BACKUP_DIR = Path("/workspace/backups")
 V5_SHIFT_ATR = 0.15
 V5_STEP_ATR = 0.05
@@ -803,6 +806,12 @@ def main() -> None:
     ap.add_argument("--redraw-rule", action="store_true",
                     help="after a RULE_VERSION change: replace live bot drawings whose levels differ under the current rule")
     a = ap.parse_args()
+    if EXPERT_MODE and not a.print_read_sql and not a.tickers:
+        if not a.drawings_json:
+            sys.exit("expert mode: --drawings-json is required (python -m srs_app.bot_drawings --print-read-sql)")
+        from srs_app import expert_drawings
+        expert_drawings.main(["--drawings-json", a.drawings_json] + (["--emit-sql"] if a.emit_sql else []) + (["--out", a.out] if a.out else []))
+        return
     if a.print_read_sql:
         for k, v in SQL_READ.items():
             print(f"-- {k}\n{v}")

@@ -1,4 +1,6 @@
-"""Bot drawings: v3d/v4 golden regression (levels must reproduce under the v4 'touches' scoring they were made with),
+"""NOTE 2026-11-02: the bot no longer draws in production (expert zones are THE zone, srs_app.expert_drawings).
+These v3d/v5 golden tests are kept as research regression for srs_app.bot_drawings only.
+Bot drawings: v3d/v4 golden regression (levels must reproduce under the v4 'touches' scoring they were made with),
 v5 placement cases, candidate selection, SQL format."""
 import json
 from pathlib import Path
@@ -285,6 +287,7 @@ def test_redraw_rule_replaces_only_bot_rows_that_differ():
     assert set(kept) == {"SAME", "NONE"} and pl["draw"] == ["DIFF"] and pl["skip"]["U"] == "not interesting"
 
 
+@pytest.mark.skip(reason="RETIRED 2026-11-02 (Eyal): his drawings are overrides and never redrawn; REDRAW_BROKEN_USER=False")
 def test_broken_user_drawing_is_redrawn_with_backup(tmp_path):
     """Eyal 2026-10-27: a BROKEN drawing of his (any low since it was drawn under its SL; FIX / IESC / JBL / MLI / VMI /
     WDC) is redrawn by the bot: his rows become 'obsolete' with meta.superseded (restorable), a local backup is
