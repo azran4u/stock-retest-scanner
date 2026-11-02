@@ -25,6 +25,11 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   const z2 = await page.locator('#srcLine').getAttribute('data-zone'), l2 = await page.locator('#srcLine').getAttribute('data-long');
   ok(z2 === 'מומחים' && l2 === 'מומחים', `${name}: after reset zone='${z2}' long='${l2}'`);
   ok(await page.locator('.badge.b-expert').count() >= 2, `${name}: "מומחים" badges on the cards`);
+  // Eyal 23:13 "תשאיר רק את המומחים": the chart draws only the expert zone + expert Long, no old Long, no dashed copy
+  const drawn = await page.evaluate(() => window.__srs.cv.drawings.map((d) => `${d.kind}:${d.source}:${!!d.meta?.expert}`));
+  ok(drawn.length === 2 && drawn.every((x) => x.endsWith(':bot:true')), `${name}: chart drawings = expert pair only ${JSON.stringify(drawn)}`);
+  ok(await page.locator('g.expert, g.experttrade').count() === 0, `${name}: no dashed duplicate of the expert zone / Long`);
+  ok(await page.locator('.dcard, .drawing-card, [data-did]').count() <= 2, `${name}: at most 2 drawing cards on the stock page`);
   await page.locator('#srcLine').scrollIntoViewIfNeeded(); await page.screenshot({ path: `${OUT}/${name}_${t}_expert.png` });
   await ctx.close();
 }

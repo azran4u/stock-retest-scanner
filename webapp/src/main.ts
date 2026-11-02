@@ -174,6 +174,12 @@ const secHtml = (r: Row) => {
   return `<div class="r4 small muted" data-sector="${esc(sec || '')}"><span>תחום:</span> <bdi dir="ltr">${sec || ind ? esc([sec || '—', ind || '—'].join(' · ')) : '—'}</bdi></div>`;
 };
 
+/** What the chart / spark / stock page render (Eyal 2026-11-02 23:13 "תשאיר רק את המומחים"): only the zone and the Long
+ *  that count (newest active / approved row per kind = the expert pair, or a drawing he makes from now on). Obsolete,
+ *  retired, rejected and older rows are never drawn. */
+function shownDrawings(t: string): Drawing[] { return [countedOf(t, 'zone'), countedOf(t, 'long')].filter((d): d is Drawing => !!d); }
+/** his own live drawings (app / TV), for the ✎ badge and the 'my drawings' chip */
+function hisDrawings(t: string) { return userDrawings(t).filter((d) => d.source === 'user' || d.source === 'tv'); }
 function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
 function isNi(t: string): boolean {
   const l = latestLabel(t, 'not_interesting');
@@ -393,7 +399,7 @@ function factsOf(r: Row): Facts {
     status: live ? live.status : bs.includes('pass') ? 'PASS' : String(r.status || ''),
     needsDrawing: bs.includes('needs_drawing'), review: bs.includes('review'), obsolete: bs.includes('obsolete'), hammer: bs.includes('hammer'),
     position: bs.includes('position') || S.positions.some((p) => p.ticker === r.ticker),
-    starred: isWatched(r.ticker), mine: userDrawings(r.ticker).length > 0, commands: S.commands.some((x) => x.ticker === r.ticker),
+    starred: isWatched(r.ticker), mine: hisDrawings(r.ticker).length > 0, commands: S.commands.some((x) => x.ticker === r.ticker),
     zoneDist: zd ? zd.atr : null,
     dollarVol: numOrNull(r.dollar_vol_30d),
     history: bool(r.f_history),
@@ -810,7 +816,7 @@ function drawSpark(cv: HTMLCanvasElement) {
   cv.dataset.drawn = '1';
   const B = decodeSpark(sp), n = B.c.length;
   // zone band + entry line of the ticker's drawings (zone / long), scale stretched to include them
-  const ds = userDrawings(t).filter((d) => d.status !== 'rejected');
+  const ds = shownDrawings(t);
   const zone = ds.find((d) => d.kind === 'zone' && d.zone_top != null && d.zone_bottom != null);
   const long = ds.find((d) => d.kind === 'long' && d.entry != null);
   const lv = [B.lo, B.hi];
@@ -901,7 +907,7 @@ function bindRows() {
   }));
 }
 function rowHtml(r: Row) {
-  const mine = userDrawings(r.ticker);
+  const mine = hisDrawings(r.ticker);
   const tech = latestLabel(r.ticker, 'technical');
   const pend = S.commands.filter((c) => c.ticker === r.ticker && c.status === 'pending').length;
   const extra = [
@@ -1273,7 +1279,8 @@ function applyBars() {
 
 function syncChart() {
   if (!cv || !S.ticker) return;
-  cv.setDrawings(userDrawings(S.ticker).filter((d) => d.status !== 'rejected'), S.selected);
+  cv.setDrawings(shownDrawings(S.ticker), S.selected);
+  applyExpert();   // the dashed expert copy hides / shows with the counted pair
   cv.fitLevels();
 }
 
@@ -1515,7 +1522,7 @@ function renderPanel() {
   if (p.contains(document.activeElement) && (document.activeElement as HTMLElement).matches('input,textarea')) { panelDirty = true; return; }
   panelDirty = false;
   const t = S.ticker, r = S.byT.get(t);
-  const ds = userDrawings(t);
+  const ds = shownDrawings(t);
   const note = latestLabel(t, 'note');
   const cmds = S.commands.filter((c) => c.ticker === t).slice(0, 8);
   p.innerHTML = `
@@ -1726,8 +1733,10 @@ function applyExpert() {
   const e = expertOf(S.ticker);
   cv.setExpert(S.ui.expert !== false && e?.ok && e.top != null && e.bottom != null && e.base_start
     ? { top: e.top, bottom: e.bottom, start: e.base_start, score: e.score ?? null,
-        trade: e.trade ? { entry: e.trade.entry, sl: e.trade.sl, tp: e.trade.tp, rr: e.trade.rr } : null,
-        hammers: (e.hammers || []).map((h) => ({ w: h.w, s: h.s })) } : null);
+        trade: e.trade && !(() => { const l = countedOf(S.ticker!, 'long'); return !!l && isExpertRow(l); })() ? { entry: e.trade.entry, sl: e.trade.sl, tp: e.trade.tp, rr: e.trade.rr } : null,
+        hammers: (e.hammers || []).map((h) => ({ w: h.w, s: h.s })),
+        // the expert pair is now the real drawing -> no second dashed copy of it (Eyal 2026-11-02 23:13)
+        noBox: (() => { const z = countedOf(S.ticker!, 'zone'); return !!z && isExpertRow(z); })() } : null);
 }
 function expertBadgeHtml(t: string): string {
   const e = expertOf(t); if (!e?.ok) return '';   // badge only where there is an expert zone

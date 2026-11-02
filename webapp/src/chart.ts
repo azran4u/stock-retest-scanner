@@ -59,7 +59,7 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
 /** expert zone + optional expert trade (Entry / SL / TP), drawn as separate dashed purple overlays */
-export interface ExpertOverlay { top: number; bottom: number; start: string; score: number | null; trade?: { entry: number; sl: number; tp: number; rr: number | null } | null; hammers?: { w: string; s: 'H' | 'h' }[] }
+export interface ExpertOverlay { top: number; bottom: number; start: string; score: number | null; trade?: { entry: number; sl: number; tp: number; rr: number | null } | null; hammers?: { w: string; s: 'H' | 'h' }[]; noBox?: boolean }
 const EXPERT_TRADE_W = (weekly: boolean) => (weekly ? 8 : 14);
 
 export class ChartView {
@@ -360,7 +360,7 @@ export class ChartView {
     const lv: number[] = [];
     for (const d of this.drawings) [d.zone_top, d.zone_bottom, d.entry, d.stop, d.target].forEach((x) => x != null && lv.push(+x));
     lv.push(...this.extraLevels.filter((x) => Number.isFinite(x)));
-    if (this.expert) lv.push(this.expert.top, this.expert.bottom);
+    if (this.expert && !this.expert.noBox) lv.push(this.expert.top, this.expert.bottom);
     if (this.expert?.trade) lv.push(this.expert.trade.sl, this.expert.trade.tp);
     this.candles.applyOptions({
       autoscaleInfoProvider: (orig: any) => {
@@ -540,7 +540,7 @@ export class ChartView {
     // expert zone first (under his / the bot's drawings): dashed purple outline, light fill, no pointer events
     if (this.expert) {
       const e = this.expert, ya = this.Y(e.top), yb = this.Y(e.bottom);
-      if (ya != null && yb != null) {
+      if (ya != null && yb != null && !e.noBox) {
         const xs0 = this.X(this.weekly ? mondayOf(e.start) : e.start);
         const ex1 = clampX(xs0, 0), y = Math.min(ya, yb), h = Math.max(2, Math.abs(yb - ya));
         const txt = 'אזור מומחים' + (e.score != null ? ' ' + e.score : '');

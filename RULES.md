@@ -15,6 +15,13 @@ Tools: FinViz screener (filters) → code scan (yfinance) → TradingView drawin
 > RETIRED (kept for history / research; 717 live bot rows retired 2026-11-02 as `obsolete` + `meta.obsolete`, backup
 > `/workspace/backups/bot_drawings_retired_2026-11-02.json`). `REDRAW_BROKEN_USER` is off: his own drawings (app /
 > TradingView) are his override per kind and are never modified; "↺ חזרה לרמות המומחים" on the stock page resets them.
+>
+> **2026-11-02 23:00 — all his drawings retired (Eyal: "תעביר הכל למומחים ותסמן את כל הציורים שלי כלא בתוקף"):** the 291
+> live user / tv rows (171 tickers) → `obsolete` + `meta.obsolete {why, at, prev_status, backup}` (backups: Supabase table
+> `public.drawings_backup_20261102` = full copy of `drawings`; `/workspace/backups/user_drawings_retired_2026-11-02.json`;
+> restore = status `active` from `meta.obsolete.prev_status`). Every zone / Long now comes from the expert-v7 zone and trade
+> (160 tickers); no expert zone → no zone, no Long. "שלך" = only drawings he creates or edits in the app from now on (the
+> TV import's `ON CONFLICT (tv_key) DO NOTHING` never resurrects the retired TV rows).
 
 ## 0. Roles (split bots)
 
