@@ -438,3 +438,8 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 .ewhead { list-style: none; padding: 8px 10px; margin: 4px 0; border: 1px dashed #ba68c8; border-radius: 8px; line-height: 1.5; }
 .ewtier { list-style: none; padding: 6px 10px 2px; font-weight: 700; color: #ce93d8; }
 .ewtier[data-tier="ready"] { color: #81c784; }
+.alstat { padding: 2px 8px; border-radius: 10px; white-space: nowrap; border: 1px solid #555; }
+.alstat.on { color: #81c784; border-color: #81c784; }
+.alstat.dry { color: #ffb74d; border-color: #ffb74d; }
+.alstat.err { color: #e57373; border-color: #e57373; }
+@media (max-width: 480px) { .alstat { font-size: 11px; padding: 1px 6px; } }

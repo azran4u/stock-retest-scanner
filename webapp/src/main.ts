@@ -1,6 +1,6 @@
 import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
-import { makeApi, OWNER_EMAIL, type Table } from './api';
+import { makeApi, OWNER_EMAIL, type Table, type AlertStatus } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
 import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, type Spark, type ExpertDoc, type ExpertZone } from './data';
 import { botLongFromZone } from './botlong';
@@ -693,6 +693,7 @@ function renderList(root?: HTMLElement) {
   host.innerHTML = `
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
+    ${alertStatHtml()}
     <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
@@ -1627,6 +1628,22 @@ async function loadAll() {
 }
 // ---------------- expert zone (Eyal 2026-11-01): separate overlay for the starred stocks, never a drawing / PASS input ----------------
 let expertDoc: ExpertDoc | null = null;
+// real-time Telegram price alerts status (Eyal 2026-11-02): public.alert_runs, refreshed every 5 minutes
+let alertStat: AlertStatus | null = null;
+function alertStatHtml(): string {
+  const a = alertStat; if (!a || !a.last_run) return '<span id="alertStat" hidden></span>';
+  const at = new Date(a.last_run), ago = Math.round((Date.now() - at.getTime()) / 60000);
+  const t = at.toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' });
+  const live = a.mode === 'live', err = !!a.error;
+  const label = err ? '⚠️ התראות: שגיאה' : live ? '🔔 התראות פעילות' : a.mode?.includes('/start') ? '🔕 התראות: ממתין ל-/start בטלגרם' : '🔕 התראות: מצב בדיקה';
+  const title = `התראות מחיר לטלגרם (מניות במועדפים) · בדיקה אחרונה ${t} (שעון ישראל, לפני ${ago} דק׳) · ${a.note || ''} · שוק: ${a.market || ''}${err ? ' · ' + a.error : ''}`;
+  return `<span id="alertStat" class="alstat small ${live && !err ? 'on' : err ? 'err' : 'dry'}" data-mode="${esc(a.mode || '')}" title="${esc(title)}">${label}</span>`;
+}
+async function loadAlertStat() {
+  try { alertStat = await api.loadAlertStatus(); } catch { alertStat = null; }
+  const el = document.getElementById('alertStat'); if (el) el.outerHTML = alertStatHtml();
+}
+setInterval(() => { if (document.visibilityState === 'visible') loadAlertStat(); }, 5 * 60000);
 let expertWatch: ExpertWatchDoc | null = null;
 let watchBy = new Map<string, ExpertWatchItem>();
 const watchOf = (t: string) => watchBy.get(t) || null;
@@ -1649,6 +1666,7 @@ function watchHeadHtml(): string {
 }
 async function loadExpertZones() {
   loadExpertWatchList();
+  loadAlertStat();
   expertDoc = await loadExpert();
   if (!expertDoc) return;
   if ($('.list')) updateListBody();
@@ -1805,7 +1823,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get alertStat() { return alertStat; }, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

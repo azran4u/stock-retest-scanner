@@ -12,6 +12,8 @@ export const OWNER_EMAIL = 'azran4u@gmail.com';
 export type Table = 'drawings' | 'labels' | 'commands' | 'watchlist' | 'positions' | 'stock_lists';
 export type ChangeFn = (table: Table, event: 'INSERT' | 'UPDATE' | 'DELETE', row: any, old: any) => void;
 
+/** Real-time price alerts status (public.alert_runs, written by the srs-price-alerts edge function every 10 minutes). */
+export interface AlertStatus { last_run: string | null; mode: string | null; market: string | null; checked: number | null; sent: number | null; note: string | null; error: string | null }
 export interface Api {
   demo: boolean;
   session(): Promise<{ email: string | null }>;
@@ -35,6 +37,7 @@ export interface Api {
   addCommand(ticker: string | null, text: string, kind?: string, payload?: Record<string, any> | null): Promise<Command>;
   addFeedback(f: Feedback): Promise<void>;
   loadWatch(): Promise<Watch[]>;
+  loadAlertStatus(): Promise<AlertStatus | null>;
   addWatch(ticker: string): Promise<void>;
   removeWatch(ticker: string): Promise<void>;
   /** open positions (read-only; owner-only RLS; mirrored from positions.json by positions.py supabase-sql) */
@@ -116,6 +119,7 @@ class SupaApi implements Api {
   }
   async addFeedback(f: Feedback) { check(await this.sb.from('drawing_feedback').insert(f)); }
   async loadWatch() { return check(await this.sb.from('watchlist').select('*').order('added_at')) as Watch[]; }
+  async loadAlertStatus() { const r = await this.sb.from('alert_runs').select('*').eq('id', 1).maybeSingle(); return (r.data as AlertStatus) || null; }
   async addWatch(ticker: string) { check(await this.sb.from('watchlist').upsert({ ticker }, { onConflict: 'ticker' })); }
   async removeWatch(ticker: string) { check(await this.sb.from('watchlist').delete().eq('ticker', ticker)); }
   async loadPositions() {
@@ -171,6 +175,7 @@ class MemApi implements Api {
   }
   async deleteDrawing(id: string) { await this.updateDrawing(id, { status: 'deleted' }); }
   async loadWatch() { return [...this.watch]; }
+  async loadAlertStatus(): Promise<AlertStatus | null> { return { last_run: new Date(Date.now() - 4 * 60000).toISOString(), mode: 'dry (no token)', market: 'open', checked: this.watch.length, sent: 0, note: '0 alert(s)', error: null }; }
   async addWatch(ticker: string) {
     if (this.watch.some((w) => w.ticker === ticker)) return;
     const w = { ticker, note: null, added_at: new Date().toISOString() }; this.watch.push(w); this.emit('watchlist', 'INSERT', w, null);
