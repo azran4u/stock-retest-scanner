@@ -1,0 +1,47 @@
+.course { max-width: 900px; margin: 0 auto; padding: 10px 14px calc(40px + env(safe-area-inset-bottom)); line-height: 1.65; font-size: 15.5px; color: #d1d4dc; }
+.course h1 { font-size: 24px; margin: 8px 0 4px; }
+.course h2 { font-size: 19px; margin: 22px 0 8px; color: #fff; }
+.course h3 { font-size: 16.5px; margin: 18px 0 6px; color: #82b1ff; }
+.course p { margin: 8px 0; }
+.course ul, .course ol { padding-inline-start: 22px; margin: 6px 0; }
+.course li { margin: 3px 0; }
+.course a { color: #5b8cff; word-break: break-word; }
+.course .lead { color: #b2b5be; }
+.course .ltr { direction: ltr; unicode-bidi: isolate; display: inline-block; }
+.course code { direction: ltr; unicode-bidi: isolate; background: #1e222d; padding: 1px 5px; border-radius: 5px; font-size: 13.5px; }
+.course .toc { background: #1e222d; border-radius: 12px; padding: 10px 14px; margin: 12px 0; }
+.course .toc ol { margin: 4px 0; }
+.course .toc a { cursor: pointer; text-decoration: none; }
+.course details.mod { background: #171b26; border: 1px solid #2a2e39; border-radius: 14px; margin: 12px 0; overflow: hidden; scroll-margin-top: 70px; }
+.course details.mod > summary { cursor: pointer; list-style: none; padding: 14px 16px; font-size: 18px; font-weight: 700; display: flex; gap: 10px; align-items: center; background: #1e222d; }
+.course details.mod > summary::-webkit-details-marker { display: none; }
+.course details.mod > summary::after { content: '▾'; margin-inline-start: auto; transition: transform .2s; color: #787b86; }
+.course details.mod[open] > summary::after { transform: rotate(180deg); }
+.course .num { background: #2962ff; color: #fff; border-radius: 50%; min-width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.course .body { padding: 4px 16px 16px; }
+.course .box { border-radius: 12px; padding: 10px 14px; margin: 12px 0; border: 1px solid #2a2e39; background: #1e222d; }
+.course .box > b:first-child, .course .box > .bt { display: block; margin-bottom: 4px; font-size: 15.5px; }
+.course .ours { border-inline-start: 4px solid #26a69a; }
+.course .test { border-inline-start: 4px solid #f7c948; }
+.course .more { border-inline-start: 4px solid #ab47bc; }
+.course .diff { border-inline-start: 4px solid #ff9800; background: rgba(255,152,0,.07); }
+.course .warn { border-inline-start: 4px solid #ef5350; background: rgba(239,83,80,.07); }
+.course .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #2a2e39; color: #b2b5be; margin-inline-end: 4px; }
+.course .tag.d { background: rgba(255,152,0,.2); color: #ffb74d; }
+.course .tbl { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 10px 0; }
+.course table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 520px; }
+.course th, .course td { border: 1px solid #2a2e39; padding: 6px 8px; text-align: start; vertical-align: top; }
+.course th { background: #1e222d; color: #fff; }
+.course td.n { direction: ltr; text-align: center; white-space: nowrap; }
+.course figure { margin: 12px 0; }
+.course figure img { width: 100%; height: auto; border-radius: 10px; border: 1px solid #2a2e39; display: block; }
+.course figcaption { font-size: 13.5px; color: #9598a1; margin-top: 5px; }
+.course .quiz details { background: #131722; border-radius: 10px; padding: 8px 12px; margin: 6px 0; border: 1px solid #2a2e39; }
+.course .quiz summary { cursor: pointer; font-weight: 600; }
+.course .quiz details p { color: #b2b5be; }
+.course .check li { list-style: none; margin-inline-start: -18px; }
+.course .check li::before { content: '☐ '; color: #26a69a; }
+.course .src { font-size: 13px; color: #9598a1; }
+.course .src li { margin: 2px 0; }
+.course .eq { direction: ltr; text-align: center; background: #131722; border-radius: 10px; padding: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 14.5px; margin: 10px 0; overflow-x: auto; }
+@media (max-width: 600px) { .course table.stk { min-width: 0; } .course table.stk tr:first-child { display: none; } .course table.stk tr { display: block; border: 1px solid #2a2e39; border-radius: 10px; margin: 8px 0; padding: 4px 0; background: #131722; } .course table.stk td { display: block; border: 0; padding: 4px 10px; } .course table.stk td::before { content: attr(data-l); display: block; font-size: 12px; color: #787b86; } .course table.stk td:first-child { font-weight: 700; color: #fff; } .course { font-size: 15px; padding: 8px 10px 40px; } .course details.mod > summary { font-size: 16.5px; padding: 12px; } .course .body { padding: 4px 11px 14px; } .course h1 { font-size: 21px; } }

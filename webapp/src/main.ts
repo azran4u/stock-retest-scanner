@@ -628,6 +628,7 @@ function route() {
   const m = location.hash.match(/^#\/t\/([^/?]+)/);
   if (location.hash.startsWith('#/rules')) { layout = null; renderRules(); return; }
   if (location.hash.startsWith('#/calibrate')) { layout = null; renderCalibrate(); return; }
+  if (location.hash.startsWith('#/course')) { layout = null; renderCourse(); return; }
   if (isWide()) {
     splitShell();
     if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
@@ -700,7 +701,7 @@ function renderList(root?: HTMLElement) {
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
     ${alertStatHtml()}
-    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
+    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="courseLink" class="ghost small btnlike" href="#/course">קורס</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
     ${listBarHtml()}
@@ -744,6 +745,30 @@ async function renderRules() {
   if (!location.hash.startsWith('#/rules')) return;
   const el = $('.rules')!; el.className = 'rules';
   el.innerHTML = `<p class="small"><a href="#/calibrate">כיול מגמה →</a> (סימון 60 מניות לכיול כלל המגמה)</p>` + renderRulesHtml(j, { maxRisk: maxRiskUsd() });
+}
+// ---------------- experts-method course (#/course, Eyal 2026-11-03) ----------------
+// course.json (private bucket, built by tools/course/build_course.py) = {css, html}: teaching material only.
+// The TOC uses data-goto (not #anchors: the hash is the router), opening the module and scrolling to it.
+let courseP: Promise<{ css: string; html: string } | null> | null = null;
+async function renderCourse() {
+  destroyChart();
+  app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">קורס שיטת המומחים</div><span></span></header><div id="courseHost" class="center muted">טוען…</div>`;
+  $('#back')!.onclick = () => { location.hash = '#/'; };
+  courseP ??= fetchData('course.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  const j = await courseP;
+  if (!location.hash.startsWith('#/course')) return;
+  const host = $('#courseHost')!;
+  if (!j || !j.html) { courseP = null; host.textContent = 'הקורס לא נטען'; return; }
+  host.className = '';
+  host.innerHTML = `<style>${j.css}</style>${j.html}`;
+  host.onclick = (e) => {
+    const a = (e.target as HTMLElement).closest<HTMLElement>('[data-goto]');
+    if (!a) return;
+    e.preventDefault();
+    const m = document.getElementById(a.dataset.goto!) as HTMLDetailsElement | null;
+    if (m) { m.open = true; m.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  };
+  window.scrollTo(0, 0);
 }
 // ---------------- trend calibration page (#/calibrate, calibrate.ts) ----------------
 let calP: Promise<CalRow[]> | null = null;

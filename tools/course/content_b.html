@@ -1,0 +1,101 @@
+<details class="mod" id="m3"><summary><span class="num">3</span>מיקום Stop Loss</summary><div class="body">
+<p>הסטופ קובע מה זה 1R, כלומר כמה כסף מסכנים בעסקה. הוא קובע גם כמה פעמים תוצא מעסקה בגלל רעש רגיל של המחיר. יש שלוש גישות עיקריות.</p>
+<h2>3.1 שלוש גישות</h2>
+<div class="tbl"><table><tr><th>גישה</th><th>מי</th><th>הכלל</th><th>על מה מבוסס</th></tr>
+<tr><td>מבנה הגרף</td><td>Weinstein, Wyckoff, Bulkowski (Minor low)</td><td>מתחת לתמיכה, לשפל המשני האחרון או ל-Spring. Weinstein שם את הסטופ מתחת לנמוך מבין ממוצע 30 השבועות והשפל המשני, ומתחת למספר עגול (למשל 10.93 במקום 11.03). הוא "לא אוהב אחוזים", כי לדעתו כל גרף קובע את הסטופ שלו.</td><td>ההיגיון: אם התמיכה נשברה, הסיבה לעסקה כבר לא קיימת. (<a href="https://thepatternsite.com/WeinsteinStops.html" target="_blank" rel="noopener">Weinstein Stops</a>)</td></tr>
+<tr><td>אחוז קבוע</td><td>O'Neil / IBD, Minervini</td><td>IBD: למכור תמיד אם המניה ירדה 7–8% ממחיר הקנייה. בשוק חלש אפילו 3–5%. Minervini: לפי מקורות משניים, בדרך כלל 5–8% ולכל היותר 10%.</td><td>IBD: לדבריהם, המחקר שלהם על יותר מ-130 שנים מראה שמניה מובילה שנקנתה נכון כמעט לא יורדת יותר מ-8% מתחת לנקודת הקנייה. (<a href="https://myibd.investors.com/Education/lesson.aspx?id=739140&amp;sourceid=735788" target="_blank" rel="noopener">IBD 7–8%</a>, <a href="https://www.aaii.com/journal/article/sell-rules-to-build-your-stock-investing-performance" target="_blank" rel="noopener">O'Neil ב-AAII</a>)</td></tr>
+<tr><td>תנודתיות</td><td>Kaufman, Bulkowski, Wilder, LeBeau</td><td>Kaufman: טווח יומי ממוצע (גבוה פחות נמוך) של 22 ימים, כפול 2, מתחת לנמוך האחרון. Chandelier: השיא של 22 הימים פחות 3 ATR.</td><td>Bulkowski בדק את השיטה של Kaufman על כ-100 עסקאות שלו (2003–2005), ומצא שהטווח הממוצע עדיף על ATR ועל סטיית תקן. (<a href="https://www.thepatternsite.com/stops.html" target="_blank" rel="noopener">Stops part 1</a>, <a href="https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/chandelier-exit" target="_blank" rel="noopener">Chandelier</a>)</td></tr>
+</table></div>
+
+<h2>3.2 מה הנתונים אומרים על סטופ צמוד</h2>
+<p><b>Bulkowski</b>, Stops part 2: 3,068 פריצות כלפי מעלה בין 1991 ל-2008. בחודש שאחרי פריצה, המחיר ירד מתחת למחיר הפריצה ב-80% מהמקרים. הירידה הממוצעת הייתה 5.3%, והחציונית 4.2%. סטופ שקרוב יותר מ-4% מתחת למחיר הפריצה הופעל בערך בחצי מהמקרים בתוך חודש. סטופ של 8% הופעל בערך ברבע מהם. סטופ 2 סנט מתחת לנמוך של יום הפריצה הופעל ב-61.5% מהמקרים. סטופ מתחת לנמוך של 10 הימים שלפני הפריצה הופעל רק ב-14.9%. (<a href="https://www.thepatternsite.com/Stops2.html" target="_blank" rel="noopener">Stops part 2</a>)</p>
+<figure><img src="{{img:sl_gl}}" alt="GL stops"><figcaption>GL, שבועי, ארבע אפשרויות לסטופ על אותה עסקה. כניסה ב-157.63. הסטופ המבני הוא 153.28: הנמוך של הריטסט (154.09) פחות 0.1 ATR. ב-v7 הסטופ חייב להיות לפחות 1 ATR מתחת לכניסה, ולכן הוא יורד ל-149.50 (מינוס 5.2%). Kaufman (2 כפול הטווח של 22 ימים) הוא 150.71, ו-IBD מינוס 8% הוא 145.02. במקרה הזה שלוש השיטות האחרונות נותנות סטופ דומה. במניה תנודתית IBD יהיה צמוד בהרבה מ-1 ATR.</figcaption></figure>
+
+<h2>3.3 פערי פתיחה (Gaps)</h2>
+<p>סטופ הוא פקודה, לא הבטחה. אם המניה נפתחת מתחת לסטופ, ההפסד גדול מ-1R. במבחן העבר שלנו (פרק 9) 233 מתוך 996 יציאות בסטופ של גרסת L היו בפער פתיחה. ההפסד הממוצע בהן היה −1.19R, והגרוע ביותר −4.16R. Bulkowski מציע גם לשים סטופ קצת מתחת לגאפ, אם הגאפ לא רחב מדי.</p>
+<div class="box diff"><b>כאן אנחנו שונים מהמומחים</b>
+<ul><li>v7 משלב שתי גישות: סטופ מבני (מתחת לנמוך הריטסט ולתחתית האזור, פחות 0.1 ATR, ומתחת למספר עגול) ותנודתיות (לפחות 1 ATR שבועי מתחת לכניסה). רף ה-1 ATR הוא שלנו. הוא לא לקוח מאחד המומחים, אלא מבוסס על הממצא של Bulkowski שסטופים צמודים מופעלים הרבה.</li>
+<li>ה-8% של IBD הוא אצלנו רק סימון, לא פסילה. IBD מודד מנקודת קנייה בפריצה, ואנחנו קונים בריטסט, שם הסטופ המבני קרוב יותר.</li>
+<li>ה-1 ATR שלנו הוא ATR שבועי, בעוד ש-Kaufman מחשב על טווח יומי.</li></ul></div>
+<div class="box ours"><b>איך זה אצלנו היום</b>SL = הנמוך מבין נמוך הריטסט ותחתית האזור, פחות 0.1 ATR; מוזז מתחת למספר עגול שנמצא ממש מעליו; ובסוף <code>min(מבני, כניסה − 1 ATR)</code>. סטופ עמוק מ-8% מסומן. ברשימה החמה הסיכון מוגבל ל-10% ולכל היותר $55 למניה.</div>
+<div class="box test"><b>מה כדאי לבדוק</b>
+<ul><li>לבדוק את אותה עסקה עם סטופ של 0.75, 1, 1.5 ו-2 ATR, ולהשוות תוחלת ב-R ולא אחוז הצלחה.</li>
+<li>סטופ לפי סגירה שבועית (מוכרים רק אחרי סגירה מתחת לסטופ, כמו Weinstein) מול סטופ שנמצא בשוק כל הזמן. הראשון מונע הוצאה בגלל רעש בתוך השבוע, אבל חשוף לפערים גדולים יותר.</li>
+<li>לפסול עסקאות שבהן ה-1 ATR רחוק בהרבה מהסטופ המבני, כי שם ה-R:R נפגע.</li></ul></div>
+<div class="box more"><b>היבטים נוספים</b>סטופ זמן (העסקה לא זזה תוך X שבועות), סטופ סביב דוחות (לצאת לפני דוח, או להקטין את הפוזיציה), ומה עושים בפער פתיחה מתחת לסטופ: יוצאים בפתיחה או מחכים לתיקון.</div>
+<div class="quiz"><b>בוחן קצר</b>
+<details><summary>למה סטופ של 2% מתחת לכניסה הוא בדרך כלל רעיון גרוע בריטסט שבועי?</summary><p>לפי Bulkowski, סטופ שקרוב מ-4% הופעל בערך בחצי מהמקרים בתוך חודש, גם בפריצות תקינות. הסטופ צריך להיות מחוץ לרעש הרגיל של המחיר, ולכן אצלנו יש רף של 1 ATR.</p></details>
+<details><summary>Weinstein ו-IBD חלוקים לגבי הסטופ. על מה כל אחד מבוסס?</summary><p>IBD מבוסס על המחקר שלהם על מניות מובילות: מניה טובה שנקנתה נכון כמעט לא יורדת יותר מ-8%. Weinstein מבוסס על מבנה הגרף: תמיכה ושפל משני, בלי אחוז קבוע.</p></details>
+<details><summary>מה ההפסד בפועל אם המניה נפתחת 3% מתחת לסטופ, כשהסיכון שלך הוא 5%?</summary><p>בערך 8% במקום 5%, כלומר כ-1.6R.</p></details>
+</div>
+<ul class="src"><li><a href="https://www.thepatternsite.com/Stops2.html" target="_blank" rel="noopener">Bulkowski: Stops part 2</a></li><li><a href="https://www.thepatternsite.com/stops.html" target="_blank" rel="noopener">Bulkowski: Stops part 1</a></li><li><a href="https://thepatternsite.com/WeinsteinStops.html" target="_blank" rel="noopener">Bulkowski: Weinstein Stops</a></li><li><a href="https://myibd.investors.com/Education/lesson.aspx?id=739140&amp;sourceid=735788" target="_blank" rel="noopener">IBD: Limit Your Losses to 7%–8%</a></li><li><a href="https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/chandelier-exit" target="_blank" rel="noopener">StockCharts: Chandelier Exit</a></li></ul>
+</div></details>
+
+<details class="mod" id="m4"><summary><span class="num">4</span>מיקום Take Profit</summary><div class="body">
+<h2>4.1 יעד קבוע או רווח פתוח?</h2>
+<div class="tbl"><table><tr><th>מי</th><th>הכלל</th><th>על מה מבוסס</th></tr>
+<tr><td>IBD</td><td>לממש את רוב הרווח בעלייה של 20–25% מנקודת הקנייה. חריג: אם המניה עלתה יותר מ-20% בתוך 3 שבועות, מחזיקים לפחות 8 שבועות.</td><td>המחקר שלהם: רוב המניות שפורצות עולות 20–25% ואז מתקנות. (<a href="https://www.investors.com/wp-content/uploads/2017/08/IBD_SellingChecklist.pdf" target="_blank" rel="noopener">IBD Selling Checklist</a>)</td></tr>
+<tr><td>Weinstein</td><td>אין יעד. מעלים את הסטופ מתחת לשפל המשני ולממוצע 30 השבועות, ורק כשהמחיר מתקרב לשיא הקודם. מהדקים את הסטופ כשהמניה עוברת לשלב 3.</td><td>מטרתו לתפוס את כל שלב 2. (<a href="https://thepatternsite.com/WeinsteinStops.html" target="_blank" rel="noopener">Weinstein Stops</a>)</td></tr>
+<tr><td>Bulkowski</td><td>Measured move: גובה התבנית מתווסף לנקודת הפריצה. לכל תבנית יש אצלו "אחוז שמגיע ליעד".</td><td>סטטיסטיקה לכל תבנית. כשמזיזים סטופ נגרר במבחן ה-Throwback, הרווח הממוצע כמעט נחתך בחצי ושיעור ההוצאות עולה מ-14% ל-42%. (<a href="https://thepatternsite.com/ThrowbackEntry.html" target="_blank" rel="noopener">Throwback Entry</a>)</td></tr>
+<tr><td>Van Tharp</td><td>היציאה היא מה שקובע את גודל הרווחים, ולכן את התוחלת. עדיף להגדיר את התוצאה במכפלות R.</td><td>מסגרת מתמטית.</td></tr>
+</table></div>
+<p>המחלוקת: יעד קבוע נותן אחוז הצלחה גבוה יותר, אבל מוותר על העסקאות הגדולות שמביאות את רוב הרווח. רווח פתוח עם סטופ נגרר תופס את העסקאות הגדולות, אבל מחזיר חלק מהרווח בכל עסקה ומפסיד יותר עסקאות קטנות. אצל Bulkowski, ב-Throwback, סטופ נגרר דווקא פגע בתוצאה.</p>
+<figure><img src="{{img:tp_swk}}" alt="SWK TP"><figcaption>SWK, שבועי, העסקה כפי שנראתה ב-28.8.2026: כניסה 90.58, SL 84.34, TP 103.78 (השיא שאחרי הפריצה), R:R 2.12. המחיר הגיע ליעד באוקטובר. היעד של ה-Measured move (116.66) רחוק יותר, ולכן מוצג אצלנו כיעד משני בלבד.</figcaption></figure>
+<div class="box diff"><b>כאן אנחנו שונים מהמומחים</b>ה-TP שלנו הוא השיא שאחרי הפריצה, כלומר ההתנגדות הבאה. זה יעד שמרני וקרוב: עלייה של 12–26% בדוגמאות שלנו, דומה ל-20–25% של IBD. אנחנו לא משתמשים בסטופ נגרר כמו Weinstein. היעד של Bulkowski (Measured move) הוא אצלנו משני בלבד.</div>
+<div class="box ours"><b>איך זה אצלנו היום</b>TP = השיא שאחרי הפריצה. Measured move (ראש האזור + גובה הבסיס) מוצג כיעד משני. R:R = (TP − כניסה) / (כניסה − SL), ונדרש R:R של 2 לפחות.</div>
+<div class="box test"><b>מה כדאי לבדוק</b>
+<ul><li>במבחן העבר, עסקאות עם R:R ≥ 3 הניבו +0.84R, ועסקאות עם R:R &lt; 3 רק +0.21R. כדאי לבדוק העלאה של הרף ל-3 על נתונים מחוץ למדגם, לפני שמחליטים.</li>
+<li>יציאה חלקית: חצי ב-TP והשאר עם סטופ נגרר מתחת לשפל משני (Weinstein). להשוות את התוחלת לזו של TP מלא.</li>
+<li>ה-Measured move כיעד ראשי, מול השיא שאחרי הפריצה.</li></ul></div>
+<div class="box more"><b>היבטים נוספים</b>להזיז את הסטופ לנקודת האיזון אחרי 1R (יש לזה מחיר: יותר עסקאות יוצאות באפס), יעד לפי זמן, והתנגדות עליונה אמיתית כמו שיא של 52 שבועות או שיא כל הזמנים.</div>
+<div class="quiz"><b>בוחן קצר</b>
+<details><summary>R:R של 2, אחוז הצלחה 30%. מה התוחלת?</summary><p><span class="ltr">0.3 × 2 − 0.7 × 1 = −0.1R</span>. התוחלת שלילית. צריך אחוז הצלחה של יותר מ-33% כדי להיות מעל האפס.</p></details>
+<details><summary>למה Bulkowski לא ממליץ על סטופ נגרר אחרי Throwback?</summary><p>במבחן שלו הסטופ הנגרר הקטין את הרווח הממוצע כמעט בחצי והעלה את שיעור ההוצאות מ-14% ל-42%.</p></details>
+</div>
+<ul class="src"><li><a href="https://www.investors.com/wp-content/uploads/2017/08/IBD_SellingChecklist.pdf" target="_blank" rel="noopener">IBD Selling Checklist</a></li><li><a href="https://thepatternsite.com/ThrowbackEntry.html" target="_blank" rel="noopener">Bulkowski: Throwback Entry</a></li></ul>
+</div></details>
+
+<details class="mod" id="m5"><summary><span class="num">5</span>כניסה לעסקה: השבועי קובע את האזור, היומי את הטריגר</summary><div class="body">
+<h2>5.1 שלוש דרכים להיכנס בריטסט</h2>
+<div class="tbl"><table><tr><th>דרך</th><th>מי</th><th>יתרון</th><th>חיסרון</th></tr>
+<tr><td>A. פקודת לימיט באזור</td><td>האזור שלנו ב-v7 (כניסה בראש האזור)</td><td>המחיר הטוב ביותר וה-R:R הגבוה ביותר</td><td>נכנסים גם לריטסטים שנכשלים ("סכין נופלת")</td></tr>
+<tr><td>B. סגירה חוזרת מעל ראש התבנית</td><td>Bulkowski, Throwback Entry Setup 1</td><td>האישור מסנן חלק מהכישלונות</td><td>מחיר גבוה יותר ו-R:R נמוך יותר</td></tr>
+<tr><td>C. Buy Stop מעל נר איתות</td><td>Al Brooks, Wyckoff (Test), Weinstein ("כשהמחיר מתחיל לעלות")</td><td>הטריגר יומי ומדויק, והסטופ צמוד מתחת לנר</td><td>יותר פעמים שנכנסים ומיד יוצאים בסטופ</td></tr>
+</table></div>
+<p><b>Bulkowski</b> בדק שלוש כניסות אחרי Throwback ב-11 סוגי תבניות על גרף יומי (1991–2012). הכי טובה הייתה Setup 1: לחכות שהמחיר יסגור שוב מעל ראש התבנית, ולקנות בפתיחה למחרת. במבחן שלו היו 4,875 עסקאות, 89% מהן הרוויחו ו-10% יצאו בסטופ. אבל תנאי המבחן שונים מאוד משלנו. הסטופ היה בגובה התבנית באחוזים. היציאה הייתה ב-Ultimate high, השיא לפני ירידה של 20%, שאפשר לזהות רק בדיעבד. והכול היה על גרף יומי. (<a href="https://thepatternsite.com/ThrowbackEntry.html" target="_blank" rel="noopener">Throwback Entry</a>)</p>
+<div class="box diff"><b>כאן אנחנו שונים מהמומחים</b>בקוד שלנו כתוב שהכניסה מבוססת על ה-89% של Bulkowski. בפועל ההגדרה שלנו שונה: הכניסה היא <b>לימיט בראש האזור</b>, ו"אישור" הוא רק סימון. גם הסטופ, היציאה ו-TF שונים. לכן ה-89% <b>לא חל על השיטה שלנו</b>. במבחן העבר שלנו (פרק 9), גרסת האישור (C) הצליחה ב-54% מהעסקאות, וגרסת הלימיט (L) ב-36%.</div>
+
+<h2>5.2 נרות אישור</h2>
+<ul>
+<li><b>Nison</b>: פטיש אחרי ירידה הוא איתות גם בלי אישור. עם זאת, נהוג לחכות שהנר הבא ייסגר מעל הגוף של הפטיש, או מעל הגבוה שלו לזהירות יתר. פטיש מוגדר כגוף קטן בחלק העליון של הנר, צל תחתון של לפחות פי 2 מהגוף, וכמעט בלי צל עליון.</li>
+<li><b>Bulkowski</b> (Encyclopedia of Candlestick Charts): פטיש מוביל להיפוך כלפי מעלה רק ב-60% מהמקרים, וזה "לא רחוק מאקראי". הוא מדורג 65 מתוך 103 בביצועים. לדבריו פטיש עם גוף לבן מתפקד טוב יותר. (<a href="https://thepatternsite.com/Hammer.html" target="_blank" rel="noopener">Hammer</a>)</li>
+<li>Bulkowski ו-Nison חלוקים בגלל השיטה. Nison מלמד צורה ומשמעות לפי המסורת היפנית. Bulkowski סופר תוצאות של אלפי מקרים, ומצא שלנר בודד יש יתרון קטן בלבד.</li>
+</ul>
+<figure><img src="{{img:hammer_asb}}" alt="ASB hammers"><figcaption>ASB, שבועי, מצב 11.9.2026. פטישים שבועיים על האזור (28.42–28.77) בשבועות 21.9, 28.9 ו-12.10, ואחריהם המחיר עלה. כניסה 28.77, SL 27.40, TP 32.21.</figcaption></figure>
+
+<h2>5.3 חיפוש נקודת הכניסה בגרף היומי</h2>
+<p>הגרף השבועי קובע את האזור, ואת הטריגר מחפשים בגרף היומי. כשהמחיר נכנס לאזור, מחפשים נר היפוך יומי (פטיש, בולע או סגירה חזקה), ואז אחת משלוש אפשרויות:</p>
+<ol><li><b>Brooks</b>: פקודת Buy Stop טיק אחד מעל הגבוה של נר האיתות. "כניסה שנייה" (H2, אחרי שני גלי ירידה) אמינה יותר, כי הצד השני נכשל פעמיים. (<a href="https://www.oreilly.com/library/view/trading-price-action/9781118066515/OEBPS/9781118166253_epub_c_10.htm" target="_blank" rel="noopener">Brooks: Second Entries</a>)</li>
+<li><b>Wyckoff</b>: <b>Spring</b> היא ירידה קצרה מתחת לתמיכה וחזרה מהירה מעליה. אחריה בא <b>Test</b> בנפח נמוך שלא יורד מתחת לשפל ה-Spring. הסטופ מתחת לשפל ה-Spring. (<a href="https://wyckoffsmi.com/test-of-springs/" target="_blank" rel="noopener">Test of Springs</a>)</li>
+<li><b>Weinstein</b>: קונים בפולבק כשהמחיר מתחיל לעלות, לא בזמן שהוא עוד יורד. פולבק בנפח נמוך הוא סימן טוב. <b>IBD</b>: הפולבק הראשון לממוצע 10 שבועות יכול להיות הזדמנות קנייה. (<a href="https://www.aaii.com/journal/article/sell-rules-to-build-your-stock-investing-performance" target="_blank" rel="noopener">O'Neil, AAII</a>)</li></ol>
+<figure><img src="{{img:daily_unf}}" alt="UNF daily"><figcaption>UNF, יומי. האזור (238.00–242.46) נלקח מהגרף השבועי. ב-28.10 המחיר ירד בתוך היום מתחת לאזור ונסגר הרחק מעליו, כמעט פטיש (h). זה נראה כמו Spring של Wyckoff. לפי Brooks הטריגר הוא Buy Stop מעל הגבוה של הנר הזה. אצלנו הכניסה היא לימיט ב-242.46.</figcaption></figure>
+<figure><img src="{{img:daily_gl}}" alt="GL daily"><figcaption>GL, יומי. שני פטישים יומיים על האזור (27.10 ו-2.11). זה היה איתות ה-revD ברשימה החמה (+1 נקודת מוכנות), יחד עם סגירה שבועית מעל האזור (+3).</figcaption></figure>
+
+<h2>5.4 נפח בפולבק</h2>
+<p>Weinstein ו-Wyckoff: פולבק בנפח נמוך מראה שאין לחץ מכירה, וזה סימן חיובי. נפח גבוה בירידה לאזור הוא סימן אזהרה.</p>
+<div class="box ours"><b>איך זה אצלנו היום</b>
+<ul><li>הכניסה היא ראש האזור. העסקה "מאושרת" כשהסגירה השבועית האחרונה מעל האזור.</li>
+<li>מוכנות ברשימה החמה: סגירה שבועית מעל האזור אחרי נגיעה +3; פטיש שבועי על האזור +3 (פטיש מלא) או +2 (כמעט פטיש); נר היפוך שבועי +2; נר היפוך יומי ב-10 הימים האחרונים +1. מניה "מוכנה" כשהיא מקבלת 2 נקודות ומעלה.</li>
+<li>התראה בטלגרם כשהמחיר מגיע קרוב לכניסה, או כשמגיע הזמן לשים פקודת לימיט.</li></ul></div>
+<div class="box test"><b>מה כדאי לבדוק</b>
+<ul><li><b>לימיט (L) מול אישור (C)</b>: במבחן העבר L הניב +0.46R בתוחלת עם הצלחה של 36%, ו-C הניב +0.36R עם הצלחה של 54%. ההבדל לא מובהק, ושתיהן לא עברו בבירור את הכניסה האקראית (פרק 9).</li>
+<li><b>פטיש שבועי</b> על האזור ב-12 השבועות שלפני הכניסה הוריד את התוחלת: ב-L ‏+0.29R לעומת +0.58R בלי פטיש, וב-C ‏+0.20R לעומת +0.52R. זה הפוך ממה שציפינו. צריך לבדוק אם הפטיש מסמן ריטסטים חוזרים וחלשים, לפני שנותנים לו 3 נקודות מוכנות.</li>
+<li>טריגר יומי של Buy Stop מעל נר היפוך (Brooks) מול לימיט: תוחלת, אחוז ההחמצות, וכמה פעמים יוצאים מהר בסטופ.</li></ul></div>
+<div class="box more"><b>היבטים נוספים</b>מה עושים בפער פתיחה מעל הכניסה (מוותרים או רודפים), כמה זמן פקודה נשארת פתוחה, כניסה בחלקים (חצי בלימיט וחצי באישור), ונפח יחסי ביום הטריגר.</div>
+<div class="quiz"><b>בוחן קצר</b>
+<details><summary>למה ה-89% של Bulkowski לא מעיד על אחוז ההצלחה שלנו?</summary><p>כי הכניסה, הסטופ והיציאה אצלו שונים: היציאה ב-Ultimate high שמזוהה בדיעבד, הסטופ בגובה התבנית, והכול על גרף יומי. אצלנו הכניסה היא לימיט בגרף שבועי, היציאה ב-TP קבוע והסטופ מבני.</p></details>
+<details><summary>מה זה Spring, ואיפה שמים בו את הסטופ?</summary><p>ירידה קצרה מתחת לתמיכה וחזרה מהירה מעליה. הסטופ מתחת לשפל ה-Spring.</p></details>
+<details><summary>פטיש יומי על האזור, והמחיר למחרת עולה מעל הגבוה שלו. מה הכניסה לפי Brooks?</summary><p>פקודת Buy Stop טיק אחד מעל הגבוה של הפטיש. היא מתמלאת כשהמחיר עובר את הגבוה, והנר שבו זה קורה הוא נר הכניסה.</p></details>
+</div>
+<ul class="src"><li><a href="https://thepatternsite.com/ThrowbackEntry.html" target="_blank" rel="noopener">Bulkowski: Throwback Entry</a></li><li><a href="https://thepatternsite.com/Hammer.html" target="_blank" rel="noopener">Bulkowski: Hammer</a></li><li>Steve Nison, Japanese Candlestick Charting Techniques (פטיש ואישור)</li><li><a href="https://wyckoffsmi.com/test-of-springs/" target="_blank" rel="noopener">Wyckoff: Test of Springs</a></li><li><a href="https://www.oreilly.com/library/view/trading-price-action/9781118066515/OEBPS/9781118166253_epub_c_10.htm" target="_blank" rel="noopener">Al Brooks: Second Entries</a></li></ul>
+</div></details>
