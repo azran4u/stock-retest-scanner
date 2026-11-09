@@ -32,7 +32,7 @@ reacted to this week or in the last completed week, and the stock is in a primar
 | ✅ `triggered` "הכניסה הופעלה" | valid setup, the session traded at / under the entry and price is back above it, still ≤ 0.5 ATR above (not run away) | the limit filled — or enter now if he has no position |
 | ❌ `cancel` "בטל את הפקודה" | price ≤ SL, or the expert zone stopped being valid, AND an order may be working (a limit / triggered alert was sent for this entry in the last 30 days) or the stock is starred | cancel the open buy order |
 
-**No message** when: the setup is invalid (R:R < 2, earnings, no uptrend, zone broken without an order), price ran away
+**No message** when: the setup is invalid (R:R < 2, earnings, no uptrend, falling knife = the last completed weekly candle is a healthy red bar on above-average volume — `index.json` `f_no_red_vol_week === false`, Eyal 2026-11-09, until the next weekly close — zone broken without an order), price ran away
 (> 0.25 ATR above for a new limit, > 0.5 ATR for triggered), price is under the zone but above SL (moving away — e.g.
 SNX 2026-11-02, 0.5 ATR under the entry, used to be a "touched" message), or there is no weekly ATR.
 

@@ -7,9 +7,10 @@ earnings, retest geometry, R:R, streak and reversal values. Missing data ->
 False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
-sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above, f_after_earnings_week (2026-10-31); else FAIL. The WAIT status
-(Eyal 2026-10-23) was cancelled 2026-10-26: f_no_red_vol_week / f_no_inv_hammer (last completed weekly
-candle = healthy red bar on above-average volume / inverted hammer) are informational warnings (WARN_FILTERS). (f_short_float / f_inst_own are
+sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above, f_after_earnings_week (2026-10-31),
+f_no_red_vol_week (falling-knife gate, core again since 2026-11-09); else FAIL. The WAIT status (Eyal 2026-10-23)
+was cancelled 2026-10-26; f_no_inv_hammer (last completed weekly candle = inverted hammer) is an informational
+warning (WARN_FILTERS). (f_short_float / f_inst_own are
 informational dashboard filters since 2026-10-14; None = data missing.)
 The smooth/reversal filters never change PASS.
 
@@ -140,7 +141,7 @@ CONFIG: Dict[str, Any] = {
     # f_no_red_vol_week (Eyal 2026-10-23, CLMT): the last COMPLETED weekly candle is a healthy red bar
     # (close < open, body >= red_vol_body_min x the week's high-low range) on above-average volume
     # (the week's average daily volume > the average daily volume of the red_vol_avg_days trading days
-    # before that week = same 30-day basis as $vol) -> not PASS yet, status WAIT until a later weekly close
+    # before that week = same 30-day basis as $vol) -> falling knife: not PASS until a later weekly close (core 2026-11-09)
     "red_vol_body_min": 0.5,
     "red_vol_avg_days": 30,
     # f_from_above (Eyal 2026-10-24, USB): a stock that comes back INTO its zone from BELOW is not interesting -
@@ -164,11 +165,14 @@ CONFIG: Dict[str, Any] = {
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
     "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above", "f_after_earnings_week",
+    # falling knife (Eyal 2026-11-09): the last COMPLETED weekly candle is a healthy red bar on above-average volume ->
+    # no entry even if price closed on the support; wait for the next weekly close (compute_red_vol_week)
+    "f_no_red_vol_week",
 ]
 EARN_WEEK_COLS = ["earn_week_date", "earn_week_report", "earn_week_detail"]
 # Informational warnings on the last completed weekly candle (Eyal 2026-10-26: status WAIT cancelled; they were
 # WAIT gates 2026-10-23 / 2026-10-24). Still computed for every row, shown as badges / app filters, NOT in status.
-WARN_FILTERS = ["f_no_red_vol_week", "f_no_inv_hammer"]
+WARN_FILTERS = ["f_no_inv_hammer"]  # f_no_red_vol_week is a core gate again since 2026-11-09 (falling knife)
 INV_HAMMER_COLS = ["inv_hammer_week_date", "inv_hammer_detail"]
 RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
 FROM_ABOVE_COLS = ["from_above_side", "from_above_date", "from_above_detail"]
@@ -820,8 +824,11 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
       healthy red  = Close < Open AND |Close - Open| >= red_vol_body_min (0.5) x (High - Low)
       above avg    = the week's average daily volume (week volume / trading days in the week)
                      > the average daily volume of the red_vol_avg_days (30) trading days before the week
-    Both -> f_no_red_vol_week False (status WAIT: wait for the next weekly close; a later week that closes
-    without being another healthy red loud week clears it, a close below the zone/SL is 'broken' as usual).
+    Both -> f_no_red_vol_week False = falling knife (Eyal 2026-11-09, core PASS gate again: "don't enter even if price
+    closed on the support, wait for next week's close"): not PASS / not 'ready' / no entry alerts; a later week that
+    closes without being another healthy red loud week clears it, a close below the zone/SL is 'broken' as usual.
+    A hammer is never 'healthy red': body >= 50% of the range leaves a lower shadow <= the body (a hammer needs a
+    lower shadow > the body, TA-Lib CDLHAMMER / >= 2x body classic).
     Not enough data -> True (the rule only blocks on evidence). red_vol_* columns describe the checked week."""
     C = CONFIG
     out: Dict[str, Any] = {"f_no_red_vol_week": True, **{c: None for c in RED_VOL_COLS}}
@@ -868,7 +875,7 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
                              f"avg daily vol {vtxt} the {int(C['red_vol_avg_days'])}d avg before it")
     if healthy and loud:
         out["f_no_red_vol_week"] = False
-        out["red_vol_detail"] = "info (not a gate) - healthy red " + out["red_vol_detail"]
+        out["red_vol_detail"] = "falling knife - healthy red " + out["red_vol_detail"]
     return out
 
 
@@ -1794,7 +1801,8 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
-    # PASS / FAIL only (Eyal 2026-10-26: WAIT cancelled; red-volume / inverted-hammer weeks are informational)
+    # PASS / FAIL only (Eyal 2026-10-26: WAIT cancelled; inverted-hammer weeks are informational; a red-volume week
+    # = falling knife is a FAIL gate again since 2026-11-09)
     r["status"] = "PASS" if not failed else "FAIL"
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
@@ -1841,7 +1849,7 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
         elif f == "after_earnings_week":
             f = f"after_earnings_week ({r.get('earn_week_detail') or 'earnings week: wait for the next weekly close'})"
         elif f == "no_red_vol_week":
-            f = f"no_red_vol_week ({r.get('red_vol_detail') or 'healthy red week on above-average volume'})"
+            f = f"no_red_vol_week ({r.get('red_vol_detail') or 'falling knife: healthy red week on above-average volume'})"
         fails.append(f)
     tag = "WAIT" if r["status"] == "WAIT" else "FAIL"
     return f"{base} | {tag}: {', '.join(fails)}".strip(" |")

@@ -105,8 +105,8 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         badges = []
         if r.get("status") == "PASS":
             badges.append("pass")
-        # (WAIT / badge 'waiting' cancelled 2026-10-26: the app shows the red-volume / inverted-hammer warnings
-        # from f_no_red_vol_week / f_no_inv_hammer as info badges)
+        # (WAIT / badge 'waiting' cancelled 2026-10-26: the app shows the inverted-hammer warning as an info badge;
+        # f_no_red_vol_week = falling knife is a PASS gate again since 2026-11-09)
         if _truthy(r.get("needs_drawing")):
             badges.append("needs_drawing")
         if _truthy(r.get("f_bot_review")):
@@ -538,6 +538,42 @@ def attach_earnings_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = 
     return blocked
 
 
+def attach_red_vol_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = None,
+                        hist: Optional[Dict[str, Any]] = None) -> List[str]:
+    """f_no_red_vol_week = falling-knife gate at export time (Eyal 2026-11-09: "the last weekly candle was a healthy red
+    candle on above-average volume -> no entry even if price closed on the support; wait for next week's close").
+    Re-checked as of the later of the export day and asof_date (report_filters.compute_red_vol_week on the history
+    cache: last COMPLETED W-FRI week, close < open, body >= 50% of the range, average daily volume > the 30 trading days
+    before it), so the block clears by itself once the next weekly candle closes. A PASS row that fails it becomes FAIL.
+    Returns the blocked tickers."""
+    import sys as _s
+    from datetime import date as _d
+    root = str(Path(__file__).resolve().parent.parent)
+    if root not in _s.path:
+        _s.path.insert(0, root)
+    import report_filters as rf
+    hist = hist if hist is not None else dict(pd.read_pickle(HIST_CACHE))
+    rd = max(_d.fromisoformat(asof_date[:10]), _d.today()) if asof_date else _d.today()
+    blocked: List[str] = []
+    for r in rows:
+        df = hist.get(r["ticker"])
+        if df is None or getattr(df, "empty", True):
+            continue
+        try:
+            o = rf.compute_red_vol_week(df, rd)
+        except Exception as e:  # never block the export
+            print(f"  [falling knife] {r['ticker']}: {e}")
+            continue
+        for k in ("f_no_red_vol_week", *rf.RED_VOL_COLS):
+            r[k] = o.get(k)
+        if o["f_no_red_vol_week"] is False:
+            blocked.append(r["ticker"])
+            if r.get("status") == "PASS":
+                r["status"] = "FAIL"
+                r["badges"] = [b for b in (r.get("badges") or []) if b != "pass"]
+    return blocked
+
+
 def export(repo: Path, report: Path | None = None, include_all: bool = False, report_date: str | None = None) -> Path:
     """Write app/data/* under repo. report = latest.csv to read (default repo/historical-reports/latest.csv)."""
     out = repo / "app" / "data"
@@ -627,6 +663,12 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
     except Exception as e:  # never block the export
         print(f"  [app data] earnings week skipped: {e}")
+    try:
+        _knife = attach_red_vol_week(rows, report_date)
+        print(f"  [app data] falling knife (healthy red loud week, wait for the next weekly close): {len(_knife)} rows"
+              + (f" ({', '.join(sorted(_knife)[:40])})" if _knife else ""))
+    except Exception as e:  # never block the export
+        print(f"  [app data] falling knife skipped: {e}")
     try:  # expert watchlist (Eyal 2026-11-01): near a valid expert zone, R:R >= 2, tradable, ranked by readiness
         from srs_app.expert_watch import build as _ew_build
         import datetime as _dt  # earnings gate is evaluated on the later of the report date and today (bug 2026-11-01)

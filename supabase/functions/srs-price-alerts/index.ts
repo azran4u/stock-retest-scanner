@@ -3,7 +3,8 @@
 // Tracked: starred tickers (public.watchlist) + the hot list (app-data/expert_watch.json). Setup = Eyal's own Long / zone
 // (drawings source user / tv = his override) else the expert trade / zone (app-data/expert_zones.json). Quotes: Yahoo
 // chart API (5m bars). ACTIONABLE alerts only (Eyal 2026-11-02): 'limit' (place a buy limit / buy-stop at the entry),
-// 'triggered' (filled today, still <= 0.5 ATR above), 'cancel' (setup broke while an order may be working). Rules in
+// 'triggered' (filled today, still <= 0.5 ATR above), 'cancel' (setup broke while an order may be working).
+// Falling knife (Eyal 2026-11-09): index.json f_no_red_vol_week === false -> no limit / triggered until the next weekly close. Rules in
 // logic.ts decide() and supabase/README.md. Once per type / ticker / NY day + a cross-day cooldown per level.
 // Telegram: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from function secrets, else Supabase Vault. Missing -> dry-run (logged).
 // Manual: POST ?dry=1 (never sends) &force=1 (ignore market hours) &tickers=A,B  -> JSON with the messages.
@@ -86,7 +87,8 @@ Deno.serve(async (req: Request) => {
     const { data: draws } = await sb.from('drawings').select('ticker,kind,source,entry,stop,target,zone_top,zone_bottom,updated_at')
       .in('ticker', tickers).in('source', ['user', 'tv']).in('status', ['active', 'approved', 'review']);
     const setups = tickers.map((t) => buildSetup(t, (draws || []).filter((d: any) => d.ticker === t), ez?.tickers?.[t],
-      { starred: starred.has(t), hot: hot.has(t), uptrend: tf(rowBy.get(t)?.f_technical) })).filter(Boolean) as Setup[];
+      { starred: starred.has(t), hot: hot.has(t), uptrend: tf(rowBy.get(t)?.f_technical),
+        knife: tf(rowBy.get(t)?.f_no_red_vol_week) === false })).filter(Boolean) as Setup[];
     const since = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
     const { data: past } = await sb.from('price_alerts').select('ticker,kind,entry,stop,target,trade_day').eq('live', live).gte('trade_day', since).in('ticker', tickers);
     const pastBy = new Map<string, any[]>(); for (const r of past || []) pastBy.set(r.ticker, [...(pastBy.get(r.ticker) || []), r]);

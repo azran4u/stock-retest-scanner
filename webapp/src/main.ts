@@ -71,8 +71,9 @@ const BADGES: Record<string, [string, string]> = {
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
   watch: ['מעקב', 'b-watch'], ni: ['לא מתאימה לשיטה', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
-/** Last-week warnings (Eyal 2026-10-23 / 2026-10-24; WAIT status cancelled 2026-10-26 -> information only, not a PASS gate):
- *  last completed weekly candle = healthy red bar on above-average volume, or an inverted hammer (BFH). */
+/** Last-week candles (Eyal 2026-10-23 / 2026-10-24): inverted hammer (BFH) = information only since 2026-10-26;
+ *  healthy red bar on above-average volume = falling knife, a PASS / entry gate again since 2026-11-09. */
+const KNIFE_HE = 'נר אדום בריא במחזור גבוה — ממתינים לסגירת השבוע הבא';
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
   const parts: string[] = [];
@@ -83,7 +84,7 @@ function waitShort(r: Row): string {
 function waitLong(r: Row): string {
   const parts: string[] = [];
   if (r.f_no_inv_hammer === false) parts.push(`הנר השבועי של השבוע שהסתיים ב-${ddmm(r.inv_hammer_week_date)} הוא פטיש הפוך — הקונים נדחו למעלה, סימן שלילי. מידע בלבד, לא משנה את ה-PASS.`);
-  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו — מוכרים חזקים. מידע בלבד, לא משנה את ה-PASS.`);
+  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו — מוכרים חזקים, אולי סכין נופלת. לא נכנסים גם אם המחיר נסגר על התמיכה: ממתינים לסגירת השבוע הבא.`);
   return parts.join(' ');
 }
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>`
@@ -104,7 +105,7 @@ function countedOf(t: string, kind: 'zone' | 'long'): Drawing | null {
   }
   return best;
 }
-interface Live { status: 'PASS' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string; fromBelow: boolean }
+interface Live { status: 'PASS' | 'FAIL'; rr: number | null; gatesOk: boolean; why: string; fromBelow: boolean; knife?: boolean }
 /** Mirror of report_filters.zone_approach: trailing closes under the zone = pullback in progress (skipped); then the
  * most recent weekly close outside [zb - tol, zt] decides (tol = 0.25 weekly ATR). */
 function zoneApproach(closes: number[], zb: number, zt: number, tol: number): 'above' | 'below' | 'inside' {
@@ -135,11 +136,15 @@ function liveOf(r: Row): Live | null {
   // earnings week (Eyal 2026-10-31, CHRW): the last completed week (or the running one) traded a report -> not PASS
   // until the following week closes. Only an explicit false blocks (older exports lack the column).
   const earnWeek = r.f_after_earnings_week === false;
-  const status = !gatesOk || !rrOk || fromBelow || earnWeek ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (red-volume / inverted-hammer weeks = info)
+  // falling knife (Eyal 2026-11-09): the last completed weekly candle is a healthy red bar on above-average volume ->
+  // no entry even if price closed on the support; the next weekly close decides (nightly re-check). Only explicit false.
+  const knife = r.f_no_red_vol_week === false;
+  const status = !gatesOk || !rrOk || fromBelow || earnWeek || knife ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (inverted hammer = info)
   const why = fromBelow ? 'חזרה לאזור מלמטה'
     : earnWeek ? 'שבוע דוחות — ממתינים לסגירת השבוע הבא'
+    : knife ? KNIFE_HE
     : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
-  return { status, rr: q, gatesOk, why, fromBelow };
+  return { status, rr: q, gatesOk, why, fromBelow, knife };
 }
 const liveRR = (r: Row) => { const l = liveOf(r); return l ? l.rr : (r.tv_rr ?? null); };
 /** Levels of the Long that counts for the row (same pick as liveOf; rows without exported gates fall back to the export). */
@@ -1426,6 +1431,7 @@ function feedbackHtml(d: Drawing) {
 function liveBoxHtml(r: Row): string {
   const l = liveOf(r); if (!l || !l.gatesOk) return '';
   if (l.status === 'FAIL' && r.f_after_earnings_week === false && !l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">המניה פרסמה דוחות${r.earn_week_report ? ` ב-${ddmm(r.earn_week_report)}` : ''}, ולכן המחזור ותנועת המחיר בשבוע הדוחות מושפעים מהם. נחליט אם היא עומדת בכללים רק אחרי הסגירה של השבוע שאחרי.</div></section>`;
+  if (l.status === 'FAIL' && l.knife && !l.fromBelow) return `<section class="wait-box rr-box" data-knife="1"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הנר השבועי שנסגר ב-${ddmm(r.red_vol_week_date)} אדום ובריא (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח) במחזור פי ${fmt(r.red_vol_ratio, 2)} מהממוצע — אולי סכין נופלת. לא נכנסים גם אם המחיר נסגר על התמיכה; הכללים יחליטו שוב אחרי הסגירה של השבוע הבא.</div></section>`;
   if (l.status === 'FAIL' && l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הסגירה השבועית האחרונה מחוץ לאזור הייתה מתחתיו, כלומר המניה חזרה לאזור מלמטה. היא תחזור להיות מעניינת רק אחרי סגירה שבועית מעל האזור וחזרה אליו מלמעלה.</div></section>`;
   if (l.status === 'FAIL') return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">${l.rr == null ? 'אין לונג פעיל, ולכן ה-R:R לא ידוע.' : 'ה-R:R של הלונג הנוכחי מתחת ל-2.'} הסטטוס מתעדכן מיד כשמשנים אזור או לונג.</div></section>`;
   return '';
@@ -1553,7 +1559,7 @@ function renderPanel() {
   p.innerHTML = `
     ${r?.data_dup_of ? `<section class="wait-box dupwarn"><div class="small">⚠ נתוני המחיר של המניה זהים ל-<bdi>${esc(r.data_dup_of)}</bdi>, ייתכן שהגרף והשרטוט מחושבים על נתונים שגויים. הבוט יבדוק.</div></section>` : ''}
     ${r ? liveBoxHtml(r) : ''}
-    ${r && waitLong(r) ? `<section class="wait-box"><h3>אזהרה על הנר השבועי האחרון (מידע בלבד)</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
+    ${r && waitLong(r) ? `<section class="wait-box"><h3>הנר השבועי האחרון</h3><div class="small">${esc(waitLong(r))}</div></section>` : ''}
     <section class="drawsec" id="secDraw">
       ${r ? statusLineHtml(r) : ''}
       ${sourceLineHtml(t)}
@@ -1729,7 +1735,7 @@ function watchHeadHtml(): string {
   const n = expertWatch?.items.length ?? 0, nr = expertWatch?.items.filter((x) => x.tier === EW_READY).length ?? 0;
   return `<li class="ewhead small" id="ewHead"><b>רשימת מעקב מומחים</b> · ${n} מניות (${nr} מוכנות, ${n - nr} ממתינות לאישור) · מחושבת כל לילה${expertWatch?.asof ? ` (<bdi dir="ltr">${esc(expertWatch.asof)}</bdi>)` : ''}
     <div class="muted">תנאים: אזור מומחים תקף (רמת התנגדות שנפרצה, ממוצע 30 שבועות לא יורד); המחיר בתוך האזור או עד ${c.max_dist_atr ?? 1} ATR שבועי מעליו; R:R מומחים ≥ ${c.min_rr ?? 2}; אין דוחות ב-${c.earn_days ?? 14} הימים הקרובים והשבוע האחרון לא שבוע דוחות; סיכון למניה ≤ $${c.max_risk_usd ?? 55} וסיכון ≤ ${c.max_risk_pct ?? 10}%.
-    <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג). דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
+    <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג), או שהנר השבועי האחרון אדום ובריא במחזור גבוה (סכין נופלת — ממתינים לסגירת השבוע הבא). דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
 }
 async function loadExpertZones() {
   loadExpertWatchList();

@@ -60,3 +60,14 @@ Deno.test('Hebrew messages', () => {
   assert(message('triggered', S, { price: 76.5, dayHigh: 77, dayLow: 75.5, prevClose: 77 }, { kind: 'triggered', why: '', distAtr: 0.12 }).includes('הכניסה הופעלה'));
   assert(message('cancel', S, { price: 69.9, dayHigh: 71, dayLow: 69.5, prevClose: 71 }, { kind: 'cancel', why: '', distAtr: -1 }).includes('ירד מתחת ל-SL 70.10'));
 });
+
+Deno.test('falling knife (Eyal 2026-11-09): healthy red loud last week -> no limit / triggered; cancel unchanged', () => {
+  const K = { ...S, knife: true };
+  const near = { price: 76.9, dayHigh: 78, dayLow: 76.5, prevClose: 78 };
+  assertEquals(decide(S, near, null, false).kind, 'limit');
+  const d = decide(K, near, null, false);
+  assertEquals(d.kind, null); assert(d.why.includes('נר אדום בריא'));
+  assertEquals(decide(K, { price: 76.5, dayHigh: 77, dayLow: 75.5, prevClose: 77 }, null, false).kind, null);   // would be triggered
+  assertEquals(decide(K, { price: 69.9, dayHigh: 71, dayLow: 69.5, prevClose: 71 }, null, true).kind, 'cancel');  // price <= SL, order working
+  assertEquals(buildSetup('DAL', [], Z, { ...O, knife: true })!.knife, true);
+});

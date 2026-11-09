@@ -12,6 +12,9 @@ Criteria (all must hold; constants below):
   4. no earnings within EARN_DAYS days and the last completed week is not an earnings week (the export's gates
      f_no_earnings_14d / f_after_earnings_week; tickers outside the report: earnings.json)
   5. tradable: risk per share (entry - SL) <= MAX_RISK_USD, so >= 1 share at the $55 max risk; risk % <= WATCH_MAX_RISK_PCT
+Falling knife (Eyal 2026-11-09): the report row's f_no_red_vol_week is False (last completed weekly candle = healthy red
+bar on above-average volume) -> never 'מוכנה': kept in the list as 'ממתינה לאישור' with knife=True and the reason
+KNIFE_HE, until the next weekly close clears it (re-checked every night by the export).
 Readiness (the bot's judgment; tier 'מוכנה' when readiness >= READY_MIN_PTS = a weekly signal or the confirmation,
 else 'ממתינה לאישור' - a daily reversal alone ranks higher inside that tier but is not enough):
   confirm  : the last completed weekly close is above the zone top and one of the last READY_WEEKS weeks traded
@@ -47,6 +50,12 @@ READY_MIN_PTS = 2
 REV_KINDS = ["hammer", "engulfing", "strong_close", "rejection"]     # report_filters CONFIG reversal_kinds (bit order)
 REV_HE = {"hammer": "פטיש", "engulfing": "בולע", "strong_close": "סגירה חזקה", "rejection": "דחייה"}
 TIER_READY, TIER_WAIT = "מוכנה", "ממתינה לאישור"
+KNIFE_HE = "נר אדום בריא במחזור גבוה — ממתינים לסגירת השבוע הבא"
+
+
+def is_knife(row: Dict[str, Any]) -> bool:
+    """Falling-knife gate (Eyal 2026-11-09) on a report / index row: only an explicit False of f_no_red_vol_week blocks."""
+    return str(row.get("f_no_red_vol_week")).strip().lower() in ("false", "0", "0.0", "no")
 
 
 def _touch(lo: float, cl: float, top: float, bot: float, a: float) -> bool:
@@ -179,8 +188,10 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
             comp = 10 * ready + 0.5 * (z.get("score") or 0) + 5 * min(tr["rr"], 5) - 10 * dist
             where = "בתוך האזור" if dist == 0 else f"{dist:.1f} ATR מעל"
             best = max(sg, key=lambda s: s["pts"]) if sg else None   # strongest signal only (Eyal 2026-11-01: short line)
-            reason = " · ".join([best["short"] if best else "ממתינה לסימן היפוך", f"R:R {tr['rr']:.1f}", where])
-            items.append({"t": t, "tier": TIER_READY if ready >= READY_MIN_PTS else TIER_WAIT, "comp": round(comp, 1),
+            knife = is_knife(r)
+            reason = " · ".join([KNIFE_HE if knife else (best["short"] if best else "ממתינה לסימן היפוך"), f"R:R {tr['rr']:.1f}", where])
+            items.append({"t": t, "tier": TIER_READY if ready >= READY_MIN_PTS and not knife else TIER_WAIT, "comp": round(comp, 1),
+                          "knife": knife,
                           "zone": [bot, top], "score": z.get("score"), "dist": round(dist, 2),
                           "entry": tr["entry"], "sl": tr["sl"], "tp": tr["tp"], "rr": tr["rr"], "risk_pct": tr["risk_pct"],
                           "shares": int(math.floor(MAX_RISK_USD / risk)), "signals": sg, "reason_he": reason,

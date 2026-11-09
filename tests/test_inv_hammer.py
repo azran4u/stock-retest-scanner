@@ -47,6 +47,6 @@ def test_inverted_hammer_no_longer_blocks_pass():
     assert rf.finalize_status({**base, "f_no_inv_hammer": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_inv_hammer": False})
     assert r["status"] == "PASS" and r["failed_filters"] == ""
-    assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_no_red_vol_week": False})["status"] == "PASS"
+    assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_no_red_vol_week": False})["status"] == "FAIL"  # knife 2026-11-09
     assert "f_no_inv_hammer" not in rf.CORE_FILTERS and "f_no_inv_hammer" in rf.WARN_FILTERS
     assert rf.finalize_status({**base, "f_no_inv_hammer": False, "f_rr": False})["status"] == "FAIL"

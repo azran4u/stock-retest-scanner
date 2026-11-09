@@ -51,7 +51,7 @@ def test_clmt_like_red_week_waits():
     assert out["red_vol_week_date"] == "2026-10-23"
     assert out["f_no_red_vol_week"] is False
     assert out["red_vol_body_pct"] >= 50 and out["red_vol_ratio"] > 1
-    assert out["red_vol_detail"].startswith("info (not a gate)")
+    assert out["red_vol_detail"].startswith("falling knife")
 
 
 def test_week_not_complete_before_friday_1630():
@@ -96,7 +96,7 @@ def test_volume_basis_is_30_trading_days_before_the_week():
         rf.CONFIG["red_vol_avg_days"] = old
 
 
-def test_next_week_clears_wait():
+def test_next_week_clears_block():
     # red loud week 10-16, then a green week 10-23 -> eligible again
     d = _daily([], weeks=12)
     d = d.iloc[:-5]
@@ -108,10 +108,11 @@ def test_next_week_clears_wait():
     assert _run(d)["f_no_red_vol_week"] is True
 
 
-def test_red_week_no_longer_blocks_pass():
-    """Regression (Eyal 2026-10-26): WAIT cancelled, a red loud week alone leaves the stock PASS."""
+def test_red_week_blocks_pass_again():
+    """Eyal 2026-11-09 (falling knife): a healthy red loud last week is a core FAIL gate again (it was info only
+    2026-10-26 .. 2026-11-09)."""
     base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True, "f_after_earnings_week": True}
     assert rf.finalize_status({**base, "f_no_red_vol_week": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_red_vol_week": False})
-    assert r["status"] == "PASS" and r["failed_filters"] == ""
+    assert r["status"] == "FAIL" and r["failed_filters"] == "no_red_vol_week"
     assert rf.finalize_status({**base, "f_rr": False, "f_no_red_vol_week": False})["status"] == "FAIL"

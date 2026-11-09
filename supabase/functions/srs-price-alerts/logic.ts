@@ -43,12 +43,15 @@ export interface Setup {
   ticker: string; src: Src; entry: number; stop: number; target: number; rr: number;
   zoneTop: number; zoneBottom: number; atr: number | null;
   starred: boolean; hot: boolean; expertOk: boolean; uptrend: boolean | null;
+  /** falling knife (Eyal 2026-11-09): last completed weekly candle = healthy red bar on above-average volume (index.json
+   *  f_no_red_vol_week === false) -> no limit / triggered alert until the next weekly close; cancel alerts unchanged */
+  knife?: boolean;
 }
 const rrOf = (e: number, s: number, t: number) => (e > s ? Math.round(((t - e) / (e - s)) * 100) / 100 : 0);
 const num = (v: any) => (v == null || v === '' ? null : Number(v));
 const newest = (xs: any[]) => [...xs].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))[0];
 
-export function buildSetup(ticker: string, drawings: any[], zone: any, o: { starred: boolean; hot: boolean; uptrend: boolean | null }): Setup | null {
+export function buildSetup(ticker: string, drawings: any[], zone: any, o: { starred: boolean; hot: boolean; uptrend: boolean | null; knife?: boolean }): Setup | null {
   const mine = drawings.filter((d) => d.source === 'user' || d.source === 'tv');
   const myLong = newest(mine.filter((d) => d.kind === 'long' && d.entry != null && d.stop != null && d.target != null));
   const myZone = newest(mine.filter((d) => d.kind === 'zone' && d.zone_top != null));
@@ -80,12 +83,14 @@ export function earningsBlock(em: any, today: string): string | null {
   return null;
 }
 
-/** Why the setup is not tradable now (null = valid): zone intact, R:R >= 2, earnings clear, uptrend. */
+export const KNIFE_HE = 'נר אדום בריא במחזור גבוה — ממתינים לסגירת השבוע הבא';
+/** Why the setup is not tradable now (null = valid): zone intact, R:R >= 2, earnings clear, uptrend, no falling knife. */
 export function invalidWhy(s: Setup, earn: string | null): string | null {
   if (s.src === 'expert' && !s.expertOk) return 'אין אזור מומחים תקף';
   if (!(s.rr >= MIN_RR)) return `R:R ${s.rr.toFixed(2)} < ${MIN_RR}`;
   if (earn) return earn;
   if (s.uptrend === false) return 'לא במגמת עלייה ראשית';
+  if (s.knife) return KNIFE_HE;
   return null;
 }
 
