@@ -12,6 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
+import { UI_DEF, drawStChart, filterRows, pageHtml as stagesPageHtml, type StSpark, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -634,6 +635,7 @@ function route() {
   if (location.hash.startsWith('#/rules')) { layout = null; renderRules(); return; }
   if (location.hash.startsWith('#/calibrate')) { layout = null; renderCalibrate(); return; }
   if (location.hash.startsWith('#/course')) { layout = null; renderCourse(); return; }
+  if (location.hash.startsWith('#/stages')) { layout = null; renderStages(); return; }
   if (isWide()) {
     splitShell();
     if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
@@ -706,7 +708,7 @@ function renderList(root?: HTMLElement) {
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
     ${alertStatHtml()}
-    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="courseLink" class="ghost small btnlike" href="#/course">קורס</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
+    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="stagesLink" class="ghost small btnlike" href="#/stages">שלבים</a><a id="courseLink" class="ghost small btnlike" href="#/course">קורס</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
     ${listBarHtml()}
@@ -774,6 +776,51 @@ async function renderCourse() {
     if (m) { m.open = true; m.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   };
   window.scrollTo(0, 0);
+}
+// ---------------- Weinstein stage analysis (#/stages, stages.ts, Eyal 2026-11-13) ----------------
+// stages.json + stages_spark.json (private bucket, built by srs_app/stages.py): tabs 2A / stage 1-4 / breakout without
+// volume, search, sort, toggles (saved in localStorage 'srs-stages-ui'), cards with the stage checks, lazy charts.
+const ST_LS = 'srs-stages-ui';
+let stP: Promise<StagesDoc | null> | null = null;
+let stSpP: Promise<Record<string, StSpark>> | null = null;
+let stIO: IntersectionObserver | null = null;
+async function renderStages() {
+  destroyChart();
+  app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">שלבי ויינשטיין</div><span></span></header><div id="stHost" class="stages center muted">טוען…</div>`;
+  $('#back')!.onclick = () => { location.hash = '#/'; };
+  stP ??= fetchData('stages.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  const d = await stP;
+  if (!location.hash.startsWith('#/stages')) return;
+  const host = $('#stHost')!;
+  if (!d || !d.rows) { stP = null; host.textContent = 'נתוני השלבים לא נטענו'; return; }
+  host.className = 'stages';
+  const ui: StUi = { ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') };
+  let limit = 60;
+  const draw = async () => {
+    const rows = filterRows(d.rows, ui), byT = new Map(d.rows.map((r) => [r.t, r]));
+    const y = window.scrollY;
+    host.innerHTML = stagesPageHtml(d, ui, rows, maxRiskUsd(), limit);
+    window.scrollTo(0, y);
+    const save = () => localStorage.setItem(ST_LS, JSON.stringify(ui));
+    host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => { ui.tab = b.dataset.tab as StUi['tab']; limit = 60; save(); draw(); }));
+    host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near'; ui[k] = !ui[k]; save(); draw(); }));
+    host.querySelectorAll<HTMLElement>('[data-conf]').forEach((b) => (b.onclick = () => { const c = b.dataset.conf as 'med' | 'high'; ui.conf = ui.conf === c ? 'all' : c; save(); draw(); }));
+    const q = $<HTMLInputElement>('#stq', host)!;
+    let qt = 0;
+    q.oninput = () => { clearTimeout(qt); qt = window.setTimeout(() => { ui.q = q.value; save(); draw().then(() => { const n = $<HTMLInputElement>('#stq', host)!; n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 250); };
+    $<HTMLSelectElement>('#stsort', host)!.onchange = (e) => { ui.sort = (e.target as HTMLSelectElement).value; save(); draw(); };
+    const more = $('#stmore', host); if (more) more.onclick = () => { limit += 120; draw(); };
+    $('#stcopy', host)!.onclick = () => { copyText(rows.map((r) => `${r.ex}:${r.t.replace('-', '.')}`).join(',')).then(() => toast(`הועתקו ${rows.length} סימולים`)); };
+    const rb = $<HTMLDetailsElement>('.strulesbox', host)!; rb.ontoggle = () => { ui.rulesOpen = rb.open; save(); };
+    const sp = await stSpP!;
+    stIO?.disconnect();
+    stIO = new IntersectionObserver((ents) => ents.forEach((e) => {
+      if (e.isIntersecting) { const c = e.target as HTMLCanvasElement; drawStChart(c, sp[c.dataset.stchart!], byT.get(c.dataset.stchart!)); stIO?.unobserve(c); }
+    }), { rootMargin: '400px 0px' });
+    host.querySelectorAll<HTMLCanvasElement>('canvas.stchart').forEach((c) => stIO!.observe(c));
+  };
+  await draw();
 }
 // ---------------- trend calibration page (#/calibrate, calibrate.ts) ----------------
 let calP: Promise<CalRow[]> | null = null;

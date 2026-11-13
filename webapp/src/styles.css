@@ -445,3 +445,49 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 @media (max-width: 480px) { .alstat { font-size: 11px; padding: 1px 6px; } }
 .badge.b-expert { background: #4a148c; color: #e1bee7; }
 .srcline { margin: 4px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* ---------------- Weinstein stages page (#/stages, Eyal 2026-11-13) ---------------- */
+.stages { padding: 0 0 calc(30px + var(--safe-b)); }
+.topdown { padding: 8px 12px; border-bottom: 1px solid var(--bg2); display: flex; flex-direction: column; gap: 6px; }
+.mkts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.mk { display: flex; align-items: center; gap: 6px; background: var(--bg2); border-radius: 10px; padding: 4px 8px; flex-wrap: wrap; }
+.secs summary, .strulesbox summary, .stchk summary { cursor: pointer; font-size: 14px; }
+.tbl { overflow-x: auto; }
+.tbl table { border-collapse: collapse; font-size: 13px; width: 100%; margin-top: 6px; }
+.tbl th, .tbl td { padding: 4px 6px; border-bottom: 1px solid var(--bg3); text-align: start; white-space: nowrap; }
+.tbl tr.strong td { background: rgba(38,166,154,.1); }
+.st1 { background: rgba(41,98,255,.22); color: #8aa9ff; } .st2 { background: rgba(38,166,154,.22); color: #5fd4c6; }
+.st3 { background: rgba(255,152,0,.2); color: #ffb74d; } .st4 { background: rgba(239,83,80,.2); color: #ff8a87; }
+.conf-high { background: rgba(38,166,154,.18); color: #5fd4c6; } .conf-med { background: rgba(247,201,72,.18); color: var(--yellow); } .conf-low { background: var(--bg3); color: var(--mut); }
+.stfilters { padding: 8px 12px 6px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-bottom: 1px solid var(--bg2); }
+@media (min-width: 720px) { .stfilters { position: sticky; top: calc(53px + var(--safe-t)); z-index: 4; } }
+.stfilters .cnt { opacity: .75; font-size: 12px; margin-inline-start: 2px; }
+.strow { display: flex; gap: 8px; align-items: center; }
+.strow input { flex: 1; min-width: 0; }
+.strow select { width: auto; padding: 8px; }
+.stlist { list-style: none; margin: 0; padding: 0; }
+.stcard { padding: 10px 14px; border-bottom: 1px solid var(--bg2); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.stcard .r1 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sttk { color: var(--fg); text-decoration: none; font-size: 17px; }
+.stname { overflow-wrap: anywhere; }
+.stchart { width: 100%; aspect-ratio: 3 / 1; display: block; background: rgba(30,34,45,.5); border-radius: 8px; }
+.skvs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; font-size: 13px; }
+.skv { display: flex; justify-content: space-between; gap: 6px; min-width: 0; }
+.skv span { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skv b { font-weight: 600; white-space: nowrap; }
+.skv.pos b { color: #5fd4c6; } .skv.neg b { color: #ff8a87; }
+.stplan { background: var(--bg2); border-radius: 10px; padding: 6px 8px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.stchk h4 { margin: 8px 0 2px; font-size: 13px; color: var(--mut); }
+.cks { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.cks li { display: flex; gap: 6px; padding: 1px 0; }
+.cks .ci { width: 14px; flex: none; text-align: center; font-weight: 700; }
+.cks li.ok .ci { color: #5fd4c6; } .cks li.bad .ci { color: #ff8a87; } .cks li.unk .ci { color: var(--mut); }
+.strulesbox { margin: 12px; background: var(--bg2); border-radius: 12px; padding: 8px 12px; }
+.strules { font-size: 14px; } .strules h4 { margin: 10px 0 4px; } .strules ul { margin: 0; padding-inline-start: 18px; } .strules a { color: #8aa9ff; }
+@media (min-width: 720px) {
+  .stlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; padding: 10px 12px; max-width: 1680px; margin: 0 auto; }
+  .stcard { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
+}
+/* header links (5 since the stages page, 2026-11-13): wrap to a second row instead of overflowing on phones / the side list */
+header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
+.hbtns { flex-wrap: wrap; justify-content: flex-end; }
+.hbtns a.btnlike { white-space: nowrap; }
