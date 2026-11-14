@@ -54,16 +54,16 @@ export interface StDraw { id: string; ticker: string; kind: 'zone' | 'long' | 'l
 export interface StEd { zone?: StDraw; long?: StDraw; lines?: StDraw[] }
 export type StEdits = Map<string, StEd>;
 
-/** Support / resistance lines on the big chart (Eyal 2026-11-14): computed = the overhead resistances of the last 2
- *  years (nearest = target), the valid swing low (stop basis) and the trapped-buyer block; his rows (kind 'line') move
- *  (meta.ref = the computed id), hide (meta.hidden) or add (meta.role) a level. */
+/** Levels behind the trade plan: the overhead resistances of the last 2 years (nearest = target; not drawn) and the
+ *  stop-basis support (drawn as the red line, Eyal 2026-11-14). His rows (kind 'line') move (meta.ref = the computed
+ *  id), hide (meta.hidden) or add (meta.role) a level. */
 export interface StLevel { id: string; price: number; role: 'res' | 'sup' | 'cong'; label: string; his: boolean; ref?: string }
 export function levelsOf(r: StageRow, ed?: StEd): StLevel[] {
   const p = r.plan, comp: StLevel[] = [];
   const ov = p?.ov_levels?.length ? p.ov_levels : p?.overhead != null ? [p.overhead] : [];
   ov.forEach((v, i) => comp.push({ id: 'c-ov' + i, price: v, role: 'res', label: i === 0 ? 'התנגדות תקורה (יעד)' : 'התנגדות תקורה', his: false }));
-  if (p?.swing_low != null) comp.push({ id: 'c-sl', price: p.swing_low, role: 'sup', label: 'תמיכה – שפל תקף (SL)', his: false });
-  if (p?.cong != null && !ov.some((v) => Math.abs(v / p.cong! - 1) < 0.01)) comp.push({ id: 'c-cong', price: p.cong, role: 'cong', label: 'בלוק קונים לכודים', his: false });
+  // the stop-basis support (Eyal 2026-11-14: one red line): the valid low above the 30W SMA, else the SMA itself
+  comp.push({ id: 'c-sup', price: p?.swing_low ?? r.ma30, role: 'sup', label: p?.swing_low != null ? 'תמיכה – שפל' : 'תמיכה – 30W SMA', his: false });
   const mine = (ed?.lines || []).filter((x) => x.status !== 'deleted');
   const over = new Map(mine.filter((x) => x.meta?.ref).map((x) => [x.meta!.ref as string, x]));
   const out: StLevel[] = [];
@@ -246,8 +246,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
   </header>
   <div class="sttags pad">${tagsHtml(r, e, !!ed?.zone || !!ed?.lines?.length)}</div>
   <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים למניה הזו</div></div>
-  <div class="tools"><span class="small muted">גרור את תקרת / רצפת הבסיס, קווי התמיכה / ההתנגדות ואת ה-Buy-Stop / SL / יעד — נשמר כ"שלך" וגובר על החישוב (יעד / SL / R:R מחושבים מחדש)</span>
-    <button id="staddline" class="ghost small">+ קו תמיכה/התנגדות</button>${selLine ? `<button id="stdelline" class="ghost small">מחק קו ${esc(selLine.label)} $${f(selLine.price)}</button>` : ''}
+  <div class="tools"><span class="small muted">קו אדום = תמיכה (בסיס ה-SL), קו כחול = התנגדות (תקרת הבסיס / Buy-Stop). גרור אותם או את ה-Buy-Stop / SL / יעד — נשמר כ"שלך" וגובר על החישוב (SL / R:R מחושבים מחדש)</span>
     ${ed?.zone || ed?.long || ed?.lines?.length ? '<button id="streset" class="ghost small">חזרה לרמות המחושבות</button>' : ''}${!p && !ed?.long ? '<button id="staddlong" class="ghost small">+ עסקה</button>' : ''}</div>
   <div class="panel stpanel">
     <div class="stplan"><b>${esc(kindHe)}</b>
@@ -260,7 +259,6 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
         ${p?.vol_need ? kv('מחזור נדרש בשבוע הפריצה', Math.round(p.vol_need).toLocaleString('en-US')) : ''}${bo ? kv('מחזור פריצה', f(bo.vol_ratio, 1) + 'x', bo.vol_ok ? 'pos' : 'neg') : ''}
         ${kv('דוח הבא', earnTxt(r), earnBad(r))}${r.earn_last ? kv('דוח אחרון', `${ddmm(r.earn_last)}${r.earn_last_ago != null ? ` · לפני ${r.earn_last_ago} ימ״ס` : ''}`) : ''}${kv('Mansfield RS', `${sg(r.rs)} ${r.rs_up == null ? '' : r.rs_up ? '↑' : '↓'}`, (r.rs ?? 0) > 0 ? 'pos' : 'neg')}
       </div>
-      ${(() => { const lv = levelsOf(r, ed).sort((a, b) => b.price - a.price); return lv.length ? `<div class="small stlv"><b>קווי תמיכה / התנגדות:</b> ${lv.map((x) => `<span class="${x.role === 'sup' ? 'pos' : x.role === 'res' ? 'neg' : 'muted'}">${esc(x.label)} <bdi dir="ltr">$${f(x.price)}</bdi></span>`).join(' · ')}</div>` : ''; })()}
     </div>
     ${entryChecks.length ? `<h4>תנאי כניסה (${entryChecks.filter((c) => !c.info && c.ok === true).length}/${entryChecks.filter((c) => !c.info).length})</h4><ul class="cks">${entryChecks.map(chk).join('')}</ul>` : ''}
     <h4>זיהוי ${esc(STAGE_HE[r.stage])} (${r.score}/4)</h4><ul class="cks">${r.checks.map(chk).join('')}</ul>
@@ -304,7 +302,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li>שוק (SPY) לא בשלב 4; סקטור בשלב 2 עם RS &gt; 0; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
    <li>התראת טלגרם בשבת אחרי הסגירה השבועית — רק כשיש מועמדות. אין פקודות אוטומטיות.</li></ul>
   <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מחזור יומי &gt; $${R.min_dollar_vol_m}M או &gt; 500K מניות בשבוע · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · ≥ ${R.min_weeks} שבועות.</li></ul>
-  <h4>עריכה</h4><p>בגרף הגדול: תקרת / רצפת הבסיס, קווי התמיכה וההתנגדות (התנגדויות תקורה של שנתיים, השפל התקף ל-SL, בלוק קונים לכודים) ופס העסקה. אפשר לגרור כל קו, להוסיף קו (מעל המחיר = התנגדות, מתחת = תמיכה) ולמחוק קו. התנגדות קרובה מעל הכניסה = יעד, תמיכה קרובה מתחת לכניסה = בסיס ה-SL, תקרה = Buy-Stop. זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
+  <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (בסיס ה-SL: שפל תקף מעל הממוצע, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום את ה-SL (לא מתחת לממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
 }
 
 /** Mini weekly chart: candles + 30W SMA (orange) + ceiling (blue dashed) + Buy-Stop (white) + SL (red) + target (green). */

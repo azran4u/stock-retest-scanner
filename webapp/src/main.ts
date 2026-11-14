@@ -905,13 +905,12 @@ function stDrawingsOf(r: StageRow): Drawing[] {
   const ed = stEdits.get(r.t), out: Drawing[] = [];
   const base = { ticker: r.t, note: null, status: 'active' as const, entry: null, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null };
   const z = zoneOf(r);
-  const zl = (top: number | null, bot: number | null, his: boolean) => ({ labTop: `התנגדות – תקרת בסיס${his ? ' (שלך)' : ''} ${top != null ? (+top).toFixed(2) : ''}`, labBot: `תמיכה – רצפת בסיס${his ? ' (שלך)' : ''} ${bot != null ? (+bot).toFixed(2) : ''}` });
-  if (ed?.zone) out.push({ ...base, ...(ed.zone as any), source: 'user', meta: { ...(ed.zone.meta || {}), ...zl(ed.zone.zone_top, ed.zone.zone_bottom, true) } });
-  else if (z) out.push({ ...base, id: 'c-zone', kind: 'zone', zone_top: z.top, zone_bottom: z.bottom, t_start: z.start, source: 'bot', meta: zl(z.top, z.bottom, false) });
-  for (const lv of stLevelsOf(r, ed)) {
-    const color = lv.role === 'sup' ? '#26a69a' : lv.role === 'res' ? '#ef5350' : '#b39ddb';
-    out.push({ ...base, id: lv.id, kind: 'line', entry: lv.price, source: lv.his ? 'user' : 'bot', meta: { label: lv.label, color, dash: lv.his ? '' : '6 4', role: lv.role } });
-  }
+  // Eyal 2026-11-14: two solid lines, no labels -- BLUE = resistance (base ceiling = the Buy-Stop level), RED = support
+  // (the stop basis: a valid low above the 30W SMA, else the SMA). Solid, unlike the dotted current-price line.
+  const top = ed?.zone?.zone_top ?? z?.top;
+  if (top != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-res', kind: 'line', entry: +top, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'ceil' } });
+  const sup = stLevelsOf(r, ed).find((x) => x.role === 'sup' && (x.id === 'c-sup' || x.ref === 'c-sup'));
+  if (sup) out.push({ ...base, id: sup.id, kind: 'line', entry: sup.price, source: sup.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'sup' } });
   if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
   else if (r.plan) { // the trade bar follows his lines / ceiling (recomputed target / stop), else the computed plan
     const e = effPlan(r, ed, maxRiskUsd(), 10, stP ? (stDoc?.rules ?? {}) : {});
@@ -946,6 +945,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
     const j: { w: [string, number, number, number, number, number][] } = await res.json();
     if (stCvT !== t || !stCv) return;
     const bars: Bar[] = j.w.map(([time, open, high, low, close, volume]) => ({ time: weekStart(time), open, high, low, close, volume }));
+    stCv.centerClose = false; (window as any).__stCv = stCv; // fit candles + levels only (no axis stretched below 0)
     stCv.setBars(bars, 110, true);
     const ma: { time: string; value: number }[] = [];
     let sum = 0;
@@ -975,7 +975,7 @@ function stRefreshDetail(d: StagesDoc, r: StageRow) {
   tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd(), stSelLine(r));
   for (const sel of ['.sttags.pad', '.tools', '.stpanel']) { const a = $(sel, host), b2 = $(sel, tmp); if (a && b2) a.replaceWith(b2); }
   stBindDetail(d, r);
-  stCv?.setDrawings(stDrawingsOf(r), stSelDraw);
+  stCv?.setDrawings(stDrawingsOf(r), stSelDraw); stCv?.fitLevels();
   const li = document.querySelector<HTMLElement>(`#stSide li[data-st="${CSS.escape(r.t)}"]`);
   if (li) {
     const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone || !!ed?.lines?.length);
@@ -989,6 +989,16 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
   const m = { ...cur, ...patch };
   const lv = { zone_top: m.zone_top, zone_bottom: m.zone_bottom, entry: m.entry, stop: m.stop, target: m.target, t_start: m.t_start, t_end: m.t_end };
   const ed = stEdits.get(r.t) || {};
+  if (cur.kind === 'line' && cur.meta?.role === 'ceil') { // the blue line = the base ceiling (his zone row)
+    const price = Math.round(+(m.entry ?? 0) * 100) / 100, z = zoneOf(r);
+    if (ed.zone) { ed.zone.zone_top = price; await guard(api.updateStageDrawing(ed.zone.id, { zone_top: price })); }
+    else {
+      const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'zone', zone_top: price, zone_bottom: z?.bottom ?? null, t_start: z?.start ?? null, source: 'user', status: 'active', meta: { computed: { zone_top: z?.top, zone_bottom: z?.bottom }, week: d.week } }), 'נשמר כרמות שלך');
+      if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
+      ed.zone = row; stEdits.set(r.t, ed); stSelDraw = row.id;
+    }
+    stRefreshDetail(d, r); return;
+  }
   if (cur.kind === 'line') {
     const price = Math.round(+(m.entry ?? 0) * 100) / 100;
     if (id.startsWith('c-')) {

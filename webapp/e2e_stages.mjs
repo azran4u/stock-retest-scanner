@@ -70,35 +70,34 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
     ok(!/#\/stages\//.test(page.url()), `${name}: back to the stages list`);
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (list)`);
   }
-  // support / resistance lines (Eyal 2026-11-14): labelled, drag = his level (target recomputed), delete, add, reset
-  if (mobile) { await page.click(`li[data-st]`); await page.waitForSelector('#stbig canvas'); await page.waitForTimeout(400); }
+  // two solid lines, no labels (Eyal 2026-11-14): BLUE = resistance (base ceiling / Buy-Stop), RED = support (stop basis)
   await page.evaluate((t) => { location.hash = '#/stages/' + t; }, LT);
-  await page.waitForFunction((t) => location.hash === '#/stages/' + t && document.querySelector('#stbig svg.overlay g.lhit'), LT);
+  await page.waitForFunction((t) => location.hash === '#/stages/' + t && document.querySelectorAll('#stbig svg.overlay g.lhit').length === 2, LT);
   await page.waitForTimeout(700);
-  const nl0 = await page.locator('#stbig svg.overlay g.lhit').count();
+  const lines = await page.$$eval('#stbig svg.overlay line', (ls) => ls.map((l) => [l.getAttribute('stroke'), l.getAttribute('stroke-dasharray')]));
+  const blue = lines.filter(([c]) => c === '#2962ff'), red = lines.filter(([c]) => c === '#ef5350' );
   const labs = await page.$$eval('#stbig svg.overlay g.tag text', (x) => x.map((e) => e.textContent).join(' | '));
-  ok(nl0 >= 2 && labs.includes('התנגדות תקורה') && labs.includes('תמיכה – שפל תקף') && labs.includes('תקרת בסיס'), `${name}: ${LT} lines labelled (${nl0}: ${labs.slice(0, 120)}…)`);
-  const tgtTxt = async () => page.$eval('.stpanel .skv:nth-child(3) b', (e) => e.textContent);
-  const t0 = await tgtTxt();
-  await page.locator('#stbig svg.overlay g.lhit[data-sel="c-ov0"]').click({ force: true }); await page.waitForTimeout(300);
-  ok(await page.locator('#stdelline').count() === 1, `${name}: selecting a line offers delete`);
-  const lh = await page.locator('#stbig svg.overlay g.h[data-id="c-ov0"]').boundingBox();
-  if (lh) { const x = lh.x + lh.width / 2, y = lh.y + lh.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y - 30, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(700); }
-  const t1 = await tgtTxt();
-  ok(await page.evaluate(() => window.__demoApi.stageDrawings.filter((x) => x.kind === 'line' && x.status === 'active').length) === 1 && t1 !== t0 && await page.locator('.sttags.pad .badge.b-his').count() === 1,
-    `${name}: dragging the overhead line saves his level, target ${t0} -> ${t1}`);
-  ok(/תקורה \(שלך\)|שמיים פתוחים \(שלך\)/.test(await page.locator('.sttags.pad').innerText()), `${name}: header overhead tag follows his lines`);
-  await page.click('#stdelline'); await page.waitForTimeout(500);
-  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 - 1, `${name}: delete removes the line`);
-  await page.click('#staddline'); await page.waitForTimeout(200);
-  const cb = await page.locator('#stbig').boundingBox();
-  await page.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height * 0.12); await page.waitForTimeout(700);
-  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0, `${name}: '+ קו' adds his line`);
+  ok(blue.length === 1 && !blue[0][1] && red.length >= 1 && red.every(([, d]) => !d) && !/התנגדות|תמיכה/.test(labs), `${name}: ${LT} = one solid blue + one solid red line, no labels (${labs})`);
+  const kvTxt = async (k) => page.$$eval('.stpanel .skv', (xs, k) => xs.find((x) => x.querySelector('span').textContent.startsWith(k))?.querySelector('b').textContent, k);
+  const drag = async (id, dy) => {
+    await page.locator(`#stbig svg.overlay g.lhit[data-sel="${id}"]`).click({ force: true }); await page.waitForTimeout(300);
+    const hb = await page.locator(`#stbig svg.overlay g.h[data-id="${id}"]`).boundingBox();
+    if (hb) { const x = hb.x + hb.width / 2, y = hb.y + hb.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + dy, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(700); }
+  };
+  const bs0 = await kvTxt('Buy-Stop'), sl0 = await kvTxt('SL');
+  await drag('c-sup', -12);
+  const sl1 = await kvTxt('SL');
+  ok(sl1 !== sl0 && await page.locator('.sttags.pad .badge.b-his').count() === 1, `${name}: dragging the red line moves the SL ${sl0} -> ${sl1}`);
+  await drag('c-res', -160);
+  const bs1 = await kvTxt('Buy-Stop');
+  ok(bs1 !== bs0, `${name}: dragging the blue line moves the Buy-Stop ${bs0} -> ${bs1}`);
+  const pr = await page.evaluate(() => window.__stCv?.chart.priceScale('right').getVisibleRange());
+  ok(pr && pr.from >= 0, `${name}: price axis fits candles + levels, not below 0 (${pr && pr.from.toFixed(2)}–${pr && pr.to.toFixed(2)})`);
   await page.screenshot({ path: `${OUT}/${name}_lines.png` });
-  const ovl = await page.$$eval('#stbig svg.overlay g.tag:not(.lhit) rect', (rs) => { const b = rs.map((r) => r.getBoundingClientRect()).filter((q) => q.width > 0); let n = 0; for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) { const A = b[i], B = b[j]; if (A.left < B.right - 1 && B.left < A.right - 1 && A.top < B.bottom - 1 && B.top < A.bottom - 1) n++; } return n; });
-  ok(ovl === 0, `${name}: no overlapping line / zone labels (${ovl})`);
   await page.click('#streset'); await page.waitForTimeout(600);
-  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 && await page.locator('.sttags.pad .badge.b-his').count() === 0 && (await tgtTxt()) === t0, `${name}: reset -> computed lines + target again`);
+  ok(await page.locator('.sttags.pad .badge.b-his').count() === 0 && (await kvTxt('Buy-Stop')) === bs0 && (await kvTxt('SL')) === sl0, `${name}: reset -> computed lines again`);
+  await page.locator('#stbig svg.overlay g.lhit').first().click({ force: true }); await page.waitForTimeout(200);
+  await page.screenshot({ path: `${OUT}/${name}_stock.png` });
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (lines)`);
   if (mobile) { await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
   await page.click('#strulesBtn'); await page.waitForTimeout(200);

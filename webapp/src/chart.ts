@@ -355,6 +355,9 @@ export class ChartView {
     this.lastKey = '';
   }
 
+  /** false = stages page (Eyal 2026-11-14): auto-fit = candles + levels only, not centred on the last close (centring
+   *  around a far level stretched the axis below 0) */
+  centerClose = true;
   /** Make sure the price scale includes drawing levels (else a far target is off-screen). */
   fitLevels() {
     const lv: number[] = [];
@@ -370,11 +373,11 @@ export class ChartView {
         // auto-fit centred on the last close while the last bar is on screen (Eyal 2026-10-31: a stock opens with
         // its current price in the middle of the price axis, drawing levels still included)
         const last = this.bars[this.bars.length - 1], lr = this.chart.timeScale().getVisibleLogicalRange();
-        if (last && lr && +lr.to >= this.bars.length - 1 && +lr.from <= this.bars.length - 1 && mn < last.close && last.close < mx) {
+        if (this.centerClose && last && lr && +lr.to >= this.bars.length - 1 && +lr.from <= this.bars.length - 1 && mn < last.close && last.close < mx) {
           const h = Math.max(last.close - mn, mx - last.close);
           mn = last.close - h; mx = last.close + h;
         }
-        return { ...r, priceRange: { minValue: mn, maxValue: mx } };
+        return { ...r, priceRange: { minValue: Math.max(0, mn), maxValue: mx } };
       },
     });
   }
@@ -642,7 +645,7 @@ export class ChartView {
         const lm = (d as any).meta; // stages page (Eyal 2026-11-14): labelled support / resistance lines, tap anywhere to select
         const col = lm?.color ?? (bot ? '#ff9800' : '#f7c948');
         s += line(0, W, y, col, lm?.dash ?? dash).replace('stroke-width="1.5"', `stroke-width="${sel ? 2.5 : 1.5}"`);
-        if (lm?.label && y != null) s += `<g class="tag lhit" data-sel="${d.id}"><rect x="0" y="${y - 7}" width="${W}" height="14" fill="transparent"/></g>`;
+        if ((lm?.label || lm?.nolabel) && y != null) s += `<g class="tag lhit" data-sel="${d.id}"><rect x="0" y="${y - 7}" width="${W}" height="14" fill="transparent"/></g>`;
         const ltxt = lm?.label ? `${lm.label} ${(+(d.entry ?? 0)).toFixed(2)}` : 'קו';
         let lx = lm?.label ? W * 0.42 : W - 4, ly = y;
         if (lm?.label && y != null) { // a level equal to another (e.g. base floor = swing low): move the tag left, else below
@@ -655,7 +658,7 @@ export class ChartView {
           }
           if (!hit) { lx = lw + 2; ly = y + 19; }
         }
-        s += tag(lx, ly, ltxt, sel ? col : '#2a2e39', d.id);
+        if (!lm?.nolabel) s += tag(lx, ly, ltxt, sel ? col : '#2a2e39', d.id);
         if (sel && this.editable) handle(d.id, 'entry', W * 0.6, y, col);
       }
     }
