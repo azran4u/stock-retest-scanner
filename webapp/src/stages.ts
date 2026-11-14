@@ -23,7 +23,7 @@ export interface StageRow {
   earn_eff?: string | null; earn_timing?: 'a' | 'b' | null; earn_live_week?: boolean;
   earn_est?: boolean; earn_last?: string | null; earn_last_ago?: number | null; earn_block?: boolean; post_earn?: string | null; post_gap?: boolean;
 }
-export interface EtfStage { name: string; stage: number; sub: string; score: number; conf: string; close: number; ma30: number; slope: number; pct_ma: number; rs: number | null; rs_up: boolean | null; week: string; checks: Check[] }
+export interface EtfStage { sec_ok?: boolean | null; sec_case?: string | null; sec_he?: string; range?: StageRow['range']; bo?: StageRow['bo']; base?: StageRow['base']; weeks?: number; slope_cls?: string; name: string; stage: number; sub: string; score: number; conf: string; close: number; ma30: number; slope: number; pct_ma: number; rs: number | null; rs_up: boolean | null; week: string; checks: Check[] }
 export interface StagesDoc {
   version: number; generated_at: string; week: string; rules: Record<string, number>; screens: Record<string, string>;
   finviz_totals: Record<string, { total: number; read: number }>; skipped: Record<string, number>;
@@ -190,7 +190,7 @@ export function tagsHtml(r: StageRow, e: EffPlan | null, hisZone = false): strin
 export function rowHtml(r: StageRow, e: EffPlan | null, sel: boolean, hisZone = false): string {
   const gates = r.entry.filter((c) => !c.info), n = gates.length, ok = gates.filter((c) => c.ok === true).length;
   return `<li class="row strow2${sel ? ' sel' : ''}" data-st="${esc(r.t)}">
-  <div class="r1"><b class="sttk" dir="ltr">${esc(r.t)}</b> ${stageBadge(r.stage, r.sub)} <span class="badge conf-${r.conf}" title="${r.score}/4 תנאי זיהוי">${r.score}/4</span></div>
+  <div class="r1"><b class="sttk" dir="ltr">${esc(r.t)}</b> ${stageBadge(r.stage, r.sub)} <span class="badge conf-${r.conf}" title="${r.score}/4 תנאי זיהוי">${r.score}/4</span>${r.etf ? ` <button class="badge etfl st${r.etf_stage ?? 0}" data-etf="${esc(r.etf)}" title="גרף הסקטור" dir="ltr">${esc(r.etf)}</button>` : ''}</div>
   <div class="sttags">${tagsHtml(r, e, hisZone)}</div>
   <canvas class="stchart" data-stchart="${esc(r.t)}" aria-label="גרף שבועי שנתיים + 30W SMA"></canvas>
   <div class="skvs">
@@ -241,7 +241,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
   <header class="top ch" id="chhead">
     <a id="stback" class="ghost icon btnlike" href="#/stages" aria-label="חזרה">→</a>
     <div class="tk"><a class="sttk" href="${tvUrl(r)}" target="_blank" rel="noopener" dir="ltr"><b>${esc(r.t)}</b></a> <span class="muted small" dir="ltr">$${f(r.close)}</span> ${stageBadge(r.stage, r.sub)}
-      <div class="small muted stname">${esc(r.n)} · ${esc(r.sec)} / ${esc(r.ind)}${r.etf ? ` · <span class="badge st${r.etf_stage ?? 0}">${esc(r.etf)} שלב ${r.etf_stage ?? '?'}</span>` : ''}</div></div>
+      <div class="small muted stname">${esc(r.n)} · ${esc(r.sec)} / ${esc(r.ind)}${r.etf ? ` · <a class="badge st${r.etf_stage ?? 0} etfl" data-etf="${esc(r.etf)}" href="#/stages/${esc(r.etf)}" title="גרף הסקטור">${esc(r.etf)} שלב ${r.etf_stage ?? '?'}</a>` : ''}</div></div>
     <button id="stprev" class="ghost icon" aria-label="הקודם">‹</button><button id="stnext" class="ghost icon" aria-label="הבא">›</button>
   </header>
   <div class="sttags pad">${tagsHtml(r, e, !!ed?.zone || !!ed?.lines?.length)}</div>
@@ -269,12 +269,12 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
 }
 
 export function topDownHtml(d: StagesDoc): string {
-  const m = (k: string, e?: EtfStage) => e ? `<div class="mk"><b dir="ltr">${k}</b> ${stageBadge(e.stage, e.sub)}<span class="small muted">RS <span dir="ltr">${sg(e.rs)}</span></span></div>` : '';
+  const m = (k: string, e?: EtfStage) => e ? `<div class="mk"><a class="etfl" data-etf="${k}" href="#/stages/${k}" dir="ltr"><b>${k}</b></a> ${stageBadge(e.stage, e.sub)}<span class="small muted">RS <span dir="ltr">${sg(e.rs)}</span></span></div>` : '';
   const secs = Object.entries(d.sectors).sort((a, b) => (b[1].rs ?? -99) - (a[1].rs ?? -99));
   return `<section class="topdown"><div class="mkts">${['SPY', 'QQQ', 'IWM'].map((k) => m(k, d.market[k])).join('')}</div>
-  <details class="secs"><summary>סקטורים · חזקים: ${d.strong_sectors.map(esc).join(', ') || 'אין סקטור בשלב 2 עם RS חיובי'}</summary>
-  <div class="tbl"><table><tr><th>תעודה</th><th>סקטור</th><th>שלב</th><th>RS</th><th>שיפוע</th><th>מ-30W</th></tr>
-  ${secs.map(([k, e]) => `<tr class="${d.strong_sectors.includes(k) ? 'strong' : ''}"><td dir="ltr"><b>${k}</b>${d.strong_sectors.includes(k) ? ' ★' : ''}</td><td>${esc(e.name)}</td><td>${stageBadge(e.stage, e.sub)}</td><td dir="ltr">${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}</td><td dir="ltr">${sg(e.slope)}%</td><td dir="ltr">${sg(e.pct_ma)}%</td></tr>`).join('')}
+  <details class="secs"><summary>סקטורים · עוברים לכניסה: ${secs.filter(([, e]) => e.sec_ok).map(([k]) => esc(k)).join(', ') || 'אין'}</summary>
+  <div class="tbl"><table><tr><th>תעודה</th><th>סקטור</th><th>שלב</th><th>לכניסה</th><th>RS (מידע)</th><th>שיפוע</th><th>מ-30W</th></tr>
+  ${secs.map(([k, e]) => `<tr class="${d.strong_sectors.includes(k) ? 'strong' : ''}"><td dir="ltr"><a class="etfl" data-etf="${k}" href="#/stages/${k}"><b>${k}</b></a>${d.strong_sectors.includes(k) ? ' ★' : ''}</td><td>${esc(e.name)}</td><td>${stageBadge(e.stage, e.sub)}</td><td class="${e.sec_ok ? 'pos' : 'neg'}">${e.sec_ok ? '✓' : '✗'} ${esc(e.sec_he ?? '')}</td><td dir="ltr">${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}</td><td dir="ltr">${sg(e.slope)}%</td><td dir="ltr">${sg(e.pct_ma)}%</td></tr>`).join('')}
   </table></div></details></section>`;
 }
 
@@ -299,7 +299,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li><b>דוחות — לפני כניסה:</b> לא מציבים Buy-Stop חדש כשהדוח בתוך ${R.earn_td} ימי המסחר הקרובים (שבוע הדוח והשבוע שלפניו; דוח אחרי הסגירה נספר ליום המסחר הבא) — "דוח בעוד X ימי מסחר – לא להציב Buy-Stop". כש-FinViz מציג רק דוח שעבר: הדוח הבא משוער = האחרון + 13 שבועות ("משוער"), וגם הוא חוסם בתוך החלון. תאריך לא ידוע = לא עובר עד שבודקים.</li>
    <li><b>אחרי דוח (${R.post_earn_td} ימי מסחר):</b> גאפ למעלה (פתיחה ≥ ${R.gap_min_pct}% מעל הסגירה, סגירה מעל ההתנגדות, מחזור ≥ ${R.gap_vol_mult}x ממוצע ${R.gap_vol_avg_d} ימים) = "גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן"; חוזרת להיות מועמדת אחרי ≥ ${R.mini_base_d} ימי מסחר שכולם נסגרו מעל רמת הפריצה (בסיס קטן; נרות יומיים, אחרת סגירה שבועית). הדוח עבר והמחיר עדיין צמוד מתחת להתנגדות = "דוח עבר – להחזיר Buy-Stop".</li>
    <li><b>בתוך פוזיציה (הנחיה בלבד, אין מעקב פוזיציות):</b> נכנסת 3–4 שבועות לפני הדוח והמניה +10%–15% מעל הכניסה — אפשר להחזיק דרך הדוח ולהדק את הסטופ מתחת לשפל האחרון. סביב מחיר הכניסה בלי כרית — לצמצם חצי או לצאת לפני הדוח.</li>
-   <li>שוק (SPY) לא בשלב 4; סקטור בשלב 2 עם RS &gt; 0; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
+   <li>שוק (SPY) לא בשלב 4; <b>סקטור</b> (תעודת הסל הענפית) לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); RS הסקטור — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
    <li>התראת טלגרם בשבת אחרי הסגירה השבועית — רק כשיש מועמדות. אין פקודות אוטומטיות.</li></ul>
   <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מחזור יומי &gt; $${R.min_dollar_vol_m}M או &gt; 500K מניות בשבוע · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · ≥ ${R.min_weeks} שבועות.</li></ul>
   <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (בסיס ה-SL: שפל תקף מעל הממוצע, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום את ה-SL (לא מתחת לממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
@@ -336,4 +336,40 @@ export function drawStChart(cv: HTMLCanvasElement, sp: StSpark | undefined, r?: 
   lines.forEach(([p, col]) => { g.strokeStyle = col; g.beginPath(); g.moveTo(0, Y(p)); g.lineTo(W, Y(p)); g.stroke(); });
   g.setLineDash([]);
   cv.dataset.drawn = '1';
+}
+
+
+/** Sector / market ETF page (#/stages/XLU, Eyal 2026-11-14): big weekly chart + 30W SMA, stage, slope and the sector
+ *  rule (not stage 4 + 'שלב 2 מובהק' / 'סוף שלב 1 – התעוררות'), base ceiling when relevant. Read-only. */
+export function etfCeil(e: EtfStage): number | null {
+  if (e.bo && e.sub === '2A') return e.bo.level;
+  if (e.base) return e.base.top;
+  if ((e.stage === 1 || e.stage === 3) && e.range?.ceil != null) return e.range.ceil;
+  return null;
+}
+export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string | null): string {
+  const isMkt = !!d.market[t];
+  const ok = e.sec_ok, cls = ok ? 'pos' : 'neg', ceil = etfCeil(e);
+  const users = d.rows.filter((r) => r.etf === t).length;
+  return `<div class="cv stcv stetf">
+  <header class="top ch" id="chhead">
+    <a id="stback" class="ghost icon btnlike" href="${from ? '#/stages/' + encodeURIComponent(from) : '#/stages'}" aria-label="חזרה">→</a>
+    <div class="tk"><b dir="ltr">${esc(t)}</b> <span class="muted small" dir="ltr">$${f(e.close)}</span> ${stageBadge(e.stage, e.sub)}
+      <div class="small muted stname">${esc(e.name)} · ${isMkt ? 'מדד שוק' : 'תעודת סל ענפית'}${users ? ` · ${users} מניות ברשימה` : ''}${from ? ` · חזרה ל-<bdi dir="ltr">${esc(from)}</bdi>` : ''}</div></div>
+    <span></span>
+  </header>
+  <div class="sttags pad"><span class="badge ${ok ? 'b-pass' : 'b-fail'}" id="secrule">${ok ? '✓' : '✗'} כלל הסקטור: ${esc(e.sec_he || (ok ? '' : 'נכשל'))}</span></div>
+  <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים</div></div>
+  <div class="tools"><span class="small muted">כתום = 30W SMA${ceil != null ? ' · כחול = תקרת הבסיס' : ''} · קריאה בלבד</span></div>
+  <div class="panel stpanel">
+    <div class="stplan"><b>כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת)</b>
+      <div class="skvs">
+        ${kv('תוצאה', `${ok ? '✓ עובר' : '✗ נכשל'} · ${esc(e.sec_he ?? '')}`, cls)}${kv('שלב', esc(STAGE_HE[e.stage] || String(e.stage)))}
+        ${kv('מעל 30W SMA', e.close > e.ma30 ? `כן (${sg(e.pct_ma)}%)` : `לא (${sg(e.pct_ma)}%)`, e.close > e.ma30 ? 'pos' : 'neg')}${kv('שיפוע הממוצע', `${esc(e.slope_cls === 'up' ? 'עולה' : e.slope_cls === 'down' ? 'יורד' : 'שטוח')} (${sg(e.slope)}%)`, e.slope_cls === 'down' ? 'neg' : 'pos')}
+        ${kv('30W SMA', '$' + f(e.ma30))}${kv('Mansfield RS (מידע בלבד)', `${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}`)}
+        ${ceil != null ? kv('תקרת בסיס', '$' + f(ceil)) : ''}${e.range?.floor != null && (e.stage === 1 || e.stage === 3) ? kv('רצפת בסיס', '$' + f(e.range.floor)) : ''}
+      </div></div>
+    <h4>זיהוי ${esc(STAGE_HE[e.stage] || '')} (${e.score}/4)</h4><ul class="cks">${e.checks.map(chk).join('')}</ul>
+    <p class="small muted">שבוע ${ddmm(e.week)} · <a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent('AMEX:' + t)}&interval=W" target="_blank" rel="noopener">TradingView</a></p>
+  </div></div>`;
 }

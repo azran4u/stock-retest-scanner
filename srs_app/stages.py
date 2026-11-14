@@ -86,6 +86,7 @@ RULES: Dict[str, Any] = {
     "overhead_w": 104,           # overhead resistance = significant swing highs of the last 2 years (104 weeks)
     "cong_min_w": 5,             # info: trading block = >= 5 weekly closes inside a 3% band above the entry
     "cong_band_pct": 3.0,
+    "sector_allow_stage3": False,  # sector ETF in stage 3 fails (it is neither 'clear stage 2' nor 'late stage 1')
     "earn_td": 10,               # no new Buy-Stop when the report session is within the next 10 trading days (Eyal 2026-11-14:
                                  # the report week AND the week before; an after-close report counts on the next session)
     "earn_est_days": 91,         # FinViz has only a PAST date -> next report estimated at +13 weeks ('משוער'), blocks too
@@ -497,6 +498,27 @@ def post_earn_check(ei: Dict[str, Any], pg: Optional[Dict[str, Any]], close: flo
     return {"k": "post", "ok": True, "info": True, "he": f"דוח עבר ({ei['last']}, לפני {ei['last_ago']} ימ״ס) ללא גאפ מעל ההתנגדות"}
 
 
+def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
+    """Sector / industry ETF gate (Eyal 2026-11-14): never stage 4, and at least one of
+    (1) 'שלב 2 מובהק' = stage 2 (broke above its range), close above a RISING 30W SMA;
+    (2) 'סוף שלב 1 – התעוררות' = close back above the 30W SMA and the SMA no longer falling (flat or turning up).
+    The sector's Mansfield RS is information only. A stage-3 sector (top / distribution) is neither of the two states
+    -> fails unless RULES sector_allow_stage3."""
+    if not e:
+        return {"ok": None, "case": None, "he": "לא ידוע"}
+    above = e["close"] > e["ma30"]
+    if e["stage"] == 4:
+        return {"ok": False, "case": "4", "he": "שלב 4 – לא"}
+    if e["stage"] == 2 and above and e["slope_cls"] == "up":
+        return {"ok": True, "case": "2", "he": "שלב 2 מובהק"}
+    if e["stage"] == 3 and not R.get("sector_allow_stage3"):
+        return {"ok": False, "case": "3", "he": "שלב 3 (פסגה / הפצה) – לא שלב 2 מובהק ולא סוף שלב 1"}
+    if above and e["slope_cls"] != "down":
+        return {"ok": True, "case": "1late", "he": "סוף שלב 1 – התעוררות" if e["stage"] != 2 else "שלב 2 – מעל ממוצע שטוח (התעוררות)"}
+    why = "מתחת ל-30W SMA" if not above else "ה-30W SMA עדיין יורד"
+    return {"ok": False, "case": "no", "he": f"לא עומד: {why}"}
+
+
 def entry_pass(entry: List[Dict[str, Any]], pre: List[Dict[str, Any]]) -> bool:
     """All entry gates True (an 'info' check, e.g. a wide SL, never disqualifies) and no pre-filter failure."""
     return bool(entry) and all(x["ok"] is True for x in entry if not x.get("info")) and all(x["ok"] is not False for x in pre)
@@ -713,6 +735,17 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
     return out
 
 
+def write_candles(t: str, w: pd.DataFrame, R=RULES) -> None:
+    """Weekly OHLCV of the last candle_weeks for the big chart (app/data/stages_candles/T.json), written only on change."""
+    wc = w.iloc[-R["candle_weeks"]:]
+    cj = json.dumps({"w": [[ix.strftime("%Y-%m-%d"), *(round(float(x), 2) for x in row[:4]), int(row[4])]
+                           for ix, row in zip(wc.index, wc[["Open", "High", "Low", "Close", "Volume"]].values)]},
+                    separators=(",", ":"))
+    cp = OUT_CANDLES / f"{t}.json"
+    if not cp.exists() or cp.read_text() != cj:
+        cp.write_text(cj)
+
+
 def spark(w: pd.DataFrame, weeks: int) -> Dict[str, Any]:
     ww = w.iloc[-(weeks + 30):].copy()
     ma = ww["Close"].rolling(30).mean().iloc[-weeks:]
@@ -762,7 +795,10 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             continue
         r = classify(weekly(hm[e], last), bw, R)
         if r:
-            etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "pct_ma", "rs", "rs_up", "week", "checks")}}
+            etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "slope_cls", "pct_ma", "rs", "rs_up", "week", "checks")}}
+            ss_ = sector_status(etf_out[e], R)
+            etf_out[e].update(sec_ok=ss_["ok"], sec_case=ss_["case"], sec_he=ss_["he"], range=r.get("range"),
+                              base=r.get("base"), bo=r.get("bo"), weeks=r.get("weeks"))
     strong = sorted([e for e in SECTOR_ETF.values() if e in etf_out and etf_out[e]["stage"] == 2 and (etf_out[e]["rs"] or -99) > 0],
                     key=lambda e: -(etf_out[e]["rs"] or 0))[:3]
     mkt_stage4 = etf_out.get("SPY", {}).get("stage") == 4
@@ -799,8 +835,9 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                      if p["open_sky"] else f"התנגדות תקורה קרובה ${p['overhead']} (+{p['overhead_pct']}% מהכניסה, שיא סווינג משמעותי ב-2 השנים)")
             entry = [
                 {"k": "mkt", "ok": not mkt_stage4, "he": f"שוק כללי (SPY) לא בשלב 4 (כעת שלב {etf_out.get('SPY', {}).get('stage', '?')})"},
-                {"k": "sector", "ok": None if not e else bool(e["stage"] == 2 and (e["rs"] or 0) > 0),
-                 "he": f"סקטור {etf or '?'} בשלב 2 עם RS > 0" + (f" (שלב {e['stage']}, RS {e['rs']})" if e else "")},
+                {"k": "sector", "ok": None if not e else e["sec_ok"],
+                 "he": f"סקטור {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל 30W SMA שהפסיק לרדת)"
+                       + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}; RS {e['rs']} מידע בלבד)" if e else "")},
                 {"k": "rs", "ok": rs_ok, "he": "Mansfield RS > 0 ועולה"},
                 {"k": "chase", "ok": not p["chase"],
                  "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
@@ -852,16 +889,12 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             "entry": entry, "entry_ok": bs, "bs": bs,
         })
         sparks[t] = spark(w, R["spark_weeks"])
-        wc = w.iloc[-R["candle_weeks"]:]
-        cj = json.dumps({"w": [[ix.strftime("%Y-%m-%d"), *(round(float(x), 2) for x in row[:4]), int(row[4])]
-                               for ix, row in zip(wc.index, wc[["Open", "High", "Low", "Close", "Volume"]].values)]},
-                        separators=(",", ":"))
-        cp = OUT_CANDLES / f"{t}.json"
-        if not cp.exists() or cp.read_text() != cj:
-            cp.write_text(cj)
-    for e in etf_out:
+        write_candles(t, w, R)
+    for e in etf_out:  # sector / market ETFs: spark + big-chart candles (#/stages/XLU, Eyal 2026-11-14)
         if e in hm:
-            sparks[e] = spark(weekly(hm[e], last), R["spark_weeks"])
+            we = weekly(hm[e], last)
+            sparks[e] = spark(we, R["spark_weeks"])
+            write_candles(e, we, R)
     counts = {str(s): sum(1 for x in rows if x["stage"] == s) for s in (1, 2, 3, 4)}
     counts["2A"] = sum(1 for x in rows if x["sub"] == "2A")
     cands = sorted((x for x in rows if x["bs"]), key=lambda x: -(x["plan"]["rr"] or 0))

@@ -99,7 +99,30 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.locator('#stbig svg.overlay g.lhit').first().click({ force: true }); await page.waitForTimeout(200);
   await page.screenshot({ path: `${OUT}/${name}_stock.png` });
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (lines)`);
+  // sector ETF page (Eyal 2026-11-14): the stock page's sector badge opens #/stages/ETF, back returns to the stock
+  const ETF = SD.rows.find((r) => r.t === LT)?.etf;
+  await page.click('.stname a.etfl'); await page.waitForFunction((e) => location.hash === '#/stages/' + e && document.querySelector('#stbig canvas'), ETF);
+  await page.waitForTimeout(900);
+  const rule = await page.locator('#secrule').innerText();
+  ok(/כלל הסקטור/.test(rule) && /שלב 2 מובהק|סוף שלב 1 – התעוררות|שלב 3|שלב 4|לא עומד/.test(rule) && await page.locator('.stpanel .cks li').count() >= 4, `${name}: ${LT} -> sector ${ETF} chart + rule (${rule})`);
+  ok(await page.evaluate(() => !!window.__stCv && window.__stCv.chart.priceScale('right').getVisibleRange().from >= 0), `${name}: ${ETF} candles drawn`);
+  await page.screenshot({ path: `${OUT}/${name}_etf_${ETF}.png` });
+  await page.click('#stback'); await page.waitForFunction((t) => location.hash === '#/stages/' + t, LT);
+  ok(true, `${name}: back from ${ETF} returns to ${LT}`);
+  await page.waitForSelector('#stbig canvas');
   if (mobile) { await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
+  // card chip -> ETF; XLU from the sector table
+  const chip = page.locator('li[data-st] button.etfl').first();
+  const chipEtf = await chip.getAttribute('data-etf'), chipT = await page.locator('li[data-st]').first().getAttribute('data-st');
+  await chip.click(); await page.waitForFunction((e) => location.hash === '#/stages/' + e, chipEtf); await page.waitForTimeout(500);
+  ok((await page.locator('#stback').getAttribute('href')) === '#/stages/' + chipT, `${name}: card chip opens ${chipEtf}, back -> ${chipT}`);
+  if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
+  await page.locator('details.secs summary').click(); await page.waitForTimeout(200);
+  await page.locator('details.secs a.etfl[data-etf="XLU"]').click(); await page.waitForFunction(() => location.hash === '#/stages/XLU'); await page.waitForTimeout(800);
+  ok((await page.locator('#secrule').innerText()).includes('סוף שלב 1 – התעוררות'), `${name}: XLU = late stage 1 / awakening`);
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (ETF)`);
+  await page.screenshot({ path: `${OUT}/${name}_etf_XLU.png` });
+  if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); if (/#\/stages\//.test(page.url())) { await page.click('#stback'); } await page.waitForSelector('li[data-st]'); }
   await page.click('#strulesBtn'); await page.waitForTimeout(200);
   ok((await page.locator('.strulesheet').innerText()).includes('שמיים פתוחים'), `${name}: rules shown`);
   await page.click('#strulesClose');

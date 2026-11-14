@@ -12,7 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
-import { UI_DEF, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, etfCeil, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -845,6 +845,17 @@ async function renderStages() {
     const y = sessionStorage.getItem('srs-st-scroll'); if (y) window.scrollTo(0, +y);
   }
 }
+// sector / market ETF links (cards, stock page, sector table, market chips): open #/stages/ETF, back returns to the stock
+document.addEventListener('click', (ev) => {
+  const a = (ev.target as HTMLElement)?.closest?.('.etfl') as HTMLElement | null;
+  if (!a || !location.hash.startsWith('#/stages')) return;
+  ev.preventDefault(); ev.stopPropagation();
+  const cur = (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1];
+  const li = a.closest('li[data-st]') as HTMLElement | null;
+  const from = li?.dataset.st || (cur ? decodeURIComponent(cur).toUpperCase() : null);
+  if (from && from !== a.dataset.etf) sessionStorage.setItem('srs-st-from', from); else if (!from) sessionStorage.removeItem('srs-st-from');
+  location.hash = '#/stages/' + encodeURIComponent(a.dataset.etf!);
+}, true);
 function stMarkSel(t: string | null) {
   const side = $('#stSide'); if (!side) return;
   let hit: HTMLElement | null = null;
@@ -922,10 +933,43 @@ function stNeighbor(d: StagesDoc, t: string, dir: 1 | -1): string | null {
   const l = filterRows(d.rows, stUi(), stEdits, maxRiskUsd(), stMaxStop(d)).map((r) => r.t), i = l.indexOf(t);
   return i < 0 ? l[0] ?? null : l[i + dir] ?? null;
 }
+/** big weekly chart of a sector / market ETF (read-only): candles + 30W SMA + base ceiling (blue) when relevant */
+async function stRenderEtf(d: StagesDoc, t: string, e: StagesDoc['sectors'][string]) {
+  const host = $('#stMain'); if (!host) return;
+  if (stCv && stCvT === t) return;
+  if (stCv) { stCv.destroy(); stCv = null; }
+  stSelDraw = null; stTap = null;
+  host.innerHTML = etfDetailHtml(d, t, e, sessionStorage.getItem('srs-st-from'));
+  stCvT = t;
+  const cv = new ChartView($('#stbig', host)!, { onSelect: () => {}, onDragMove: () => {}, onDragEnd: () => {}, onTap: () => {} });
+  cv.editable = false; stCv = cv;
+  try {
+    const res = await fetchData('stages_candles/' + encodeURIComponent(t) + '.json');
+    if (!res.ok) throw new Error('no candles');
+    const j: { w: [string, number, number, number, number, number][] } = await res.json();
+    if (stCvT !== t || stCv !== cv) return;
+    const bars: Bar[] = j.w.map(([time, open, high, low, close, volume]) => ({ time: weekStart(time), open, high, low, close, volume }));
+    cv.centerClose = false; (window as any).__stCv = cv;
+    cv.setBars(bars, 110, true);
+    const ma: { time: string; value: number }[] = [];
+    let sum = 0;
+    for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
+    cv.setMAs([{ n: 30, color: '#ff9800', data: ma }]);
+    const c = etfCeil(e);
+    cv.setDrawings(c != null ? [{ id: 'etf-ceil', ticker: t, kind: 'line', entry: c, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null, source: 'bot', status: 'active', note: null, meta: { nolabel: true, color: '#2962ff', dash: '' } } as Drawing] : [], null);
+    cv.fitLevels();
+  } catch {
+    const nd = $('#stnodata', host); if (nd) nd.hidden = false;
+  }
+}
 async function stRenderDetail(d: StagesDoc, t: string) {
   const host = $('#stMain'); if (!host) return;
   const r = d.rows.find((x) => x.t === t);
-  if (!r) { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return; }
+  if (!r) {
+    const etf = d.market[t] || d.sectors[t];
+    if (etf) { stRenderEtf(d, t, etf); return; }
+    if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return;
+  }
   if (stCvT !== t) { stSelDraw = null; stTap = null; stLineTap = false; }
   if (stCv && stCvT === t) { stRefreshDetail(d, r); return; }
   if (stCv) { stCv.destroy(); stCv = null; }

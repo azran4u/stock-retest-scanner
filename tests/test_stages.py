@@ -219,3 +219,17 @@ def test_stop_never_below_sma():
     assert p["stop_basis"] == "low" and abs(p["stop"] - round(sw * 0.993, 2)) < 0.02 and p["swing_low"] == round(sw, 2)
     p2 = trade_levels(w, 101.0, 115.0, 114.0, None)        # low 98 under the SMA 101 -> SMA stop, the low is ignored
     assert p2["stop_basis"] == "ma" and abs(p2["stop"] - round(101 * 0.993, 2)) < 0.01 and p2["swing_low"] is None
+
+
+def test_sector_status():
+    """Eyal 2026-11-14: sector ETF not stage 4 + (clear stage 2 | late stage 1 awakening); RS is info only."""
+    from srs_app.stages import sector_status
+    e = lambda st, c, ma, sl, rs=-5.0: {"stage": st, "close": c, "ma30": ma, "slope_cls": sl, "rs": rs}
+    assert sector_status(e(2, 110, 100, "up"))["he"] == "שלב 2 מובהק"
+    s1 = sector_status(e(1, 105, 100, "flat", rs=-3.7))              # XLU-like: back above a flat SMA, negative RS
+    assert s1["ok"] is True and s1["he"] == "סוף שלב 1 – התעוררות"
+    assert sector_status(e(1, 95, 100, "flat"))["ok"] is False       # still under the SMA
+    assert sector_status(e(1, 105, 100, "down"))["ok"] is False      # SMA still falling
+    assert sector_status(e(4, 105, 100, "flat"))["ok"] is False      # stage 4 never
+    assert sector_status(None)["ok"] is None
+    assert sector_status(e(3, 110, 100, "up"))["ok"] is False        # stage 3 top: neither state
