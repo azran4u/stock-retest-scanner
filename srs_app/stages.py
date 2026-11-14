@@ -13,6 +13,7 @@ is shown on the page.
   python -m srs_app.stages             # FinViz -> history -> stages -> app/data/stages.json + stages_spark.json
   python -m srs_app.stages --publish   # ... and upload the changed app data files (srs_app.publish_data)
   python -m srs_app.stages --offline   # recompute from the cached FinViz list + cached history (no network)
+  python -m srs_app.stages --publish --alert   # ... + Telegram the Buy-Stop candidates (only when there are any)
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "app" / "data" / "stages.json"
 OUT_SPARK = REPO / "app" / "data" / "stages_spark.json"
+OUT_CANDLES = REPO / "app" / "data" / "stages_candles"  # weekly OHLCV per stock for the big editable chart (not in git)
 CACHE = Path("/workspace/stage_hist_cache.pkl")
 UNIVERSE_CACHE = Path("/workspace/cache/stages_universe.json")
 SEED_CACHE = Path("/workspace/hist_cache.pkl")  # the retest scanner's yfinance cache: reused (read only) to save downloads
@@ -63,26 +65,32 @@ RULES: Dict[str, Any] = {
     "rs_ma_weeks": 52,           # Mansfield RS = ((stock/SPX) / SMA52(stock/SPX) - 1) * 100
     "rs_rising_w": 4,            # RS rising = RS now > RS 4 weeks ago
     "pivot_w": 2,                # swing high / low = higher / lower than 2 weekly bars on each side
-    "major_pivot_w": 4,          # overhead resistance / first target = MAJOR swing high (4 weekly bars on each side)
-    "target_min_gap_pct": 2.0,   # first target = nearest major swing high > 2% above the entry
-    "base_window_w": 26,         # breakout resistance = highest weekly high of the 26 weeks before the breakout week
-    "min_base_w": 10,            # base: >= 10 consecutive weekly closes at / under that resistance (module 3: 10-16 weeks)
+    "sig_pivot_w": 8,            # overhead resistance = SIGNIFICANT weekly swing high (highest high 8 weekly bars on each side)
+    "target_min_gap_pct": 2.0,   # a level counts as overhead only when > 2% above the entry
+    "base_window_w": 26,         # base resistance = highest weekly high of the 26 weeks before the breakout / now
+    "min_base_w": 10,            # base: resistance set >= 10 weeks earlier AND >= 10 weekly closes at / under it
     "bo_max_weeks_ago": 3,       # breakout week = one of the last 4 completed weeks (0-3 weeks ago; entry window 1-3 weeks)
     "vol_avg_w": 10,             # breakout volume vs average weekly volume of the 10 weeks before it
-    "vol_mult": 2.0,             # >= 2.0x  (< 1.5x = fakeout, avoid)
+    "vol_mult": 2.0,             # >= 2.0x  (< 1.5x = fakeout, avoid); in-base volume is never penalised
     "strong_close": 0.75,        # A+ breakout: close in the top 25% of the breakout week's range
-    "buy_zone_pct": 10.0,        # 'in buy zone' = last close <= breakout level + 10% (else wait for a pullback)
+    "buy_zone_pct": 10.0,        # don't chase: last close <= breakout level + 10% ...
+    "max_pct_above_ma": 25.0,    # ... AND <= 30W SMA + 25% (Eyal 2026-11-14, XERS example); else 'רחוקה מדי / אל תרדוף'
+    "range_max_w": 52,           # stage 1 / 3 trading range = high / low since the stage began (10-52 weeks)
     "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the 30W SMA (partial exit zone)
-    "stop_buffer_pct": 1.0,      # stop = 1% under min(last swing low, 30W SMA)
-    "entry_tick": 0.25,          # buy-stop trigger = resistance + $0.25
-    "min_rr": 3.0,               # R:R to the first target >= 3
-    "overhead_w": 78,            # overhead resistance = swing highs of the last 18 months ...
-    "overhead_pct": 20.0,        # ... within 20% above the entry
-    "earn_td": 7,                # no new entry within 7 trading days of earnings
+    "stop_buffer_pct": 0.7,      # stop = 0.7% under the last valid (never broken) swing low, else under the 30W SMA
+    "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' (too few shares) -> skip / wait
+    "buy_stop_buf_pct": 0.5,     # Buy-Stop = base resistance + 0.5% (min $0.05) -- 'slightly above the ceiling'
+    "buy_stop_min_buf": 0.05,
+    "pre_bo_pct": 5.0,           # pre-breakout Buy-Stop setup: last close within 5% under the base resistance
+    "min_rr": 2.5,               # R:R from the Buy-Stop entry to the nearest overhead resistance >= 2.5 (Eyal 2026-11-14)
+    "overhead_w": 104,           # overhead resistance = significant swing highs of the last 2 years (104 weeks)
+    "cong_min_w": 5,             # info: trading block = >= 5 weekly closes inside a 3% band above the entry
+    "cong_band_pct": 3.0,
+    "earn_td": 7,                # no new entry within 7 trading days of earnings + no Buy-Stop live into an earnings week
     "min_price": 15.0, "hard_min_price": 10.0, "min_dollar_vol_m": 30.0, "min_week_vol": 500_000,
     "inst_lo": 25.0, "inst_hi": 85.0, "min_weeks": 40, "biotech_cap_b": 2.0,
     "risk_usd": 55.0, "account_usd": 5000.0, "position_cap_pct": 15.0,
-    "spark_weeks": 104,
+    "spark_weeks": 104, "candle_weeks": 160,
 }
 
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
@@ -117,6 +125,12 @@ def parse_earn(txt: str, today: date) -> Optional[str]:
     elif (today - d).days > 183:
         d = d.replace(year=d.year + 1)
     return d.isoformat()
+
+
+def earn_timing(txt: str) -> Optional[str]:
+    """FinViz 'Nov 20/a' -> 'a' (after close) / 'b' (before open) / None."""
+    m = re.search(r"/\s*([ab])\b", txt or "")
+    return m.group(1) if m else None
 
 
 def _fv_page(sess, url: str):
@@ -250,62 +264,127 @@ def _f(x, d=2):
     return round(float(x), d)
 
 
+def _base_count(c: np.ndarray, end: int, res: float) -> int:
+    n = 0
+    for j in range(end, max(-1, end - 105), -1):
+        if c[j] <= res:
+            n += 1
+        else:
+            break
+    return n
+
+
 def find_breakout(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Optional[Dict[str, Any]]:
     """Earliest week b among the last bo_max_weeks_ago+1 completed weeks whose close broke above the base resistance
-    (highest high of the base_window_w weeks before b) after >= min_base_w closes at / under it, with close > 30W SMA and
-    the SMA not declining. Volume / holding are reported, not required here."""
+    (highest high of the base_window_w weeks before b), the resistance set >= min_base_w weeks before b with >= min_base_w
+    closes at / under it (a real base: stage 1 -> 2 or a stage-2 continuation base), close > 30W SMA and the SMA not
+    declining. Volume / holding are reported, not required here."""
     h, c, v = w["High"].values, w["Close"].values, w["Volume"].values
     n = len(w)
     for b in range(max(R["base_window_w"], n - 1 - R["bo_max_weeks_ago"]), n):
-        res = h[b - R["base_window_w"]:b].max()
+        seg = h[b - R["base_window_w"]:b]
+        res = seg.max()
+        top_i = b - R["base_window_w"] + int(np.argmax(seg))
         if not (c[b] > res and c[b] > ma[b]):
             continue
         sc, _ = slope_class(ma, b, R)
         if sc not in ("up", "flat"):
             continue
-        base = 0
-        for j in range(b - 1, max(-1, b - 105), -1):
-            if c[j] <= res:
-                base += 1
-            else:
-                break
-        if base < R["min_base_w"]:
+        base = _base_count(c, b - 1, res)
+        if base < R["min_base_w"] or (b - top_i) < R["min_base_w"]:
             continue
         av = v[max(0, b - R["vol_avg_w"]):b].mean() if b > 0 else np.nan
         rng = h[b] - w["Low"].values[b]
         lo_base = w["Low"].values[b - min(base, R["base_window_w"]):b].min()
         return {"week": w.index[b].strftime("%Y-%m-%d"), "idx": b, "weeks_ago": n - 1 - b, "level": float(res),
-                "base_weeks": base, "base_low": float(lo_base),
+                "base_weeks": base, "base_low": float(lo_base), "res_week": w.index[top_i].strftime("%Y-%m-%d"),
                 "vol_ratio": float(v[b] / av) if av and av > 0 else None,
                 "close_pos": float((c[b] - w["Low"].values[b]) / rng) if rng > 0 else None}
     return None
 
 
+def base_now(w: pd.DataFrame, R=RULES) -> Optional[Dict[str, Any]]:
+    """Current base under its resistance (pre-breakout Buy-Stop setup): resistance = highest high of the last
+    base_window_w weeks, set >= min_base_w weeks ago, with >= min_base_w closes at / under it."""
+    h, l, c = w["High"].values, w["Low"].values, w["Close"].values
+    n = len(w)
+    if n < R["base_window_w"]:
+        return None
+    seg = h[n - R["base_window_w"]:]
+    top_i = n - R["base_window_w"] + int(np.argmax(seg))
+    top = float(seg.max())
+    cnt = _base_count(c, n - 1, top)
+    blo = float(l[n - min(max(cnt, 1), R["base_window_w"]):].min())
+    return {"top": top, "low": blo, "weeks": cnt, "top_week": w.index[top_i].strftime("%Y-%m-%d"),
+            "since_top_w": n - 1 - top_i, "mature": bool(cnt >= R["min_base_w"] and (n - 1 - top_i) >= R["min_base_w"])}
+
+
+def buy_stop_price(level: float, R=RULES) -> float:
+    return level + max(level * R["buy_stop_buf_pct"] / 100, R["buy_stop_min_buf"])
+
+
+def overhead_scan(w: pd.DataFrame, entry: float, R=RULES) -> Dict[str, Any]:
+    """Overhead resistance (Eyal 2026-11-14): significant weekly swing highs (sig_pivot_w bars each side) of the last
+    overhead_w weeks above entry + target_min_gap_pct, plus the highest high of the window when older than sig_pivot_w
+    weeks (a ceiling whose own pivot lies before the window). Nearest = the first target. None -> 'open sky'.
+    Info: nearest trading block (>= cong_min_w weekly closes inside a cong_band_pct band) above the entry."""
+    h, c = w["High"].values, w["Close"].values
+    n = len(w)
+    lo_i = max(0, n - R["overhead_w"])
+    thr = entry * (1 + R["target_min_gap_pct"] / 100)
+    lv = [float(h[i]) for i in pivots(h, R["sig_pivot_w"], True) if i >= lo_i and h[i] > thr]
+    old = h[lo_i:max(lo_i, n - R["sig_pivot_w"])]
+    if len(old) and old.max() > thr:
+        lv.append(float(old.max()))
+    nearest = min(lv) if lv else None
+    cs = sorted(float(x) for x in c[lo_i:] if x > thr)
+    cong = next((x for x in cs if sum(1 for y in cs if x <= y <= x * (1 + R["cong_band_pct"] / 100)) >= R["cong_min_w"]), None)
+    return {"overhead": nearest, "overhead_pct": (nearest / entry - 1) * 100 if nearest else None, "open_sky": nearest is None,
+            "ath": bool(h.max() <= thr), "cong": cong, "hi2y": float(h[lo_i:].max())}
+
+
 def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optional[float], base_low: Optional[float],
                  R=RULES) -> Dict[str, Any]:
-    """Stop below the last structural low AND the 30W SMA; first target = nearest weekly swing high above the entry
-    (overhead resistance), else a measured move (resistance + base height)."""
-    h, l = w["High"].values, w["Low"].values
-    k = R["pivot_w"]
-    pl = [i for i in pivots(l, k, False) if i >= len(w) - 26]
-    swing_low = float(l[pl[-1]]) if pl else float(l[-10:].min())
-    stop = min(swing_low, ma_now) * (1 - R["stop_buffer_pct"] / 100)
-    ph = [i for i in pivots(h, R["major_pivot_w"], True) if i >= len(w) - R["overhead_w"]]  # last 18 months only
-    above = sorted(float(h[i]) for i in ph if h[i] > entry * (1 + R["target_min_gap_pct"] / 100))
-    target, tsrc = (above[0], "overhead") if above else (None, None)
-    if target is None and resistance and base_low and resistance > base_low:
-        target, tsrc = resistance + (resistance - base_low), "measured"
-        if target <= entry * (1 + R["target_min_gap_pct"] / 100):
-            target, tsrc = None, None
+    """Stop just under the last valid (never broken) swing low, else just under the 30W SMA; first target = nearest overhead resistance of the last 2 years
+    (significant weekly swing high); none = open sky -> target = entry + min_rr x risk (R:R exactly 2.5, Eyal 2026-11-14)."""
+    l = w["Low"].values
+    n = len(w)
+    # Eyal 2026-11-14: stop just under the most recent VALID swing low (weekly pivot low of the last 26 weeks that was never
+    # broken afterwards, below the entry); none -> just under the 30W SMA. A broken low is never used.
+    valid = [i for i in pivots(l, R["pivot_w"], False)
+             if i >= n - 26 and l[i] < entry and (i == n - 1 or l[i] < l[i + 1:].min())]
+    swing_low = float(l[valid[-1]]) if valid else None
+    basis = "low" if swing_low is not None else "ma"
+    stop = (swing_low if swing_low is not None else ma_now) * (1 - R["stop_buffer_pct"] / 100)
+    ov = overhead_scan(w, entry, R)
     risk = entry - stop
+    target, tsrc = (ov["overhead"], "overhead") if ov["overhead"] else (None, None)
+    if target is None and risk > 0:  # open sky (Eyal 2026-11-14): trade bar at exactly R:R = min_rr
+        target, tsrc = entry + R["min_rr"] * risk, "open_sky"
     rr = (target - entry) / risk if (target and risk > 0 and target > entry) else None
-    recent = [float(h[i]) for i in ph if i >= len(w) - R["overhead_w"]]
-    overhead = [x for x in recent if entry < x <= entry * (1 + R["overhead_pct"] / 100)]
     shares = int(R["risk_usd"] // risk) if risk > 0 else None
-    return {"entry": _f(entry), "stop": _f(stop), "swing_low": _f(swing_low), "target": _f(target), "target_src": tsrc,
-            "risk_pct": _f(risk / entry * 100, 1) if entry else None, "rr": _f(rr), "shares": shares,
-            "pos_usd": _f(shares * entry, 0) if shares else None,
-            "overhead": _f(min(overhead)) if overhead else None}
+    stop_pct = risk / entry * 100 if entry else None
+    return {"entry": _f(entry), "stop": _f(stop), "stop_basis": basis, "swing_low": _f(swing_low), "target": _f(target), "target_src": tsrc,
+            "risk_pct": _f(stop_pct, 1), "stop_wide": bool(stop_pct is not None and stop_pct > R["max_stop_pct"]),
+            "rr": _f(rr), "shares": shares, "pos_usd": _f(shares * entry, 0) if shares else None,
+            "overhead": _f(ov["overhead"]), "overhead_pct": _f(ov["overhead_pct"], 1), "open_sky": ov["open_sky"],
+            "ath": ov["ath"], "cong": _f(ov["cong"]), "hi2y": _f(ov["hi2y"])}
+
+
+def earnings_live_week(earn: Optional[str], timing: Optional[str], today: date) -> Tuple[bool, Optional[str], str]:
+    """Does the report fall in the week a Buy-Stop placed now would be live? Live week = the Mon-Fri trading week of the
+    next session after today (run on Saturday -> next week). An after-close ('a') report counts on the next session."""
+    if not earn:
+        return False, None, ""
+    d = date.fromisoformat(earn)
+    if d < today:
+        return False, None, ""
+    eff = d
+    if timing == "a":
+        eff = (np.busday_offset(np.datetime64(d), 1, roll="forward")).astype(date)
+    nxt = today if today.weekday() < 5 else today + timedelta(days=7 - today.weekday())  # weekend run -> next Monday
+    fri = nxt + timedelta(days=4 - nxt.weekday())
+    return bool(eff <= fri), eff.isoformat(), fri.isoformat()
 
 
 def trading_days_until(d: Optional[str], today: date) -> Optional[int]:
@@ -315,6 +394,78 @@ def trading_days_until(d: Optional[str], today: date) -> Optional[int]:
     if dd < today:
         return None
     return int(np.busday_count(today, dd))
+
+
+def _range(h: np.ndarray, l: np.ndarray, i: int, start: int, st: int, R=RULES) -> Tuple[float, float]:
+    """Trading range of a base / top (stage 1 / 3) before week i: highest high + lowest low since the range began =
+    the earliest of the stage start, min_base_w weeks back and the extreme that ended the prior trend (the lowest low of
+    the last range_max_w weeks for a base, the highest high for a top); at most range_max_w weeks back."""
+    a0 = max(0, i - R["range_max_w"])
+    ext = a0 + int(np.argmin(l[a0:i]) if st == 1 else np.argmax(h[a0:i]))
+    a = max(a0, min(start, i - R["min_base_w"], ext))
+    return float(h[a:i].max()), float(l[a:i].min())
+
+
+def _trend_edge(h: np.ndarray, l: np.ndarray, i: int, up: bool, R=RULES) -> float:
+    """Stage 2: floor of the current continuation base = lowest low since the last 26-week high (>= min_base_w weeks).
+    Stage 4: ceiling = highest high since the last 26-week low."""
+    a0 = max(0, i - R["base_window_w"])
+    if up:
+        k = a0 + int(np.argmax(h[a0:i]))
+        return float(l[max(0, min(k, i - R["min_base_w"])):i].min())
+    k = a0 + int(np.argmin(l[a0:i]))
+    return float(h[max(0, min(k, i - R["min_base_w"])):i].max())
+
+
+def stage_path(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Dict[str, Any]:
+    """Range-based stage state machine (Eyal 2026-11-14): inside a base / trading range crossings of the 30W SMA mean
+    nothing. Stage 1 (base after a decline) -> 2 only on a weekly close above the range ceiling with the SMA flat / rising;
+    -> 4 only on a close below the range floor. Stage 3 (top after an advance) -> 4 on a close below its floor, -> 2 on a
+    close above its ceiling (SMA flat / rising). Stage 2 stays 2 (a continuation base included) until a close below the
+    floor of its current base with the SMA no longer rising (-> 3, or -> 4 when the SMA declines), or until the SMA goes
+    flat while price has made no new 26-week high for >= 10 weeks (-> 3: a top; a continuation base keeps a rising SMA). Stage 4 -> 1 once the
+    SMA stops declining (or straight to 2 on a close above its last bounce high with a non-declining SMA)."""
+    h, l, c = (w[k].values.astype(float) for k in ("High", "Low", "Close"))
+    n = len(w)
+    i0 = R["ma_weeks"] + R["slope_lookback_w"] - 1
+    st, start = None, i0
+    for i in range(i0, n):
+        sc, _ = slope_class(ma, i, R)
+        if sc is None:
+            continue
+        if st is None:
+            st = 2 if sc == "up" else 4 if sc == "down" else (1 if c[i] < ma[i] else 3)
+            start = i
+            continue
+        new = st
+        if st in (1, 3):
+            ceil, floor = _range(h, l, i, start, st, R)
+            if c[i] > ceil and sc != "down":
+                new = 2
+            elif c[i] < floor and sc != "up":
+                new = 4
+        elif st == 2:
+            a0 = max(0, i - R["base_window_w"])
+            since_hi = i - (a0 + int(np.argmax(h[a0:i + 1])))
+            if sc != "up" and c[i] < _trend_edge(h, l, i, True, R):
+                new = 4 if sc == "down" else 3
+            elif sc == "flat" and since_hi >= R["min_base_w"]:
+                new = 3  # SMA lost its rise during a >= 10-week range = a top, not a continuation base
+        elif st == 4:
+            if sc != "down" and c[i] > _trend_edge(h, l, i, False, R):
+                new = 2
+            elif sc != "down":
+                new = 1
+        if new != st:
+            st, start = new, i
+    i = n - 1
+    if st in (1, 3):
+        ceil, floor = _range(h, l, i + 1, start, st, R)
+    elif st == 2:
+        ceil, floor = float(h[max(0, i + 1 - R["base_window_w"]):].max()), _trend_edge(h, l, i + 1, True, R)
+    else:
+        ceil, floor = _trend_edge(h, l, i + 1, False, R), float(l[max(0, i + 1 - R["base_window_w"]):].min())
+    return {"stage": st, "start": start, "since_w": n - 1 - start, "ceil": ceil, "floor": floor}
 
 
 def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional[Dict[str, Any]]:
@@ -364,21 +515,19 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         bo["pct_above"] = _f((c[i] / bo["level"] - 1) * 100, 1)
         bo_ok = bo["holding"] and bo["vol_ok"]
 
-    if bo_ok:
-        stage, sub = 2, "2A"
-    elif sc == "up" and above:
-        stage = 2
-        sub = "2-ext" if (c[i] / ma[i] - 1) * 100 > R["extended_pct"] else "2"
-    elif sc == "down" and not above:
-        stage, sub = 4, "4"
-    elif sc == "flat":
-        stage = 1 if prior == "down" else 3
-        sub = ("1B" if flat_run >= R["min_base_w"] else "1A") if stage == 1 else "3"
-    elif sc == "up":  # close under a rising MA
-        stage, sub = 2, "2-weak"
-    else:  # close above a declining MA
-        stage, sub = 4, "4-late"
-
+    sp = stage_path(w, ma, R)
+    stage = sp["stage"] or (2 if sc == "up" else 4 if sc == "down" else 1 if prior == "down" else 3)
+    if bo_ok and stage != 2:
+        bo_ok = False  # broke a 26-week high but is still inside the bigger base range -> not a stage-2 breakout yet
+        bo["in_range"] = True
+    if stage == 2:
+        sub = "2A" if bo_ok else ("2-ext" if (c[i] / ma[i] - 1) * 100 > R["extended_pct"] else "2" if above else "2-weak")
+    elif stage == 4:
+        sub = "4" if not above else "4-late"
+    elif stage == 1:
+        sub = "1B" if sp["since_w"] >= R["min_base_w"] else "1A"
+    else:
+        sub = "3"
     def ck(key, ok, he):
         return {"k": key, "ok": None if ok is None else bool(ok), "he": he}
     checks = {
@@ -407,19 +556,45 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl, "prior": prior, "flat_w": flat_run,
         "crosses13": crosses13, "hi52": _f(hi52), "pct_hi52": _f((c[i] / hi52 - 1) * 100, 1),
         "at_hi52": bool(c[i] >= hi52 * 0.97), "weeks": n, "bo": None,
+        "range": {"ceil": _f(sp["ceil"]), "floor": _f(sp["floor"]), "since_w": sp["since_w"],
+                  "since": w.index[sp["start"]].strftime("%Y-%m-%d") if sp["stage"] else None},
     }
     if bo:
         out["bo"] = {k2: (_f(v2) if isinstance(v2, float) else v2) for k2, v2 in bo.items() if k2 != "idx"}
-    # trade plan: 2A = buy now / first pullback (entry = last close); stage 1 = buy-stop above the base top
+    # trade plan (Eyal 2026-11-14): the entry is ALWAYS a Buy-Stop slightly above the base resistance -- 2A = that level
+    # just broke (buy only while still in the buy zone, else don't chase); stage 1 / stage-2 continuation base = the order
+    # waits above the ceiling. R:R from that Buy-Stop entry to the nearest overhead resistance (2 years).
+    out["pct_above_ma_lim"] = bool((c[i] / ma[i] - 1) * 100 > R["max_pct_above_ma"])
     if bo_ok:
-        out["plan"] = trade_levels(w, ma[i], float(c[i]), bo["level"], bo["base_low"], R)
-        out["plan"]["kind"] = "breakout"
-    elif stage == 1:
-        win = min(max(flat_run, R["min_base_w"]), R["base_window_w"])
-        top, blo = float(h[-win:].max()), float(l[-win:].min())
-        out["base"] = {"top": _f(top), "low": _f(blo), "weeks": win, "dist_pct": _f((top / c[i] - 1) * 100, 1)}
-        out["plan"] = trade_levels(w, ma[i], top + R["entry_tick"], top, blo, R)
-        out["plan"]["kind"] = "trigger"
+        p = trade_levels(w, ma[i], buy_stop_price(bo["level"], R), bo["level"], bo["base_low"], R)
+        p["kind"] = "breakout"
+        out["plan"] = p
+    else:
+        bn = None
+        if stage == 1:  # Buy-Stop above the ceiling of the stage-1 trading range
+            bn = {"top": sp["ceil"], "low": sp["floor"], "weeks": sp["since_w"], "since_top_w": sp["since_w"],
+                  "top_week": out["range"]["since"], "mature": bool(sp["since_w"] >= R["min_base_w"])}
+        elif stage == 2 and sub != "2-ext" and sc != "down":  # continuation base inside stage 2
+            bn = base_now(w, R)
+            if bn and not bn["mature"]:
+                bn = None
+        if bn:
+            out["base"] = {"top": _f(bn["top"]), "low": _f(bn["low"]), "weeks": bn["weeks"], "since_top_w": bn["since_top_w"],
+                           "top_week": bn["top_week"], "mature": bn["mature"], "dist_pct": _f((bn["top"] / c[i] - 1) * 100, 1)}
+            p = trade_levels(w, ma[i], buy_stop_price(bn["top"], R), bn["top"], bn["low"], R)
+            p["kind"] = "trigger" if stage == 1 else "continuation"
+            av = float(v[-R["vol_avg_w"]:].mean())
+            p["vol_need"] = _f(av * R["vol_mult"], 0)
+            out["plan"] = p
+    if out.get("plan"):
+        p = out["plan"]
+        lvl = bo["level"] if bo_ok else out["base"]["top"]
+        p["level"] = _f(lvl)
+        p["close_vs_level"] = _f((c[i] / lvl - 1) * 100, 1)
+        p["entry_vs_ma"] = _f((p["entry"] / ma[i] - 1) * 100, 1)
+        # don't chase: price (or the Buy-Stop) too far above the breakout level / the 30W SMA
+        far = max(c[i], p["entry"])
+        p["chase"] = bool((far / lvl - 1) * 100 > R["buy_zone_pct"] or (far / ma[i] - 1) * 100 > R["max_pct_above_ma"])
     return out
 
 
@@ -478,6 +653,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
     mkt_stage4 = etf_out.get("SPY", {}).get("stage") == 4
 
     rows, sparks, skipped = [], {}, {"no_history": 0, "short_history": 0}
+    OUT_CANDLES.mkdir(parents=True, exist_ok=True)
     for t in tickers:
         u = U[t]
         df = hm.get(t)
@@ -497,44 +673,79 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         if cd and (not earn or date.fromisoformat(earn) < today):
             earn = cd.isoformat()
         td = trading_days_until(earn, today)
+        timing = earn_timing(u.get("earn_raw", "")) if earn == parse_earn(u.get("earn_raw", ""), today) else None
+        in_live, earn_eff, live_fri = earnings_live_week(earn, timing, today)
         pre = prefilter(u, len(w), r["close"], dv, R)
         e = etf_out.get(etf) if etf else None
         entry = []
         if r.get("plan"):
             p = r["plan"]
+            kind = p["kind"]
+            rs_ok = r["checks"][3]["ok"] if r["stage"] == 2 else (r["rs"] is not None and r["rs"] > 0 and bool(r["rs_up"]))
+            earn_ok = None if earn is None else not (in_live or (td is not None and td <= R["earn_td"]))
+            earn_he = ("דוח בשבוע הקרוב - לא להשאיר Buy-Stop" if in_live else
+                       f"אין דוח ב-{R['earn_td']} ימי המסחר הקרובים ולא בשבוע שה-Buy-Stop פתוח (עד {live_fri})")
+            earn_he += (f" (דוח {earn}{' אחרי הסגירה' if timing == 'a' else ' לפני הפתיחה' if timing == 'b' else ''})" if earn else " (תאריך דוח לא ידוע)")
+            ov_he = (f"שמיים פתוחים: אין התנגדות תקורה ב-2 השנים האחרונות{' (שיא כל הזמנים)' if p['ath'] else ''} — יעד = כניסה + {R['min_rr']:g}×סיכון"
+                     if p["open_sky"] else f"התנגדות תקורה קרובה ${p['overhead']} (+{p['overhead_pct']}% מהכניסה, שיא סווינג משמעותי ב-2 השנים)")
             entry = [
                 {"k": "mkt", "ok": not mkt_stage4, "he": f"שוק כללי (SPY) לא בשלב 4 (כעת שלב {etf_out.get('SPY', {}).get('stage', '?')})"},
                 {"k": "sector", "ok": None if not e else bool(e["stage"] == 2 and (e["rs"] or 0) > 0),
                  "he": f"סקטור {etf or '?'} בשלב 2 עם RS > 0" + (f" (שלב {e['stage']}, RS {e['rs']})" if e else "")},
-                {"k": "rs", "ok": r["checks"][3]["ok"] if r["stage"] == 2 else (r["rs"] is not None and r["rs"] > 0 and bool(r["rs_up"])),
-                 "he": "Mansfield RS > 0 ועולה"},
-                {"k": "air", "ok": p["overhead"] is None, "he": "אוויר נקי: אין שיא סווינג מרכזי ב-20% שמעל הכניסה (18 חודשים)"
-                 + (f" — יש ב-${p['overhead']}" if p["overhead"] else "")},
-                {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"], "he": "R:R ≥ 3 ליעד הראשון"},
-                {"k": "earn", "ok": None if earn is None else not (td is not None and td <= R["earn_td"]),
-                 "he": "אין דוח ב-7 ימי המסחר הקרובים" + (f" (דוח {earn})" if earn else " (תאריך דוח לא ידוע)")},
+                {"k": "rs", "ok": rs_ok, "he": "Mansfield RS > 0 ועולה"},
+                {"k": "chase", "ok": not p["chase"],
+                 "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
+                       f"(סגירה {p['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Buy-Stop {p['entry_vs_ma']:+}% מהממוצע)"
+                       + (" — רחוקה מדי / אל תרדוף" if p["chase"] else "")},
+                {"k": "stop", "ok": not p["stop_wide"], "he": f"SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, לפי {'שפל תקף' if p['stop_basis'] == 'low' else '30W SMA'})"
+                 + (" — SL רחב מדי (מעט מניות), לדלג או לחכות לבסיס גבוה יותר" if p["stop_wide"] else "")},
+                {"k": "air", "ok": True if p["open_sky"] else None, "he": ov_he},
+                {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"],
+                 "he": f"R:R ≥ {R['min_rr']:g} מה-Buy-Stop ליעד הראשון (1:{p['rr']})"},
+                {"k": "earn", "ok": earn_ok, "he": earn_he},
             ]
-            if r["sub"] == "2A":
+            if not p["open_sky"]:  # the overhead level itself is information; the R:R check decides
+                entry[5]["ok"] = None if p["rr"] is None else p["rr"] >= R["min_rr"]
+            if kind == "breakout":
                 bo = r["bo"]
                 entry[2:2] = [
-                    {"k": "vol", "ok": bo["vol_ok"], "he": f"מחזור הפריצה ≥ 2x ממוצע 10 שבועות ({bo['vol_ratio']}x)"},
+                    {"k": "vol", "ok": bo["vol_ok"], "he": f"מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 שבועות ({bo['vol_ratio']}x)"},
                     {"k": "close", "ok": None if bo["close_pos"] is None else bo["close_pos"] >= R["strong_close"],
                      "he": "סגירה חזקה: נר הפריצה נסגר ב-25% העליונים של הטווח"},
-                    {"k": "zone", "ok": (bo["pct_above"] or 0) <= R["buy_zone_pct"], "he": f"באזור קנייה: עד 10% מעל רמת הפריצה ({bo['pct_above']}%)"},
                 ]
+            else:
+                base = r["base"]
+                entry[2:2] = [
+                    {"k": "base", "ok": base["mature"], "he": f"בסיס בוגר: תקרה מלפני {base['since_top_w']} ש׳, {base['weeks']} סגירות מתחתיה (≥{R['min_base_w']})"},
+                    {"k": "near", "ok": 0 <= (base["dist_pct"] or 0) <= R["pre_bo_pct"],
+                     "he": f"קרובה לתקרה: עד {R['pre_bo_pct']:g}% מתחת להתנגדות ({base['dist_pct']}%)"},
+                    {"k": "ma_ok", "ok": r["close"] > r["ma30"] and r["slope_cls"] != "down",
+                     "he": f"המחיר מעל 30W SMA שאינו יורד (שיפוע {r['slope_cls']})"},
+                ]
+        bs = bool(entry) and all(x["ok"] is True for x in entry) and all(x["ok"] is not False for x in pre)
         rows.append({
             "t": t, "n": u.get("company"), "ex": u.get("exchange"), "sec": u.get("sector"), "ind": u.get("industry"),
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,
             "mcap_b": _f((u.get("mcap") or 0) / 1e9, 1) if u.get("mcap") else None, "inst": u.get("inst_own"),
             "dv_m": _f(dv, 1), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
-            "entry": entry, "entry_ok": bool(entry) and all(x["ok"] is True for x in entry) and all(x["ok"] is not False for x in pre),
+            "earn_eff": earn_eff, "earn_timing": timing, "earn_live_week": in_live,
+            "entry": entry, "entry_ok": bs, "bs": bs,
         })
         sparks[t] = spark(w, R["spark_weeks"])
+        wc = w.iloc[-R["candle_weeks"]:]
+        cj = json.dumps({"w": [[ix.strftime("%Y-%m-%d"), *(round(float(x), 2) for x in row[:4]), int(row[4])]
+                               for ix, row in zip(wc.index, wc[["Open", "High", "Low", "Close", "Volume"]].values)]},
+                        separators=(",", ":"))
+        cp = OUT_CANDLES / f"{t}.json"
+        if not cp.exists() or cp.read_text() != cj:
+            cp.write_text(cj)
     for e in etf_out:
         if e in hm:
             sparks[e] = spark(weekly(hm[e], last), R["spark_weeks"])
     counts = {str(s): sum(1 for x in rows if x["stage"] == s) for s in (1, 2, 3, 4)}
     counts["2A"] = sum(1 for x in rows if x["sub"] == "2A")
+    cands = sorted((x for x in rows if x["bs"]), key=lambda x: -(x["plan"]["rr"] or 0))
+    counts["bs"] = len(cands)
     doc = {
         "version": 1, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "week": max((x["week"] for x in rows), default=None), "rules": R, "screens": SCREENS,
@@ -543,6 +754,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         "sectors": {k: etf_out[k] for k in etf_out if k not in MARKET}, "strong_sectors": strong,
         "pre_he": {x["k"]: x["he"] for x in prefilter({}, 0, 0.0, None, R)},  # row 'pre' = [{k, ok}] (text once here)
         "counts": counts, "rows": rows,
+        "buy_stop_candidates": [candidate(x) for x in cands],
     }
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     OUT_SPARK.write_text(json.dumps(sparks, separators=(",", ":")))
@@ -551,19 +763,75 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
     return doc
 
 
+def candidate(x: Dict[str, Any]) -> Dict[str, Any]:
+    p = x["plan"]
+    return {"t": x["t"], "n": x["n"], "kind": p["kind"], "sub": x["sub"], "close": x["close"], "level": p["level"],
+            "buy_stop": p["entry"], "stop": p["stop"], "stop_pct": p["risk_pct"], "target": p["target"],
+            "target_src": p["target_src"], "open_sky": p["open_sky"], "rr": p["rr"], "shares": p["shares"],
+            "pos_usd": p["pos_usd"], "vol_need": p.get("vol_need"), "earn": x["earn"], "ex": x["ex"]}
+
+
+KIND_HE = {"breakout": "פריצה טרייה (באזור קנייה)", "trigger": "בסיס שלב 1 מתחת לתקרה", "continuation": "בסיס המשך בשלב 2"}
+
+
+def alert_text(doc: Dict[str, Any]) -> Optional[str]:
+    """Hebrew Telegram text for the Buy-Stop candidates (None = nothing actionable -> no message)."""
+    cs = doc.get("buy_stop_candidates") or []
+    if not cs:
+        return None
+    R = doc["rules"]
+    lines = [f"🟢 שיטת סטף — מועמדות ל-Buy-Stop (שבוע {doc['week']}): {len(cs)}", ""]
+    for c in cs:
+        tgt = f"${c['target']}" + (" (שמיים פתוחים · R:R 2.5)" if c["open_sky"] else " (התנגדות תקורה)")
+        lines += [f"{c['t']} · {KIND_HE.get(c['kind'], c['kind'])}",
+                  f"Buy-Stop ${c['buy_stop']} · סטופ ${c['stop']} ({c['stop_pct']}%) · יעד {tgt}",
+                  f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {c['earn'] or 'לא ידוע'}"]
+        if c["kind"] != "breakout" and c.get("vol_need"):
+            lines.append(f"תנאי: מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 ש׳ (≥ {int(c['vol_need']):,} מניות) — אחרת פריצת שווא")
+        lines.append("")
+    lines.append("בלי פקודות אוטומטיות — רק התראה. https://retest-scanner.vercel.app/#/stages")
+    return "\n".join(lines)
+
+
+TG_CHAT_FILE = Path("/workspace/cache/telegram_chat_id")
+
+
+def send_alert(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Telegram (same bot + chat as the retest price alerts). Token from env TELEGRAM_BOT_TOKEN (never printed); chat id
+    from env TELEGRAM_CHAT_ID or /workspace/cache/telegram_chat_id. Sends only when there is a candidate."""
+    import os
+    import requests
+    text = alert_text(doc)
+    if not text:
+        return {"sent": False, "why": "no candidates"}
+    tok = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat = os.environ.get("TELEGRAM_CHAT_ID") or (TG_CHAT_FILE.read_text().strip() if TG_CHAT_FILE.exists() else "")
+    if not tok or not chat:
+        return {"sent": False, "why": "missing TELEGRAM_BOT_TOKEN or chat id"}
+    r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=30,
+                      json={"chat_id": chat, "text": text, "disable_web_page_preview": True})
+    j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+    return {"sent": bool(j.get("ok")), "message_id": (j.get("result") or {}).get("message_id"), "why": j.get("description"),
+            "n": len(doc["buy_stop_candidates"])}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--publish", action="store_true")
+    ap.add_argument("--alert", action="store_true", help="Telegram the Buy-Stop candidates (only when there are any)")
     a = ap.parse_args()
     sys.path.insert(0, str(REPO))
-    build(a.offline)
+    doc = build(a.offline)
+    print(f"[stages] Buy-Stop candidates: {len(doc['buy_stop_candidates'])} " + ", ".join(c["t"] for c in doc["buy_stop_candidates"]))
     if a.publish:
         from srs_app.publish_data import publish
         r = publish(REPO / "app" / "data")
         print(json.dumps(r, ensure_ascii=False))
         if r.get("failed"):
             sys.exit(1)
+    if a.alert:
+        print(json.dumps(send_alert(doc), ensure_ascii=False))
 
 
 if __name__ == "__main__":

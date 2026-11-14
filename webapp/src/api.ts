@@ -4,6 +4,7 @@ import type { Command, Drawing, Feedback, Label, TvDrawing, Watch } from './type
 import { normPosition, type Position } from './positions';
 import type { Research } from './research';
 import type { StockList } from './lists';
+import type { StDraw } from './stages';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
@@ -44,6 +45,10 @@ export interface Api {
   loadPositions(): Promise<Position[]>;
   /** stock overviews (read-only; owner-only RLS; written by the bot) */
   loadResearch(): Promise<Research[]>;
+  /** his edits on the stages page (public.stage_drawings, separate from the retest drawings) */
+  loadStageDrawings(): Promise<StDraw[]>;
+  insertStageDrawing(d: Partial<StDraw>): Promise<StDraw>;
+  updateStageDrawing(id: string, patch: Partial<StDraw>): Promise<void>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -128,6 +133,15 @@ class SupaApi implements Api {
   async loadResearch() {
     return check(await this.sb.from('ticker_research').select('ticker,summary_he,data,sources,updated_at')) as Research[];
   }
+  async loadStageDrawings() {
+    return check(await this.sb.from('stage_drawings').select('*').eq('status', 'active').order('created_at')) as StDraw[];
+  }
+  async insertStageDrawing(d: Partial<StDraw>) {
+    return check(await this.sb.from('stage_drawings').insert(d).select().single()) as StDraw;
+  }
+  async updateStageDrawing(id: string, patch: Partial<StDraw>) {
+    check(await this.sb.from('stage_drawings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id));
+  }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
     for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions', 'stock_lists'] as Table[]) {
@@ -208,6 +222,14 @@ class MemApi implements Api {
   async loadPositions() { return (((window as any).__demoPositions || []) as any[]).filter((p) => (p.status ?? 'open') === 'open').map(normPosition); }
   // demo: tests inject made-up overviews (window.__demoResearch)
   async loadResearch() { return [...(((window as any).__demoResearch || []) as Research[])]; }
+  stageDrawings: StDraw[] = [];
+  async loadStageDrawings() { return this.stageDrawings.filter((d) => d.status === 'active').map((d) => ({ ...d })); }
+  async insertStageDrawing(d: Partial<StDraw>) {
+    const row = { zone_top: null, zone_bottom: null, entry: null, stop: null, target: null, t_start: null, t_end: null, source: 'user', status: 'active',
+      ...d, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as StDraw;
+    this.stageDrawings.push(row); return { ...row };
+  }
+  async updateStageDrawing(id: string, patch: Partial<StDraw>) { const d = this.stageDrawings.find((x) => x.id === id); if (d) Object.assign(d, patch, { updated_at: new Date().toISOString() }); }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }
 }
 

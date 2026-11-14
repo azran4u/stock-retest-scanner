@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 
-from srs_app.stages import classify, find_breakout, parse_earn, trading_days_until
+from srs_app.stages import buy_stop_price, classify, find_breakout, parse_earn, trading_days_until
 from datetime import date
 
 
@@ -48,7 +48,7 @@ def test_breakout_2a_needs_volume():
     v = np.full(len(c), 1e6); v[-2] = 3e6
     r = classify(bars(c, v, rng=0.01), bench(len(c)))
     assert r["sub"] == "2A" and r["stage"] == 2 and r["bo"]["vol_ok"] and r["bo"]["weeks_ago"] == 1
-    assert r["plan"]["stop"] < r["ma30"] and r["plan"]["entry"] == 46.5
+    assert r["plan"]["stop"] < r["ma30"] and r["plan"]["entry"] == round(buy_stop_price(r["bo"]["level"]), 2)
     v[-2] = 1.2e6
     r2 = classify(bars(c, v, rng=0.01), bench(len(c)))
     assert r2["sub"] != "2A" and r2["bo"] and not r2["bo"]["vol_ok"]
@@ -60,3 +60,74 @@ def test_parse_earn_year():
     assert parse_earn("Oct 22/b", date(2026, 11, 13)) == "2026-10-22"
     assert trading_days_until("2026-11-20", date(2026, 11, 13)) == 5
     assert trading_days_until("2026-11-01", date(2026, 11, 13)) is None
+
+
+# ---------------------------------------------------------------- Eyal 2026-11-14: overhead resistance / R:R / chase / earnings
+from pathlib import Path
+from srs_app.stages import RULES, buy_stop_price, earn_timing, earnings_live_week, overhead_scan, stage_path, trade_levels
+
+DATA = Path(__file__).parent / "data"
+
+
+def wk(t):
+    return pd.read_csv(DATA / f"stages_{t}_weekly_20261113.csv.gz", index_col=0, parse_dates=True)
+
+
+def test_kkr_overhead_rejects():
+    """Eyal: KKR breakout 117.79, stop 97.15, overhead 144.11 -> R:R 1.28, stop 17.5% too wide -> skip."""
+    w = wk("kkr")
+    ov = overhead_scan(w, 117.79)
+    assert not ov["open_sky"] and abs(ov["overhead"] - 144.11) < 0.5
+    assert round((ov["overhead"] - 117.79) / (117.79 - 97.15), 2) in (1.27, 1.28)
+    p = trade_levels(w, float(w["Close"].rolling(30).mean().iloc[-1]), 117.79, None, None)
+    assert p["target_src"] == "overhead" and p["rr"] < RULES["min_rr"] and p["stop_wide"]
+
+
+def test_wmt_open_sky():
+    """Eyal: WMT breakout above 134.68 = all-time high, no overhead ('open sky') -> R:R 2.5 by construction."""
+    w = wk("wmt")
+    ov = overhead_scan(w, 134.68)
+    assert ov["open_sky"] and ov["ath"]
+    p = trade_levels(w, float(w["Close"].rolling(30).mean().iloc[-1]), 134.68, None, None)
+    assert p["target_src"] == "open_sky" and p["rr"] == RULES["min_rr"]
+
+
+def test_xers_not_chased():
+    """Eyal: XERS $16.66, ~95% above the 30W SMA after the ~$10 breakout -> no entry."""
+    r = classify(wk("xers"), None)
+    assert r["stage"] == 2 and r["pct_ma"] > RULES["max_pct_above_ma"] and r["sub"] == "2-ext" and not r.get("plan")
+
+
+def test_kkr_stage3_inside_range():
+    """Inside its 2025-26 trading range the SMA crossings don't move KKR to stage 2 / 4."""
+    w = wk("kkr")
+    sp = stage_path(w, w["Close"].rolling(30).mean().values)
+    assert sp["stage"] in (1, 3) and sp["floor"] < w["Close"].iloc[-1] < sp["ceil"]
+
+
+def test_range_cross_stays_stage1():
+    """A base after a decline whose close pokes above a rising SMA but stays under the base ceiling = still stage 1."""
+    c = np.r_[np.linspace(80, 40, 60), 40 + 3 * np.sin(np.arange(40) / 2.5), np.linspace(40, 41.5, 6)]
+    r = classify(bars(c, rng=0.01), bench(len(c)))
+    assert r["stage"] == 1 and r["range"]["ceil"] > r["close"]
+
+
+def test_buy_stop_and_earnings_week():
+    assert abs(buy_stop_price(100.0) - 100.5) < 1e-9 and abs(buy_stop_price(5.0) - 5.05) < 1e-9
+    assert earn_timing("Nov 19/b") == "b" and earn_timing("Nov 19/a") == "a" and earn_timing("Nov 19") is None
+    sat = date(2026, 11, 14)
+    assert earnings_live_week("2026-11-19", "b", sat)[0]          # Thursday of the live week
+    assert earnings_live_week("2026-11-20", "b", sat)[0]          # Friday before the open
+    assert not earnings_live_week("2026-11-20", "a", sat)[0]      # Friday after the close -> counts on Monday 11-23
+    assert not earnings_live_week("2026-11-24", None, sat)[0]
+
+
+def test_alert_text_only_when_candidates():
+    from srs_app.stages import alert_text
+    doc = {"week": "2026-11-13", "rules": RULES, "buy_stop_candidates": []}
+    assert alert_text(doc) is None
+    doc["buy_stop_candidates"] = [{"t": "ABC", "n": "Abc", "kind": "trigger", "sub": "1B", "close": 48.0, "level": 50.0, "buy_stop": 50.25,
+                                   "stop": 46.0, "stop_pct": 8.5, "target": 60.88, "target_src": "open_sky", "open_sky": True, "rr": 2.5,
+                                   "shares": 12, "pos_usd": 603.0, "vol_need": 2_000_000, "earn": "2027-01-20", "ex": "NYSE"}]
+    txt = alert_text(doc)
+    assert "ABC" in txt and "Buy-Stop $50.25" in txt and "R:R 1:2.5" in txt and "12 מניות" in txt and "2027-01-20" in txt and "2,000,000" in txt

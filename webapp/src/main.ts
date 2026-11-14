@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table, type AlertStatus } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
-import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, type Spark, type ExpertDoc, type ExpertZone } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, weekStart, type Spark, type ExpertDoc, type ExpertZone } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -12,7 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
-import { UI_DEF, drawStChart, filterRows, pageHtml as stagesPageHtml, type StSpark, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, zoneOf, type StDraw, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -636,6 +636,7 @@ function route() {
   if (location.hash.startsWith('#/calibrate')) { layout = null; renderCalibrate(); return; }
   if (location.hash.startsWith('#/course')) { layout = null; renderCourse(); return; }
   if (location.hash.startsWith('#/stages')) { layout = null; renderStages(); return; }
+  if (stShell) stDestroy();
   if (isWide()) {
     splitShell();
     if (m) openTicker(decodeURIComponent(m[1]).toUpperCase());
@@ -677,7 +678,7 @@ function markSel() {
     if (lst) { const a = h.offsetTop - lst.offsetTop, b = a + h.offsetHeight; if (a < lst.scrollTop || b > lst.scrollTop + lst.clientHeight) lst.scrollTop = Math.max(0, a - 40); }
   }
 }
-WIDE_MQ.addEventListener('change', () => { if (!S.loaded) return; destroyChart(); layout = null; route(); });
+WIDE_MQ.addEventListener('change', () => { if (!S.loaded) return; destroyChart(); stDestroy(); layout = null; route(); });
 
 // ---------------- login ----------------
 function renderLogin() {
@@ -777,50 +778,233 @@ async function renderCourse() {
   };
   window.scrollTo(0, 0);
 }
-// ---------------- Weinstein stage analysis (#/stages, stages.ts, Eyal 2026-11-13) ----------------
-// stages.json + stages_spark.json (private bucket, built by srs_app/stages.py): tabs 2A / stage 1-4 / breakout without
-// volume, search, sort, toggles (saved in localStorage 'srs-stages-ui'), cards with the stage checks, lazy charts.
+// ---------------- Weinstein stage analysis (#/stages, stages.ts, Eyal 2026-11-13; layout 2026-11-14) ----------------
+// Same layout as the retest page (Eyal 2026-11-14): stock list on the right (mini chart + stage, tags, R:R, SL%, shares,
+// rules passed) and the selected stock's big weekly chart (#/stages/T). On the big chart he drags the base ceiling /
+// floor (zone) and the trade bar (Buy-Stop / SL / target); his edits go to public.stage_drawings (source 'user', NOT the
+// retest drawings table: the retest zones and its Telegram alerts never see them), override the computed levels and
+// R:R / SL% / shares are recomputed. Phones: list -> stock page, like the retest page. Tabs = per-stage watchlists +
+// Buy-Stop candidates.
 const ST_LS = 'srs-stages-ui';
 let stP: Promise<StagesDoc | null> | null = null;
 let stSpP: Promise<Record<string, StSpark>> | null = null;
+let stEdP: Promise<void> | null = null;
+const stEdits: StEdits = new Map();
 let stIO: IntersectionObserver | null = null;
+let stCv: ChartView | null = null;
+let stCvT: string | null = null;
+let stShell: 'split' | 'list' | 'detail' | null = null;
+let stSelDraw: string | null = null;
+let stLimit = 80;
+let stTap: { pts: number[]; date: string | null } | null = null;
+const stUi = (): StUi => ({ ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') });
+const stSaveUi = (ui: StUi) => localStorage.setItem(ST_LS, JSON.stringify(ui));
+function stDestroy() { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } stIO?.disconnect(); stShell = null; }
+const stMaxStop = (d: StagesDoc) => +(d.rules.max_stop_pct ?? 10);
+async function stLoadEdits() {
+  try { const rows = await api.loadStageDrawings(); stEdits.clear(); for (const x of rows) { const e = stEdits.get(x.ticker) || {}; e[x.kind] = x; stEdits.set(x.ticker, e); } }
+  catch (e) { console.warn('stage_drawings', e); }
+}
 async function renderStages() {
   destroyChart();
-  app.innerHTML = `<header class="top"><button id="back" class="ghost">→ רשימה</button><div class="title">שלבי ויינשטיין</div><span></span></header><div id="stHost" class="stages center muted">טוען…</div>`;
-  $('#back')!.onclick = () => { location.hash = '#/'; };
+  const m = location.hash.match(/^#\/stages\/([^/?]+)/);
+  const t = m ? decodeURIComponent(m[1]).toUpperCase() : null;
   stP ??= fetchData('stages.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-  const d = await stP;
+  stEdP ??= stLoadEdits();
+  if (!stShell) app.innerHTML = '<div class="stages center muted">טוען…</div>';
+  const d = await stP; await stEdP;
   if (!location.hash.startsWith('#/stages')) return;
-  const host = $('#stHost')!;
-  if (!d || !d.rows) { stP = null; host.textContent = 'נתוני השלבים לא נטענו'; return; }
-  host.className = 'stages';
-  const ui: StUi = { ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') };
-  let limit = 60;
-  const draw = async () => {
-    const rows = filterRows(d.rows, ui), byT = new Map(d.rows.map((r) => [r.t, r]));
-    const y = window.scrollY;
-    host.innerHTML = stagesPageHtml(d, ui, rows, maxRiskUsd(), limit);
-    window.scrollTo(0, y);
-    const save = () => localStorage.setItem(ST_LS, JSON.stringify(ui));
-    host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => { ui.tab = b.dataset.tab as StUi['tab']; limit = 60; save(); draw(); }));
-    host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near'; ui[k] = !ui[k]; save(); draw(); }));
-    host.querySelectorAll<HTMLElement>('[data-conf]').forEach((b) => (b.onclick = () => { const c = b.dataset.conf as 'med' | 'high'; ui.conf = ui.conf === c ? 'all' : c; save(); draw(); }));
-    const q = $<HTMLInputElement>('#stq', host)!;
-    let qt = 0;
-    q.oninput = () => { clearTimeout(qt); qt = window.setTimeout(() => { ui.q = q.value; save(); draw().then(() => { const n = $<HTMLInputElement>('#stq', host)!; n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }, 250); };
-    $<HTMLSelectElement>('#stsort', host)!.onchange = (e) => { ui.sort = (e.target as HTMLSelectElement).value; save(); draw(); };
-    const more = $('#stmore', host); if (more) more.onclick = () => { limit += 120; draw(); };
-    $('#stcopy', host)!.onclick = () => { copyText(rows.map((r) => `${r.ex}:${r.t.replace('-', '.')}`).join(',')).then(() => toast(`הועתקו ${rows.length} סימולים`)); };
-    const rb = $<HTMLDetailsElement>('.strulesbox', host)!; rb.ontoggle = () => { ui.rulesOpen = rb.open; save(); };
-    const sp = await stSpP!;
+  if (!d || !d.rows) { stP = null; app.innerHTML = '<header class="top"><a class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין</div></header><div class="center muted">נתוני השלבים לא נטענו</div>'; return; }
+  const ui = stUi();
+  if (isWide()) {
+    if (stShell !== 'split') {
+      stDestroy();
+      app.innerHTML = '<div class="split stsplit"><aside id="stSide" class="side" aria-label="רשימת מניות"></aside><main id="stMain" class="smain"></main></div>';
+      stShell = 'split'; stRenderList(d);
+    }
+    if (!t) {
+      const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d));
+      const pick = ui.lastT && rows.some((r) => r.t === ui.lastT) ? ui.lastT : rows[0]?.t;
+      if (pick) { location.replace('#/stages/' + encodeURIComponent(pick)); return; }
+      if (stCv) { stCv.destroy(); stCv = null; stCvT = null; }
+      $('#stMain')!.innerHTML = `<div class="center muted">${ui.tab === 'bs' ? 'אין השבוע מועמדות ל-Buy-Stop — בחר לשונית אחרת' : 'בחר מניה מהרשימה'}</div>`;
+      return;
+    }
+    stMarkSel(t); stRenderDetail(d, t);
+    return;
+  }
+  if (t) {
+    if (stShell !== 'detail') { stDestroy(); app.innerHTML = '<div id="stMain" class="stmain1"></div>'; stShell = 'detail'; }
+    stRenderDetail(d, t); window.scrollTo(0, 0);
+  } else {
+    stDestroy(); app.innerHTML = '<div id="stSide" class="stside1"></div>'; stShell = 'list';
+    stRenderList(d);
+    const y = sessionStorage.getItem('srs-st-scroll'); if (y) window.scrollTo(0, +y);
+  }
+}
+function stMarkSel(t: string | null) {
+  const side = $('#stSide'); if (!side) return;
+  let hit: HTMLElement | null = null;
+  side.querySelectorAll<HTMLElement>('li[data-st]').forEach((li) => { const on = li.dataset.st === t; li.classList.toggle('sel', on); if (on) hit = li; });
+  const lst = $('.list', side) as HTMLElement | null, h = hit as HTMLElement | null;
+  if (h && lst) { const a = h.offsetTop - lst.offsetTop, b2 = a + h.offsetHeight; if (a < lst.scrollTop || b2 > lst.scrollTop + lst.clientHeight) lst.scrollTop = Math.max(0, a - 40); }
+}
+function stObserveSparks(root: ParentNode, d: StagesDoc) {
+  const byT = new Map(d.rows.map((r) => [r.t, r]));
+  stSpP!.then((sp) => {
     stIO?.disconnect();
     stIO = new IntersectionObserver((ents) => ents.forEach((e) => {
-      if (e.isIntersecting) { const c = e.target as HTMLCanvasElement; drawStChart(c, sp[c.dataset.stchart!], byT.get(c.dataset.stchart!)); stIO?.unobserve(c); }
+      if (!e.isIntersecting) return;
+      const c = e.target as HTMLCanvasElement, r = byT.get(c.dataset.stchart!);
+      if (r) stDrawSpark(c, sp, r, d);
+      stIO?.unobserve(c);
     }), { rootMargin: '400px 0px' });
-    host.querySelectorAll<HTMLCanvasElement>('canvas.stchart').forEach((c) => stIO!.observe(c));
-  };
-  await draw();
+    root.querySelectorAll<HTMLCanvasElement>('canvas.stchart').forEach((c) => stIO!.observe(c));
+  });
+}
+function stDrawSpark(c: HTMLCanvasElement, sp: Record<string, StSpark>, r: StageRow, d: StagesDoc) {
+  const ed = stEdits.get(r.t);
+  drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d)), ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
+}
+function stRenderList(d: StagesDoc) {
+  const host = $('#stSide'); if (!host) return;
+  const ui = stUi();
+  const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d));
+  const selT = (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1] || null;
+  host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT ? decodeURIComponent(selT).toUpperCase() : null);
+  const redo = () => { stSaveUi(ui); stRenderList(d); };
+  host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => { ui.tab = b.dataset.tab as StUi['tab']; stLimit = 80; stSaveUi(ui); stRenderList(d); if (stShell === 'split') { location.replace('#/stages'); } }));
+  host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near'; ui[k] = !ui[k]; redo(); }));
+  host.querySelectorAll<HTMLElement>('[data-conf]').forEach((b) => (b.onclick = () => { const c = b.dataset.conf as 'med' | 'high'; ui.conf = ui.conf === c ? 'all' : c; redo(); }));
+  const q = $<HTMLInputElement>('#stq', host)!;
+  let qt = 0;
+  q.oninput = () => { clearTimeout(qt); qt = window.setTimeout(() => { ui.q = q.value; redo(); const n = $<HTMLInputElement>('#stq', host)!; n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+  $<HTMLSelectElement>('#stsort', host)!.onchange = (e) => { ui.sort = (e.target as HTMLSelectElement).value; redo(); };
+  const more = $('#stmore', host); if (more) more.onclick = () => { stLimit += 160; stRenderList(d); };
+  $('#stcopy', host)!.onclick = () => { copyText(rows.map((r) => `${r.ex}:${r.t.replace('-', '.')}`).join(',')).then(() => toast(`הועתקו ${rows.length} סימולים`)); };
+  $('#strulesBtn', host)!.onclick = () => stRulesSheet(d);
+  host.querySelectorAll<HTMLElement>('li[data-st]').forEach((li) => (li.onclick = () => {
+    if (stShell === 'list') sessionStorage.setItem('srs-st-scroll', String(window.scrollY));
+    const u = stUi(); u.lastT = li.dataset.st; stSaveUi(u);
+    location.hash = '#/stages/' + encodeURIComponent(li.dataset.st!);
+  }));
+  stObserveSparks(host, d);
+}
+function stRulesSheet(d: StagesDoc) {
+  document.querySelector('.strulesheet')?.remove();
+  const el = document.createElement('div');
+  el.className = 'sheet strulesheet';
+  el.innerHTML = `<div class="sh-head"><b>הכללים והספים</b><button class="ghost small" id="strulesClose">✕</button></div><div class="strulesbody">${stRulesHtml(d, maxRiskUsd())}</div>`;
+  document.body.appendChild(el);
+  $('#strulesClose', el)!.onclick = () => el.remove();
+}
+function stDrawingsOf(r: StageRow): Drawing[] {
+  const ed = stEdits.get(r.t), out: Drawing[] = [];
+  const base = { ticker: r.t, note: null, status: 'active' as const, entry: null, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null };
+  const z = zoneOf(r);
+  if (ed?.zone) out.push({ ...base, ...(ed.zone as any), source: 'user' });
+  else if (z) out.push({ ...base, id: 'c-zone', kind: 'zone', zone_top: z.top, zone_bottom: z.bottom, t_start: z.start, source: 'bot' });
+  if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
+  else if (r.plan) out.push({ ...base, id: 'c-long', kind: 'long', entry: r.plan.entry, stop: r.plan.stop, target: r.plan.target, source: 'bot' });
+  return out;
+}
+function stNeighbor(d: StagesDoc, t: string, dir: 1 | -1): string | null {
+  const l = filterRows(d.rows, stUi(), stEdits, maxRiskUsd(), stMaxStop(d)).map((r) => r.t), i = l.indexOf(t);
+  return i < 0 ? l[0] ?? null : l[i + dir] ?? null;
+}
+async function stRenderDetail(d: StagesDoc, t: string) {
+  const host = $('#stMain'); if (!host) return;
+  const r = d.rows.find((x) => x.t === t);
+  if (!r) { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return; }
+  if (stCvT !== t) { stSelDraw = null; stTap = null; }
+  if (stCv && stCvT === t) { stRefreshDetail(d, r); return; }
+  if (stCv) { stCv.destroy(); stCv = null; }
+  const ed = stEdits.get(t);
+  host.innerHTML = stDetailHtml(d, r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d)), ed, maxRiskUsd());
+  stBindDetail(d, r);
+  stCvT = t;
+  stCv = new ChartView($('#stbig', host)!, {
+    onSelect: (id) => { stSelDraw = id; stCv?.setDrawings(stDrawingsOf(r), stSelDraw); },
+    onDragMove: () => {},
+    onDragEnd: (id, patch) => { stSaveEdit(d, r, id, patch); },
+    onTap: (price, date) => stOnTap(d, r, price, date),
+  });
+  try {
+    const res = await fetchData('stages_candles/' + encodeURIComponent(t) + '.json');
+    if (!res.ok) throw new Error('no candles');
+    const j: { w: [string, number, number, number, number, number][] } = await res.json();
+    if (stCvT !== t || !stCv) return;
+    const bars: Bar[] = j.w.map(([time, open, high, low, close, volume]) => ({ time: weekStart(time), open, high, low, close, volume }));
+    stCv.setBars(bars, 110, true);
+    const ma: { time: string; value: number }[] = [];
+    let sum = 0;
+    for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
+    stCv.setMAs([{ n: 30, color: '#ff9800', data: ma }]);
+    stCv.setDrawings(stDrawingsOf(r), stSelDraw);
+    stCv.fitLevels();
+  } catch {
+    const nd = $('#stnodata', host); if (nd) nd.hidden = false;
+  }
+}
+function stBindDetail(d: StagesDoc, r: StageRow) {
+  const host = $('#stMain')!;
+  const go = (dir: 1 | -1) => { const n = stNeighbor(d, r.t, dir); if (n) location.replace('#/stages/' + encodeURIComponent(n)); else toast(dir > 0 ? 'סוף הרשימה' : 'תחילת הרשימה'); };
+  $('#stprev', host)!.onclick = () => go(-1);
+  $('#stnext', host)!.onclick = () => go(1);
+  const rs = $('#streset', host); if (rs) rs.onclick = () => stReset(d, r);
+  const al = $('#staddlong', host); if (al) al.onclick = () => { stTap = stTap ? null : { pts: [], date: null }; toast(stTap ? 'הקש על מחיר ה-Buy-Stop ואז על ה-SL' : 'בוטל'); };
+}
+/** after an edit: swap the tags / tools / panel, redraw the overlay and the list row (the chart keeps its view) */
+function stRefreshDetail(d: StagesDoc, r: StageRow) {
+  const host = $('#stMain'); if (!host) return;
+  const ed = stEdits.get(r.t), e = effPlan(r, ed, maxRiskUsd(), stMaxStop(d));
+  const tmp = document.createElement('div');
+  tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd());
+  for (const sel of ['.sttags.pad', '.tools', '.stpanel']) { const a = $(sel, host), b2 = $(sel, tmp); if (a && b2) a.replaceWith(b2); }
+  stBindDetail(d, r);
+  stCv?.setDrawings(stDrawingsOf(r), stSelDraw);
+  const li = document.querySelector<HTMLElement>(`#stSide li[data-st="${CSS.escape(r.t)}"]`);
+  if (li) {
+    const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone);
+    const nli = t2.firstElementChild as HTMLElement; li.replaceWith(nli);
+    nli.onclick = () => { location.hash = '#/stages/' + encodeURIComponent(r.t); };
+    stSpP!.then((sp) => { const c = $<HTMLCanvasElement>('canvas.stchart', nli); if (c) stDrawSpark(c, sp, r, d); });
+  }
+}
+async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<Drawing>) {
+  const cur = stDrawingsOf(r).find((x) => x.id === id); if (!cur) return;
+  const m = { ...cur, ...patch };
+  const lv = { zone_top: m.zone_top, zone_bottom: m.zone_bottom, entry: m.entry, stop: m.stop, target: m.target, t_start: m.t_start, t_end: m.t_end };
+  const ed = stEdits.get(r.t) || {};
+  if (id.startsWith('c-')) {
+    const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: cur.kind as 'zone' | 'long', ...lv, source: 'user', status: 'active',
+      meta: { computed: { zone_top: cur.zone_top, zone_bottom: cur.zone_bottom, entry: cur.entry, stop: cur.stop, target: cur.target }, week: d.week } }), 'נשמר כרמות שלך');
+    if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
+    ed[row.kind] = row; stEdits.set(r.t, ed); stSelDraw = row.id;
+  } else {
+    const k = cur.kind as 'zone' | 'long', mine = ed[k];
+    if (mine) Object.assign(mine, lv);
+    await guard(api.updateStageDrawing(id, lv as Partial<StDraw>));
+  }
+  stRefreshDetail(d, r);
+}
+async function stReset(d: StagesDoc, r: StageRow) {
+  const ed = stEdits.get(r.t); if (!ed) return;
+  for (const x of [ed.zone, ed.long]) if (x) await guard(api.updateStageDrawing(x.id, { status: 'deleted' }));
+  stEdits.delete(r.t); stSelDraw = null;
+  toast('חזרה לרמות המחושבות');
+  stRefreshDetail(d, r);
+}
+async function stOnTap(d: StagesDoc, r: StageRow, price: number, date: string) {
+  if (!stTap) { if (stSelDraw) { stSelDraw = null; stCv?.setDrawings(stDrawingsOf(r), null); } return; }
+  stTap.pts.push(price);
+  if (stTap.pts.length === 1) { stTap.date = date; toast(`Buy-Stop ${price.toFixed(2)} — הקש על ה-SL`); return; }
+  const [a, b2] = stTap.pts; stTap = null;
+  if (b2 >= a) { toast('ה-SL חייב להיות מתחת ל-Buy-Stop', true); return; }
+  const tgt = Math.round((a + 2.5 * (a - b2)) * 100) / 100;
+  const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'long', entry: a, stop: b2, target: tgt, source: 'user', status: 'active', meta: { week: d.week } }), 'נשמר');
+  if (row) { const ed = stEdits.get(r.t) || {}; ed.long = row; stEdits.set(r.t, ed); stSelDraw = row.id; stRefreshDetail(d, r); }
 }
 // ---------------- trend calibration page (#/calibrate, calibrate.ts) ----------------
 let calP: Promise<CalRow[]> | null = null;

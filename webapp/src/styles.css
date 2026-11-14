@@ -491,3 +491,25 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
 header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
 .hbtns { flex-wrap: wrap; justify-content: flex-end; }
 .hbtns a.btnlike { white-space: nowrap; }
+/* stages page layout like the retest page (Eyal 2026-11-14): list on the right + big editable weekly chart */
+.sttags { display: flex; flex-wrap: wrap; gap: 4px; }
+.sttags.pad { padding: 4px 8px; }
+.sttags:empty { display: none; }
+.badge.b-sky { background: rgba(41,98,255,.25); color: #9db8ff; }
+.badge.b-his { background: rgba(41,98,255,.45); color: #fff; }
+.badge.b-fail { background: rgba(239,83,80,.2); color: #ff8a87; }
+.strow2 { display: flex; flex-direction: column; gap: 5px; }
+.strow2 .r1 { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.strow2 .stchart { aspect-ratio: 3.4 / 1; }
+.stside1 .list { padding: 6px 8px 40px; }
+.stside1 .row { margin-bottom: 6px; border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
+.stside1 .stfilters, .stsplit .stfilters { position: static; }
+.stsplit .side .stfilters { max-height: 46vh; overflow-y: auto; }
+.stsplit .topdown, .stside1 .topdown { padding: 0; border: 0; }
+.stpanel { padding: 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
+.stpanel h4 { margin: 8px 0 2px; font-size: 13px; color: var(--mut); }
+.stcv .tools { flex-wrap: wrap; align-items: center; }
+.stcv .tools > button { flex: none; }
+.stcv .tools > span { flex: 1 1 200px; }
+.strulesheet { max-height: 80dvh; overflow-y: auto; z-index: 40; }
+.split #stback { display: none; }
