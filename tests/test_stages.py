@@ -141,3 +141,69 @@ def test_wide_stop_is_info_only():
     assert entry_pass(gates + [{"k": "stop", "ok": False, "info": True}], pre)
     assert not entry_pass(gates + [{"k": "chase", "ok": False}], pre)
     assert not entry_pass(gates, [{"k": "price", "ok": False}])
+
+
+# ---------------------------------------------------------------- Eyal 2026-11-14: earnings window / estimate / post-earnings
+import pandas as pd
+from srs_app.stages import earn_check, earnings_info, post_earn_check, post_earn_gap, sessions_until
+
+
+def test_earnings_10_session_window():
+    sat = date(2026, 11, 14)
+    assert sessions_until(date(2026, 11, 16), sat) == 1 and sessions_until(date(2026, 11, 27), sat) == 10
+    ei = earnings_info("2026-11-26", "a", None, sat)                 # Thu after close -> trades Fri 11-27 = 10 sessions
+    assert ei["eff"] == "2026-11-27" and ei["td"] == 10
+    c = earn_check(ei)
+    assert c["ok"] is False and c["he"].startswith("דוח בעוד 10 ימי מסחר – לא להציב Buy-Stop")
+    assert earn_check(earnings_info("2026-11-30", "b", None, sat))["ok"] is True   # 11 sessions
+    assert earn_check(earnings_info(None, None, None, sat))["ok"] is None
+
+
+def test_past_finviz_date_is_estimated():
+    sat = date(2026, 11, 14)
+    ei = earnings_info("2026-08-25", "b", None, sat)                 # past -> +91d = 2026-11-24 (Tue), estimated
+    assert ei["est"] and ei["next"] == "2026-11-24" and ei["td"] == 7 and ei["last"] == "2026-08-25"
+    c = earn_check(ei)
+    assert c["ok"] is False and "משוער" in c["he"]
+    ei2 = earnings_info("2026-10-22", "a", None, sat)                # past -> 2027-01-21, out of the window
+    assert ei2["est"] and ei2["next"] == "2027-01-21" and earn_check(ei2)["ok"] is True
+    assert ei2["last_eff"] == "2026-10-23" and ei2["last_ago"] == 16
+    ei3 = earnings_info("2026-10-22", "a", "2027-01-28", sat)        # a real cached future date wins over the estimate
+    assert not ei3["est"] and ei3["next"] == "2027-01-28"
+
+
+def _daily(closes, opens=None, vols=None, start="2026-10-01"):
+    ix = pd.bdate_range(start, periods=len(closes))
+    c = np.asarray(closes, float)
+    o = np.asarray(opens if opens is not None else c, float)
+    return pd.DataFrame({"Open": o, "High": np.maximum(o, c) * 1.005, "Low": np.minimum(o, c) * 0.995, "Close": c,
+                         "Volume": np.asarray(vols if vols is not None else [1e6] * len(c), float)}, index=ix)
+
+
+def test_post_earnings_gap_wait_then_hold():
+    n = 25
+    closes = [48.0] * 20 + [53.0, 52.5, 53.2, 52.8, 53.5]
+    opens = [48.0] * 20 + [52.0, 53, 52.6, 53, 52.9]
+    vols = [1e6] * 20 + [4e6, 2e6, 1.5e6, 1.2e6, 1e6]
+    d = _daily(closes, opens, vols)
+    gap_day = d.index[20].date().isoformat()
+    w = d.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+    ei = {"last": gap_day, "last_eff": gap_day, "last_ago": 2}
+    early = post_earn_gap(d.iloc[:22], w, gap_day, 50.0)             # gap day + 1 session -> wait
+    assert early["gap"] and not early["hold"]
+    c = post_earn_check(ei, early, 52.5, 50.0)
+    assert c["ok"] is False and c["he"].startswith("גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן")
+    held = post_earn_gap(d, w, gap_day, 50.0)                        # 4 sessions all closing above 50 -> mini-base
+    assert held["hold"] and post_earn_check(dict(ei, last_ago=5), held, 53.5, 50.0)["ok"] is True
+    assert n == len(d)
+
+
+def test_post_earnings_back_under_resistance():
+    d = _daily([48.0] * 20 + [48.5, 49.0, 49.2])
+    day = d.index[20].date().isoformat()
+    w = d.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+    pg = post_earn_gap(d, w, day, 50.0)
+    assert not pg["gap"]
+    c = post_earn_check({"last": day, "last_eff": day, "last_ago": 3}, pg, 49.2, 50.0)
+    assert c["ok"] is True and c["he"].startswith("דוח עבר") and "להחזיר Buy-Stop" in c["he"]
+    assert post_earn_check({"last": day, "last_eff": day, "last_ago": 9}, pg, 49.2, 50.0) is None

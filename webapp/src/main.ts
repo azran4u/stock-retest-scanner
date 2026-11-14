@@ -12,7 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
-import { UI_DEF, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, zoneOf, type StDraw, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -797,12 +797,14 @@ let stShell: 'split' | 'list' | 'detail' | null = null;
 let stSelDraw: string | null = null;
 let stLimit = 80;
 let stTap: { pts: number[]; date: string | null } | null = null;
+let stDoc: StagesDoc | null = null;
+let stLineTap = false; // '+ קו': the next tap on the big chart adds his support / resistance line
 const stUi = (): StUi => ({ ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') });
 const stSaveUi = (ui: StUi) => localStorage.setItem(ST_LS, JSON.stringify(ui));
 function stDestroy() { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } stIO?.disconnect(); stShell = null; }
 const stMaxStop = (d: StagesDoc) => +(d.rules.max_stop_pct ?? 10);
 async function stLoadEdits() {
-  try { const rows = await api.loadStageDrawings(); stEdits.clear(); for (const x of rows) { const e = stEdits.get(x.ticker) || {}; e[x.kind] = x; stEdits.set(x.ticker, e); } }
+  try { const rows = await api.loadStageDrawings(); stEdits.clear(); for (const x of rows) { const e = stEdits.get(x.ticker) || {}; if (x.kind === 'line') (e.lines ??= []).push(x); else e[x.kind] = x; stEdits.set(x.ticker, e); } }
   catch (e) { console.warn('stage_drawings', e); }
 }
 async function renderStages() {
@@ -813,7 +815,7 @@ async function renderStages() {
   stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
   stEdP ??= stLoadEdits();
   if (!stShell) app.innerHTML = '<div class="stages center muted">טוען…</div>';
-  const d = await stP; await stEdP;
+  const d = await stP; await stEdP; stDoc = d;
   if (!location.hash.startsWith('#/stages')) return;
   if (!d || !d.rows) { stP = null; app.innerHTML = '<header class="top"><a class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין</div></header><div class="center muted">נתוני השלבים לא נטענו</div>'; return; }
   const ui = stUi();
@@ -865,7 +867,7 @@ function stObserveSparks(root: ParentNode, d: StagesDoc) {
 }
 function stDrawSpark(c: HTMLCanvasElement, sp: Record<string, StSpark>, r: StageRow, d: StagesDoc) {
   const ed = stEdits.get(r.t);
-  drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d)), ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
+  drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
 }
 function stRenderList(d: StagesDoc) {
   const host = $('#stSide'); if (!host) return;
@@ -903,10 +905,18 @@ function stDrawingsOf(r: StageRow): Drawing[] {
   const ed = stEdits.get(r.t), out: Drawing[] = [];
   const base = { ticker: r.t, note: null, status: 'active' as const, entry: null, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null };
   const z = zoneOf(r);
-  if (ed?.zone) out.push({ ...base, ...(ed.zone as any), source: 'user' });
-  else if (z) out.push({ ...base, id: 'c-zone', kind: 'zone', zone_top: z.top, zone_bottom: z.bottom, t_start: z.start, source: 'bot' });
+  const zl = (top: number | null, bot: number | null, his: boolean) => ({ labTop: `התנגדות – תקרת בסיס${his ? ' (שלך)' : ''} ${top != null ? (+top).toFixed(2) : ''}`, labBot: `תמיכה – רצפת בסיס${his ? ' (שלך)' : ''} ${bot != null ? (+bot).toFixed(2) : ''}` });
+  if (ed?.zone) out.push({ ...base, ...(ed.zone as any), source: 'user', meta: { ...(ed.zone.meta || {}), ...zl(ed.zone.zone_top, ed.zone.zone_bottom, true) } });
+  else if (z) out.push({ ...base, id: 'c-zone', kind: 'zone', zone_top: z.top, zone_bottom: z.bottom, t_start: z.start, source: 'bot', meta: zl(z.top, z.bottom, false) });
+  for (const lv of stLevelsOf(r, ed)) {
+    const color = lv.role === 'sup' ? '#26a69a' : lv.role === 'res' ? '#ef5350' : '#b39ddb';
+    out.push({ ...base, id: lv.id, kind: 'line', entry: lv.price, source: lv.his ? 'user' : 'bot', meta: { label: lv.label, color, dash: lv.his ? '' : '6 4', role: lv.role } });
+  }
   if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
-  else if (r.plan) out.push({ ...base, id: 'c-long', kind: 'long', entry: r.plan.entry, stop: r.plan.stop, target: r.plan.target, source: 'bot' });
+  else if (r.plan) { // the trade bar follows his lines / ceiling (recomputed target / stop), else the computed plan
+    const e = effPlan(r, ed, maxRiskUsd(), 10, stP ? (stDoc?.rules ?? {}) : {});
+    out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? r.plan.entry, stop: e?.stop ?? r.plan.stop, target: e?.target ?? r.plan.target, source: 'bot' });
+  }
   return out;
 }
 function stNeighbor(d: StagesDoc, t: string, dir: 1 | -1): string | null {
@@ -917,15 +927,15 @@ async function stRenderDetail(d: StagesDoc, t: string) {
   const host = $('#stMain'); if (!host) return;
   const r = d.rows.find((x) => x.t === t);
   if (!r) { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return; }
-  if (stCvT !== t) { stSelDraw = null; stTap = null; }
+  if (stCvT !== t) { stSelDraw = null; stTap = null; stLineTap = false; }
   if (stCv && stCvT === t) { stRefreshDetail(d, r); return; }
   if (stCv) { stCv.destroy(); stCv = null; }
   const ed = stEdits.get(t);
-  host.innerHTML = stDetailHtml(d, r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d)), ed, maxRiskUsd());
+  host.innerHTML = stDetailHtml(d, r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed, maxRiskUsd(), stSelLine(r));
   stBindDetail(d, r);
   stCvT = t;
   stCv = new ChartView($('#stbig', host)!, {
-    onSelect: (id) => { stSelDraw = id; stCv?.setDrawings(stDrawingsOf(r), stSelDraw); },
+    onSelect: (id) => { stSelDraw = id; stRefreshDetail(d, r); },
     onDragMove: () => {},
     onDragEnd: (id, patch) => { stSaveEdit(d, r, id, patch); },
     onTap: (price, date) => stOnTap(d, r, price, date),
@@ -953,20 +963,22 @@ function stBindDetail(d: StagesDoc, r: StageRow) {
   $('#stprev', host)!.onclick = () => go(-1);
   $('#stnext', host)!.onclick = () => go(1);
   const rs = $('#streset', host); if (rs) rs.onclick = () => stReset(d, r);
+  const aln = $('#staddline', host); if (aln) aln.onclick = () => { stLineTap = !stLineTap; stTap = null; toast(stLineTap ? 'הקש על הגרף במחיר של הקו (מעל המחיר = התנגדות, מתחת = תמיכה)' : 'בוטל'); };
+  const dl = $('#stdelline', host); if (dl) dl.onclick = () => stDelLine(d, r);
   const al = $('#staddlong', host); if (al) al.onclick = () => { stTap = stTap ? null : { pts: [], date: null }; toast(stTap ? 'הקש על מחיר ה-Buy-Stop ואז על ה-SL' : 'בוטל'); };
 }
 /** after an edit: swap the tags / tools / panel, redraw the overlay and the list row (the chart keeps its view) */
 function stRefreshDetail(d: StagesDoc, r: StageRow) {
   const host = $('#stMain'); if (!host) return;
-  const ed = stEdits.get(r.t), e = effPlan(r, ed, maxRiskUsd(), stMaxStop(d));
+  const ed = stEdits.get(r.t), e = effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules);
   const tmp = document.createElement('div');
-  tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd());
+  tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd(), stSelLine(r));
   for (const sel of ['.sttags.pad', '.tools', '.stpanel']) { const a = $(sel, host), b2 = $(sel, tmp); if (a && b2) a.replaceWith(b2); }
   stBindDetail(d, r);
   stCv?.setDrawings(stDrawingsOf(r), stSelDraw);
   const li = document.querySelector<HTMLElement>(`#stSide li[data-st="${CSS.escape(r.t)}"]`);
   if (li) {
-    const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone);
+    const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone || !!ed?.lines?.length);
     const nli = t2.firstElementChild as HTMLElement; li.replaceWith(nli);
     nli.onclick = () => { location.hash = '#/stages/' + encodeURIComponent(r.t); };
     stSpP!.then((sp) => { const c = $<HTMLCanvasElement>('canvas.stchart', nli); if (c) stDrawSpark(c, sp, r, d); });
@@ -977,11 +989,23 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
   const m = { ...cur, ...patch };
   const lv = { zone_top: m.zone_top, zone_bottom: m.zone_bottom, entry: m.entry, stop: m.stop, target: m.target, t_start: m.t_start, t_end: m.t_end };
   const ed = stEdits.get(r.t) || {};
+  if (cur.kind === 'line') {
+    const price = Math.round(+(m.entry ?? 0) * 100) / 100;
+    if (id.startsWith('c-')) {
+      const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'line', entry: price, source: 'user', status: 'active', meta: { ref: id, role: cur.meta?.role, computed: cur.entry, week: d.week } }), 'הקו נשמר כשלך');
+      if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
+      (ed.lines ??= []).push(row); stEdits.set(r.t, ed); stSelDraw = row.id;
+    } else {
+      const mine = ed.lines?.find((x) => x.id === id); if (mine) mine.entry = price;
+      await guard(api.updateStageDrawing(id, { entry: price }));
+    }
+    stRefreshDetail(d, r); return;
+  }
   if (id.startsWith('c-')) {
     const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: cur.kind as 'zone' | 'long', ...lv, source: 'user', status: 'active',
       meta: { computed: { zone_top: cur.zone_top, zone_bottom: cur.zone_bottom, entry: cur.entry, stop: cur.stop, target: cur.target }, week: d.week } }), 'נשמר כרמות שלך');
     if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
-    ed[row.kind] = row; stEdits.set(r.t, ed); stSelDraw = row.id;
+    ed[row.kind as 'zone' | 'long'] = row; stEdits.set(r.t, ed); stSelDraw = row.id;
   } else {
     const k = cur.kind as 'zone' | 'long', mine = ed[k];
     if (mine) Object.assign(mine, lv);
@@ -991,12 +1015,38 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
 }
 async function stReset(d: StagesDoc, r: StageRow) {
   const ed = stEdits.get(r.t); if (!ed) return;
-  for (const x of [ed.zone, ed.long]) if (x) await guard(api.updateStageDrawing(x.id, { status: 'deleted' }));
+  for (const x of [ed.zone, ed.long, ...(ed.lines || [])]) if (x) await guard(api.updateStageDrawing(x.id, { status: 'deleted' }));
   stEdits.delete(r.t); stSelDraw = null;
   toast('חזרה לרמות המחושבות');
   stRefreshDetail(d, r);
 }
+function stSelLine(r: StageRow): StLevel | null {
+  return stSelDraw ? stLevelsOf(r, stEdits.get(r.t)).find((x) => x.id === stSelDraw) ?? null : null;
+}
+/** delete the selected line: his added line -> deleted; a computed one (or his move of it) -> hidden by his row */
+async function stDelLine(d: StagesDoc, r: StageRow) {
+  const lv = stSelLine(r); if (!lv) return;
+  const ed = stEdits.get(r.t) || {};
+  if (lv.his) {
+    const mine = ed.lines?.find((x) => x.id === lv.id); if (!mine) return;
+    if (lv.ref) { mine.meta = { ...(mine.meta || {}), hidden: true }; await guard(api.updateStageDrawing(mine.id, { meta: mine.meta })); }
+    else { await guard(api.updateStageDrawing(mine.id, { status: 'deleted' })); ed.lines = ed.lines!.filter((x) => x.id !== mine.id); }
+  } else {
+    const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'line', entry: lv.price, source: 'user', status: 'active', meta: { ref: lv.id, role: lv.role, hidden: true, week: d.week } }));
+    if (!row) return;
+    (ed.lines ??= []).push(row);
+  }
+  stEdits.set(r.t, ed); stSelDraw = null; toast('הקו נמחק');
+  stRefreshDetail(d, r);
+}
 async function stOnTap(d: StagesDoc, r: StageRow, price: number, date: string) {
+  if (stLineTap) {
+    stLineTap = false;
+    const role = price >= r.close ? 'res' : 'sup', px = Math.round(price * 100) / 100;
+    const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'line', entry: px, t_start: date, source: 'user', status: 'active', meta: { role, week: d.week } }), role === 'res' ? 'נוסף קו התנגדות' : 'נוסף קו תמיכה');
+    if (row) { const ed = stEdits.get(r.t) || {}; (ed.lines ??= []).push(row); stEdits.set(r.t, ed); stSelDraw = row.id; stRefreshDetail(d, r); }
+    return;
+  }
   if (!stTap) { if (stSelDraw) { stSelDraw = null; stCv?.setDrawings(stDrawingsOf(r), null); } return; }
   stTap.pts.push(price);
   if (stTap.pts.length === 1) { stTap.date = date; toast(`Buy-Stop ${price.toFixed(2)} — הקש על ה-SL`); return; }

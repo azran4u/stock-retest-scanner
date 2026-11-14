@@ -7,7 +7,7 @@ Rules = Eyal's masterclass page (Weinstein, 'Secrets for Profiting in Bull and B
 only, 30-week SMA + its slope, breakout volume >= 2x the 10-week average, Mansfield RS vs the S&P 500 > 0 and rising,
 top-down market (SPY / QQQ / IWM) + sector ETF stage, pre-filter (price, liquidity, inst own 25-85%, NYSE / NASDAQ,
 no small biotech, >= 40 weeks, no heavy overhead within 20%), stop below the last structural low AND the 30W SMA,
-R:R >= 3 to the first target, no new entry within 7 trading days of earnings. Every threshold is in RULES below and
+R:R >= 3 to the first target, no new Buy-Stop within 10 trading days of earnings (gap-up after a report = wait for a hold). Every threshold is in RULES below and
 is shown on the page.
 
   python -m srs_app.stages             # FinViz -> history -> stages -> app/data/stages.json + stages_spark.json
@@ -86,7 +86,14 @@ RULES: Dict[str, Any] = {
     "overhead_w": 104,           # overhead resistance = significant swing highs of the last 2 years (104 weeks)
     "cong_min_w": 5,             # info: trading block = >= 5 weekly closes inside a 3% band above the entry
     "cong_band_pct": 3.0,
-    "earn_td": 7,                # no new entry within 7 trading days of earnings + no Buy-Stop live into an earnings week
+    "earn_td": 10,               # no new Buy-Stop when the report session is within the next 10 trading days (Eyal 2026-11-14:
+                                 # the report week AND the week before; an after-close report counts on the next session)
+    "earn_est_days": 91,         # FinViz has only a PAST date -> next report estimated at +13 weeks ('משוער'), blocks too
+    "post_earn_td": 5,           # a report in the last 5 sessions -> post-earnings rules (gap-up / back to the Buy-Stop)
+    "gap_min_pct": 2.0,          # post-earnings gap-up = open >= 2% above the prior close, close above the resistance,
+    "gap_vol_mult": 2.0,         # ... on >= 2x the 20-day average volume -> don't chase, wait for a hold / mini-base
+    "gap_vol_avg_d": 20,
+    "mini_base_d": 3,            # ... candidate again after >= 3 sessions after the gap day all closing above the level
     "min_price": 15.0, "hard_min_price": 10.0, "min_dollar_vol_m": 30.0, "min_week_vol": 500_000,
     "inst_lo": 25.0, "inst_hi": 85.0, "min_weeks": 40, "biotech_cap_b": 2.0,
     "risk_usd": 55.0, "account_usd": 5000.0, "position_cap_pct": 15.0,
@@ -339,7 +346,11 @@ def overhead_scan(w: pd.DataFrame, entry: float, R=RULES) -> Dict[str, Any]:
     nearest = min(lv) if lv else None
     cs = sorted(float(x) for x in c[lo_i:] if x > thr)
     cong = next((x for x in cs if sum(1 for y in cs if x <= y <= x * (1 + R["cong_band_pct"] / 100)) >= R["cong_min_w"]), None)
-    return {"overhead": nearest, "overhead_pct": (nearest / entry - 1) * 100 if nearest else None, "open_sky": nearest is None,
+    lv_u: List[float] = []
+    for x in sorted(lv):  # the nearest few distinct levels (chart lines; Eyal 2026-11-14)
+        if not lv_u or x > lv_u[-1] * 1.01:
+            lv_u.append(x)
+    return {"overhead": nearest, "levels": lv_u[:4], "overhead_pct": (nearest / entry - 1) * 100 if nearest else None, "open_sky": nearest is None,
             "ath": bool(h.max() <= thr), "cong": cong, "hi2y": float(h[lo_i:].max())}
 
 
@@ -368,7 +379,7 @@ def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optio
             "risk_pct": _f(stop_pct, 1), "stop_wide": bool(stop_pct is not None and stop_pct > R["max_stop_pct"]),
             "rr": _f(rr), "shares": shares, "pos_usd": _f(shares * entry, 0) if shares else None,
             "overhead": _f(ov["overhead"]), "overhead_pct": _f(ov["overhead_pct"], 1), "open_sky": ov["open_sky"],
-            "ath": ov["ath"], "cong": _f(ov["cong"]), "hi2y": _f(ov["hi2y"])}
+            "ath": ov["ath"], "cong": _f(ov["cong"]), "hi2y": _f(ov["hi2y"]), "ov_levels": [_f(x) for x in ov["levels"]]}
 
 
 def earnings_live_week(earn: Optional[str], timing: Optional[str], today: date) -> Tuple[bool, Optional[str], str]:
@@ -385,6 +396,104 @@ def earnings_live_week(earn: Optional[str], timing: Optional[str], today: date) 
     nxt = today if today.weekday() < 5 else today + timedelta(days=7 - today.weekday())  # weekend run -> next Monday
     fri = nxt + timedelta(days=4 - nxt.weekday())
     return bool(eff <= fri), eff.isoformat(), fri.isoformat()
+
+
+def _next_session(d: date) -> date:
+    return np.busday_offset(np.datetime64(d), 1, roll="forward").astype(date)
+
+
+def sessions_until(eff: date, today: date) -> int:
+    """Trading sessions from the next one up to and including `eff` (weekends only, no holiday calendar):
+    Saturday -> Monday report = 1; a report today (weekday) = 0."""
+    return int(np.busday_count(today + timedelta(days=1), eff + timedelta(days=1)))
+
+
+def earnings_info(fv_date: Optional[str], timing: Optional[str], cache_date: Optional[str], today: date,
+                  R=RULES) -> Dict[str, Any]:
+    """Next / last report (Eyal 2026-11-14). next = a future FinViz date, else the retest scanner's cached future date,
+    else -- FinViz only has a PAST date -- that date + 13 weeks, labelled estimated ('משוער'). eff = the session that
+    trades the report (after close -> next session). td = sessions until eff. last = the past FinViz date (if any)."""
+    out: Dict[str, Any] = {"next": None, "est": False, "timing": None, "eff": None, "td": None,
+                           "last": None, "last_eff": None, "last_ago": None}
+    fv = date.fromisoformat(fv_date) if fv_date else None
+    if fv and fv < today:
+        out["last"] = fv.isoformat()
+        le = _next_session(fv) if timing == "a" else fv
+        out["last_eff"] = le.isoformat()
+        out["last_ago"] = int(np.busday_count(le, today + timedelta(days=1)))  # sessions in [reaction day, today]
+    nxt, tm, est = None, None, False
+    if fv and fv >= today:
+        nxt, tm = fv, timing
+    elif cache_date and date.fromisoformat(cache_date) >= today:
+        nxt = date.fromisoformat(cache_date)
+    elif fv:
+        nxt, est = fv, True
+        while nxt < today:
+            nxt += timedelta(days=R["earn_est_days"])
+        nxt = np.busday_offset(np.datetime64(nxt), 0, roll="forward").astype(date)
+    if nxt:
+        eff = _next_session(nxt) if tm == "a" else nxt
+        out.update(next=nxt.isoformat(), est=est, timing=tm, eff=eff.isoformat(), td=sessions_until(eff, today))
+    return out
+
+
+def earn_check(ei: Dict[str, Any], R=RULES) -> Dict[str, Any]:
+    """Not in a trade: no new Buy-Stop while the report session is within the next earn_td sessions (blocks on an
+    estimated date too, labelled). Unknown date -> ok None (can't confirm)."""
+    if not ei["next"]:
+        return {"k": "earn", "ok": None, "he": "תאריך הדוח הבא לא ידוע — לבדוק לפני הצבת Buy-Stop"}
+    lab = " (משוער: הדוח האחרון + 13 ש׳)" if ei["est"] else ""
+    when = f"{ei['next']}{' אחרי הסגירה' if ei['timing'] == 'a' else ' לפני הפתיחה' if ei['timing'] == 'b' else ''}{lab}"
+    if ei["td"] <= R["earn_td"]:
+        return {"k": "earn", "ok": False, "he": f"דוח בעוד {ei['td']} ימי מסחר – לא להציב Buy-Stop (דוח {when})"}
+    return {"k": "earn", "ok": True, "he": f"אין דוח ב-{R['earn_td']} ימי המסחר הקרובים (דוח בעוד {ei['td']} ימ״ס: {when})"}
+
+
+def post_earn_gap(d: Optional[pd.DataFrame], w: pd.DataFrame, last_eff: str, level: float, R=RULES) -> Dict[str, Any]:
+    """After a report (Eyal 2026-11-14): gap-up above the resistance on high volume = don't chase; candidate again once
+    >= mini_base_d sessions after the gap day all closed above the level (mini-base). Daily candles when available,
+    else the weekly close of the report week / later weeks holding above the level."""
+    le = pd.Timestamp(last_eff)
+    if d is not None and len(d) and (d.index >= le).any() and (d.index < le).any():
+        i = int(np.argmax(d.index >= le))
+        o, c, vol = float(d["Open"].iloc[i]), float(d["Close"].iloc[i]), float(d["Volume"].iloc[i])
+        pc = float(d["Close"].iloc[i - 1])
+        av = float(d["Volume"].iloc[max(0, i - R["gap_vol_avg_d"]):i].mean() or 0)
+        gap = bool(o >= pc * (1 + R["gap_min_pct"] / 100) and c > level and pc <= level and av > 0 and vol >= R["gap_vol_mult"] * av)
+        after = d.iloc[i + 1:]
+        hold = bool(gap and len(after) >= R["mini_base_d"] and float(after["Close"].min()) >= level)
+        failed = bool(gap and len(after) and float(after["Close"].iloc[-1]) < level)
+        return {"src": "daily", "gap": gap, "gap_pct": _f((o / pc - 1) * 100, 1), "vol_x": _f(vol / av, 1) if av else None,
+                "days_after": int(len(after)), "hold": hold, "failed": failed,
+                "mini_hi": _f(float(after["High"].max())) if len(after) else None,
+                "mini_lo": _f(float(after["Low"].min())) if len(after) else None}
+    j = int(np.argmax(w.index >= le)) if (w.index >= le).any() else None
+    if j is None or j == 0:
+        return {"src": "none", "gap": False, "hold": False, "failed": False, "days_after": 0}
+    o, c, pc = float(w["Open"].iloc[j]), float(w["Close"].iloc[j]), float(w["Close"].iloc[j - 1])
+    gap = bool(o >= pc * (1 + R["gap_min_pct"] / 100) and c > level and pc <= level)
+    after = w.iloc[j + 1:]
+    return {"src": "weekly", "gap": gap, "gap_pct": _f((o / pc - 1) * 100, 1), "days_after": int(len(after)) * 5,
+            "hold": bool(gap and len(after) >= 1 and float(after["Close"].min()) >= level),
+            "failed": bool(gap and len(after) and float(after["Close"].iloc[-1]) < level)}
+
+
+def post_earn_check(ei: Dict[str, Any], pg: Optional[Dict[str, Any]], close: float, level: float, R=RULES) -> Optional[Dict[str, Any]]:
+    """Report in the last post_earn_td sessions -> a 'post' check: gap-up not held yet = fail; held / mini-base = pass;
+    report passed with the price still just under the resistance = pass ('דוח עבר – להחזיר Buy-Stop')."""
+    if ei["last_ago"] is None or ei["last_ago"] > R["post_earn_td"] or pg is None:
+        return None
+    if pg["gap"]:
+        if pg["hold"]:
+            return {"k": "post", "ok": True, "he": f"גאפ אחרי דוח ({pg['gap_pct']:+}%) החזיק מעל הרמה ${level:g} ובנה בסיס קטן "
+                                                   f"({pg['days_after']} ימים, ${pg.get('mini_lo')}–${pg.get('mini_hi')}) — מועמדת שוב"}
+        if pg["failed"]:
+            return {"k": "post", "ok": False, "he": f"גאפ אחרי דוח ({pg['gap_pct']:+}%) נכשל — חזרה מתחת לרמה ${level:g}, לא לקנות"}
+        return {"k": "post", "ok": False, "he": f"גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן (גאפ {pg['gap_pct']:+}%"
+                                                f"{', מחזור ' + str(pg['vol_x']) + 'x' if pg.get('vol_x') else ''}; {pg['days_after']}/{R['mini_base_d']} ימים מעל ${level:g})"}
+    if close < level and (level / close - 1) * 100 <= R["pre_bo_pct"]:
+        return {"k": "post", "ok": True, "he": f"דוח עבר ({ei['last']}) – להחזיר Buy-Stop מעל ${level:g}"}
+    return {"k": "post", "ok": True, "info": True, "he": f"דוח עבר ({ei['last']}, לפני {ei['last_ago']} ימ״ס) ללא גאפ מעל ההתנגדות"}
 
 
 def entry_pass(entry: List[Dict[str, Any]], pre: List[Dict[str, Any]]) -> bool:
@@ -673,12 +782,10 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         d = df.copy(); d.index = pd.to_datetime(d.index)
         dv = float((d["Close"] * d["Volume"]).iloc[-30:].mean() / 1e6) if len(d) else None
         etf = INDUSTRY_ETF.get(u.get("industry")) or SECTOR_ETF.get(u.get("sector"))
-        earn = parse_earn(u.get("earn_raw", ""), today)
+        fv_earn = parse_earn(u.get("earn_raw", ""), today)
         state, cd = ss.earn_cache_lookup(t, today)  # the retest scanner's earnings cache, when it has a future date
-        if cd and (not earn or date.fromisoformat(earn) < today):
-            earn = cd.isoformat()
-        td = trading_days_until(earn, today)
-        timing = earn_timing(u.get("earn_raw", "")) if earn == parse_earn(u.get("earn_raw", ""), today) else None
+        ei = earnings_info(fv_earn, earn_timing(u.get("earn_raw", "")), cd.isoformat() if cd else None, today, R)
+        earn, td, timing = ei["next"], ei["td"], ei["timing"]
         in_live, earn_eff, live_fri = earnings_live_week(earn, timing, today)
         pre = prefilter(u, len(w), r["close"], dv, R)
         e = etf_out.get(etf) if etf else None
@@ -687,10 +794,6 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             p = r["plan"]
             kind = p["kind"]
             rs_ok = r["checks"][3]["ok"] if r["stage"] == 2 else (r["rs"] is not None and r["rs"] > 0 and bool(r["rs_up"]))
-            earn_ok = None if earn is None else not (in_live or (td is not None and td <= R["earn_td"]))
-            earn_he = ("דוח בשבוע הקרוב - לא להשאיר Buy-Stop" if in_live else
-                       f"אין דוח ב-{R['earn_td']} ימי המסחר הקרובים ולא בשבוע שה-Buy-Stop פתוח (עד {live_fri})")
-            earn_he += (f" (דוח {earn}{' אחרי הסגירה' if timing == 'a' else ' לפני הפתיחה' if timing == 'b' else ''})" if earn else " (תאריך דוח לא ידוע)")
             ov_he = (f"שמיים פתוחים: אין התנגדות תקורה ב-2 השנים האחרונות{' (שיא כל הזמנים)' if p['ath'] else ''} — יעד = כניסה + {R['min_rr']:g}×סיכון"
                      if p["open_sky"] else f"התנגדות תקורה קרובה ${p['overhead']} (+{p['overhead_pct']}% מהכניסה, שיא סווינג משמעותי ב-2 השנים)")
             entry = [
@@ -707,8 +810,14 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                 {"k": "air", "ok": True if p["open_sky"] else None, "he": ov_he},
                 {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"],
                  "he": f"R:R ≥ {R['min_rr']:g} מה-Buy-Stop ליעד הראשון (1:{p['rr']})"},
-                {"k": "earn", "ok": earn_ok, "he": earn_he},
+                earn_check(ei, R),
             ]
+            pg = None
+            if ei["last_ago"] is not None and ei["last_ago"] <= R["post_earn_td"]:
+                pg = post_earn_gap(d, w, ei["last_eff"], p["level"], R)
+            pc = post_earn_check(ei, pg, r["close"], p["level"], R)
+            if pc:
+                entry.append(pc)
             if not p["open_sky"]:  # the overhead level itself is information; the R:R check decides
                 entry[5]["ok"] = None if p["rr"] is None else p["rr"] >= R["min_rr"]
             if kind == "breakout":
@@ -734,7 +843,11 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,
             "mcap_b": _f((u.get("mcap") or 0) / 1e9, 1) if u.get("mcap") else None, "inst": u.get("inst_own"),
             "dv_m": _f(dv, 1), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
-            "earn_eff": earn_eff, "earn_timing": timing, "earn_live_week": in_live,
+            "earn_eff": ei["eff"], "earn_timing": timing, "earn_live_week": in_live, "earn_est": ei["est"],
+            "earn_last": ei["last"], "earn_last_ago": ei["last_ago"],
+            "earn_block": bool(earn and td is not None and td <= R["earn_td"]),
+            "post_earn": next((x["he"] for x in entry if x["k"] == "post"), None),
+            "post_gap": bool(next((x for x in entry if x["k"] == "post" and x["ok"] is False), None)),
             "entry": entry, "entry_ok": bs, "bs": bs,
         })
         sparks[t] = spark(w, R["spark_weeks"])
@@ -774,7 +887,8 @@ def candidate(x: Dict[str, Any]) -> Dict[str, Any]:
     return {"t": x["t"], "n": x["n"], "kind": p["kind"], "sub": x["sub"], "close": x["close"], "level": p["level"],
             "buy_stop": p["entry"], "stop": p["stop"], "stop_pct": p["risk_pct"], "target": p["target"],
             "target_src": p["target_src"], "open_sky": p["open_sky"], "rr": p["rr"], "shares": p["shares"],
-            "pos_usd": p["pos_usd"], "vol_need": p.get("vol_need"), "earn": x["earn"], "ex": x["ex"]}
+            "pos_usd": p["pos_usd"], "vol_need": p.get("vol_need"), "earn": x["earn"], "earn_td": x["earn_td"],
+            "earn_est": x.get("earn_est", False), "post_earn": x.get("post_earn"), "ex": x["ex"]}
 
 
 KIND_HE = {"breakout": "פריצה טרייה (באזור קנייה)", "trigger": "בסיס שלב 1 מתחת לתקרה", "continuation": "בסיס המשך בשלב 2"}
@@ -791,7 +905,9 @@ def alert_text(doc: Dict[str, Any]) -> Optional[str]:
         tgt = f"${c['target']}" + (" (שמיים פתוחים · R:R 2.5)" if c["open_sky"] else " (התנגדות תקורה)")
         lines += [f"{c['t']} · {KIND_HE.get(c['kind'], c['kind'])}",
                   f"Buy-Stop ${c['buy_stop']} · סטופ ${c['stop']} ({c['stop_pct']}%) · יעד {tgt}",
-                  f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {c['earn'] or 'לא ידוע'}"]
+                  f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {(c['earn'] + (' (משוער)' if c.get('earn_est') else '') + (f" — בעוד {c['earn_td']} ימ״ס" if c.get('earn_td') is not None else '')) if c['earn'] else 'לא ידוע'}"]
+        if c.get("post_earn"):
+            lines.append(c["post_earn"])
         if c["kind"] != "breakout" and c.get("vol_need"):
             lines.append(f"תנאי: מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 ש׳ (≥ {int(c['vol_need']):,} מניות) — אחרת פריצת שווא")
         lines.append("")

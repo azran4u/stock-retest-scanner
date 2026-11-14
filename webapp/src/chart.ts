@@ -604,7 +604,9 @@ export class ChartView {
         const fill = bot ? 'rgba(255,152,0,.16)' : 'rgba(41,98,255,.20)';
         const stroke = bot ? '#ff9800' : '#2962ff';
         s += box(x1, x2, this.Y(d.zone_top), this.Y(d.zone_bottom), fill, stroke, dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
-        s += tag(x2 - 4, this.Y(d.zone_top), pre + (review ? 'לבדיקה' : 'אזור'), sel ? stroke : '#2a2e39', d.id);
+        const zm = (d as any).meta; // stages page (Eyal 2026-11-14): labelled base ceiling / floor
+        s += tag(x2 - 4, this.Y(d.zone_top), zm?.labTop ?? pre + (review ? 'לבדיקה' : 'אזור'), sel ? stroke : '#2a2e39', d.id);
+        if (zm?.labBot) s += tag(x2 - 4, this.Y(d.zone_bottom), zm.labBot, sel ? stroke : '#2a2e39', d.id);
         if (sel && this.editable) {
           handle(d.id, 'zone_top', hx, this.Y(d.zone_top), stroke);
           handle(d.id, 'zone_bottom', hx, this.Y(d.zone_bottom), stroke);
@@ -635,9 +637,12 @@ export class ChartView {
         s += this.longLabels(d, x1, W, H, obst, hit);
       } else if (d.kind === 'line') {
         const y = this.Y(d.entry ?? d.zone_top);
-        s += line(0, W, y, bot ? '#ff9800' : '#f7c948', dash);
-        s += tag(W - 4, y, 'קו', '#2a2e39', d.id);
-        if (sel && this.editable) handle(d.id, 'entry', W * 0.6, y, '#f7c948');
+        const lm = (d as any).meta; // stages page (Eyal 2026-11-14): labelled support / resistance lines, tap anywhere to select
+        const col = lm?.color ?? (bot ? '#ff9800' : '#f7c948');
+        s += line(0, W, y, col, lm?.dash ?? dash).replace('stroke-width="1.5"', `stroke-width="${sel ? 2.5 : 1.5}"`);
+        if (lm?.label && y != null) s += `<g class="tag lhit" data-sel="${d.id}"><rect x="0" y="${y - 7}" width="${W}" height="14" fill="transparent"/></g>`;
+        s += tag(lm?.label ? W * 0.42 : W - 4, y, lm?.label ? `${lm.label} ${(+(d.entry ?? 0)).toFixed(2)}` : 'קו', sel ? col : '#2a2e39', d.id);
+        if (sel && this.editable) handle(d.id, 'entry', W * 0.6, y, col);
       }
     }
     // dashed guide across the whole chart at the price being dragged (removed on release)

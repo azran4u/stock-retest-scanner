@@ -5,11 +5,14 @@
 // trade bar, no horizontal overflow, back returns to the retest list.
 // Usage: node e2e_stages.mjs [baseURL] [outDir]
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 const BASE = process.argv[2] || 'http://localhost:4173/stock-retest-scanner/app/';
 const OUT = process.argv[3] || '/workspace/stages_shots';
 mkdirSync(OUT, { recursive: true });
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
+// a stock with computed support / resistance lines (overhead resistances + valid swing low) for the lines test
+const SD = JSON.parse(readFileSync(new URL('../app/data/stages.json', import.meta.url)));
+const LT = SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null && r.plan.stop_basis === 'low')?.t;
 const browser = await chromium.launch();
 for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, false], ['mobile', { width: 390, height: 844 }, true]]) {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, locale: 'he-IL' });
@@ -65,6 +68,34 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
     ok(!/#\/stages\//.test(page.url()), `${name}: back to the stages list`);
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (list)`);
   }
+  // support / resistance lines (Eyal 2026-11-14): labelled, drag = his level (target recomputed), delete, add, reset
+  if (mobile) { await page.click(`li[data-st]`); await page.waitForSelector('#stbig canvas'); await page.waitForTimeout(400); }
+  await page.evaluate((t) => { location.hash = '#/stages/' + t; }, LT);
+  await page.waitForFunction((t) => location.hash === '#/stages/' + t && document.querySelector('#stbig svg.overlay g.lhit'), LT);
+  await page.waitForTimeout(700);
+  const nl0 = await page.locator('#stbig svg.overlay g.lhit').count();
+  const labs = await page.$$eval('#stbig svg.overlay g.tag text', (x) => x.map((e) => e.textContent).join(' | '));
+  ok(nl0 >= 2 && labs.includes('התנגדות תקורה') && labs.includes('תמיכה – שפל תקף') && labs.includes('תקרת בסיס'), `${name}: ${LT} lines labelled (${nl0}: ${labs.slice(0, 120)}…)`);
+  const tgtTxt = async () => page.$eval('.stpanel .skv:nth-child(3) b', (e) => e.textContent);
+  const t0 = await tgtTxt();
+  await page.locator('#stbig svg.overlay g.lhit[data-sel="c-ov0"]').click({ force: true }); await page.waitForTimeout(300);
+  ok(await page.locator('#stdelline').count() === 1, `${name}: selecting a line offers delete`);
+  const lh = await page.locator('#stbig svg.overlay g.h[data-id="c-ov0"]').boundingBox();
+  if (lh) { const x = lh.x + lh.width / 2, y = lh.y + lh.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y - 30, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(700); }
+  const t1 = await tgtTxt();
+  ok(await page.evaluate(() => window.__demoApi.stageDrawings.filter((x) => x.kind === 'line' && x.status === 'active').length) === 1 && t1 !== t0 && await page.locator('.sttags.pad .badge.b-his').count() === 1,
+    `${name}: dragging the overhead line saves his level, target ${t0} -> ${t1}`);
+  await page.click('#stdelline'); await page.waitForTimeout(500);
+  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 - 1, `${name}: delete removes the line`);
+  await page.click('#staddline'); await page.waitForTimeout(200);
+  const cb = await page.locator('#stbig').boundingBox();
+  await page.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height * 0.12); await page.waitForTimeout(700);
+  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0, `${name}: '+ קו' adds his line`);
+  await page.screenshot({ path: `${OUT}/${name}_lines.png` });
+  await page.click('#streset'); await page.waitForTimeout(600);
+  ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 && await page.locator('.sttags.pad .badge.b-his').count() === 0 && (await tgtTxt()) === t0, `${name}: reset -> computed lines + target again`);
+  ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (lines)`);
+  if (mobile) { await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
   await page.click('#strulesBtn'); await page.waitForTimeout(200);
   ok((await page.locator('.strulesheet').innerText()).includes('שמיים פתוחים'), `${name}: rules shown`);
   await page.click('#strulesClose');
