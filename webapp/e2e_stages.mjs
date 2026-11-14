@@ -12,7 +12,9 @@ mkdirSync(OUT, { recursive: true });
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
 // a stock with computed support / resistance lines (overhead resistances + valid swing low) for the lines test
 const SD = JSON.parse(readFileSync(new URL('../app/data/stages.json', import.meta.url)));
-const LT = SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null && r.plan.stop_basis === 'low')?.t;
+const zf = (r) => (r.bo && r.sub === '2A' ? r.bo.base_low : r.base ? r.base.low : r.range?.floor);
+const LT = (SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null && Math.abs(zf(r) / r.plan.swing_low - 1) < 0.003)
+  || SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null))?.t;
 const browser = await chromium.launch();
 for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, false], ['mobile', { width: 390, height: 844 }, true]]) {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, locale: 'he-IL' });
@@ -85,6 +87,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   const t1 = await tgtTxt();
   ok(await page.evaluate(() => window.__demoApi.stageDrawings.filter((x) => x.kind === 'line' && x.status === 'active').length) === 1 && t1 !== t0 && await page.locator('.sttags.pad .badge.b-his').count() === 1,
     `${name}: dragging the overhead line saves his level, target ${t0} -> ${t1}`);
+  ok(/תקורה \(שלך\)|שמיים פתוחים \(שלך\)/.test(await page.locator('.sttags.pad').innerText()), `${name}: header overhead tag follows his lines`);
   await page.click('#stdelline'); await page.waitForTimeout(500);
   ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 - 1, `${name}: delete removes the line`);
   await page.click('#staddline'); await page.waitForTimeout(200);
@@ -92,6 +95,8 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.mouse.click(cb.x + cb.width * 0.3, cb.y + cb.height * 0.12); await page.waitForTimeout(700);
   ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0, `${name}: '+ קו' adds his line`);
   await page.screenshot({ path: `${OUT}/${name}_lines.png` });
+  const ovl = await page.$$eval('#stbig svg.overlay g.tag:not(.lhit) rect', (rs) => { const b = rs.map((r) => r.getBoundingClientRect()).filter((q) => q.width > 0); let n = 0; for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) { const A = b[i], B = b[j]; if (A.left < B.right - 1 && B.left < A.right - 1 && A.top < B.bottom - 1 && B.top < A.bottom - 1) n++; } return n; });
+  ok(ovl === 0, `${name}: no overlapping line / zone labels (${ovl})`);
   await page.click('#streset'); await page.waitForTimeout(600);
   ok(await page.locator('#stbig svg.overlay g.lhit').count() === nl0 && await page.locator('.sttags.pad .badge.b-his').count() === 0 && (await tgtTxt()) === t0, `${name}: reset -> computed lines + target again`);
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (lines)`);

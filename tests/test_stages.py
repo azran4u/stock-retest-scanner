@@ -207,3 +207,15 @@ def test_post_earnings_back_under_resistance():
     c = post_earn_check({"last": day, "last_eff": day, "last_ago": 3}, pg, 49.2, 50.0)
     assert c["ok"] is True and c["he"].startswith("דוח עבר") and "להחזיר Buy-Stop" in c["he"]
     assert post_earn_check({"last": day, "last_eff": day, "last_ago": 9}, pg, 49.2, 50.0) is None
+
+
+def test_stop_never_below_sma():
+    """Eyal 2026-11-14 (final): default = 0.7% under the 30W SMA; a valid low ABOVE the SMA -> 0.7% under it; never under."""
+    c = np.r_[np.full(30, 100.0), [104, 106, 103, 100, 104, 108, 110, 112, 111, 113]]
+    w = bars(c, rng=0.01)
+    w.iloc[33, w.columns.get_loc("Low")] = 98.0
+    sw = 98.0                                   # the pullback low (pivot, never broken afterwards)
+    p = trade_levels(w, 95.0, 115.0, 114.0, None)          # SMA 95 < low 98 -> use the low
+    assert p["stop_basis"] == "low" and abs(p["stop"] - round(sw * 0.993, 2)) < 0.02 and p["swing_low"] == round(sw, 2)
+    p2 = trade_levels(w, 101.0, 115.0, 114.0, None)        # low 98 under the SMA 101 -> SMA stop, the low is ignored
+    assert p2["stop_basis"] == "ma" and abs(p2["stop"] - round(101 * 0.993, 2)) < 0.01 and p2["swing_low"] is None

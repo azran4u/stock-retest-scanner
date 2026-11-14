@@ -77,7 +77,7 @@ RULES: Dict[str, Any] = {
     "max_pct_above_ma": 25.0,    # ... AND <= 30W SMA + 25% (Eyal 2026-11-14, XERS example); else 'רחוקה מדי / אל תרדוף'
     "range_max_w": 52,           # stage 1 / 3 trading range = high / low since the stage began (10-52 weeks)
     "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the 30W SMA (partial exit zone)
-    "stop_buffer_pct": 0.7,      # stop = 0.7% under the last valid (never broken) swing low, else under the 30W SMA
+    "stop_buffer_pct": 0.7,      # stop = 0.7% under the 30W SMA, or under a valid (never broken) swing low ABOVE it; never under the SMA
     "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' flag (info only, never disqualifies)
     "buy_stop_buf_pct": 0.5,     # Buy-Stop = base resistance + 0.5% (min $0.05) -- 'slightly above the ceiling'
     "buy_stop_min_buf": 0.05,
@@ -356,17 +356,18 @@ def overhead_scan(w: pd.DataFrame, entry: float, R=RULES) -> Dict[str, Any]:
 
 def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optional[float], base_low: Optional[float],
                  R=RULES) -> Dict[str, Any]:
-    """Stop just under the last valid (never broken) swing low, else just under the 30W SMA; first target = nearest overhead resistance of the last 2 years
+    """Stop just under the 30W SMA, or just under a valid (never broken) swing low above it (never under the SMA); first target = nearest overhead resistance of the last 2 years
     (significant weekly swing high); none = open sky -> target = entry + min_rr x risk (R:R exactly 2.5, Eyal 2026-11-14)."""
     l = w["Low"].values
     n = len(w)
-    # Eyal 2026-11-14: stop just under the most recent VALID swing low (weekly pivot low of the last 26 weeks that was never
-    # broken afterwards, below the entry); none -> just under the 30W SMA. A broken low is never used.
+    # Eyal 2026-11-14 (final): default stop = just under the 30W SMA; a clear VALID swing low (weekly pivot low of the
+    # last 26 weeks, never broken afterwards) ABOVE the SMA and below the entry -> just under that low (smaller SL).
+    # Never under the SMA: stop = max(SMA, valid low above it) x (1 - 0.7%). A broken low is never used.
     valid = [i for i in pivots(l, R["pivot_w"], False)
-             if i >= n - 26 and l[i] < entry and (i == n - 1 or l[i] < l[i + 1:].min())]
+             if i >= n - 26 and ma_now < l[i] < entry and (i == n - 1 or l[i] < l[i + 1:].min())]
     swing_low = float(l[valid[-1]]) if valid else None
     basis = "low" if swing_low is not None else "ma"
-    stop = (swing_low if swing_low is not None else ma_now) * (1 - R["stop_buffer_pct"] / 100)
+    stop = max(ma_now, swing_low or 0.0) * (1 - R["stop_buffer_pct"] / 100)
     ov = overhead_scan(w, entry, R)
     risk = entry - stop
     target, tsrc = (ov["overhead"], "overhead") if ov["overhead"] else (None, None)

@@ -81,17 +81,17 @@ export function levelsOf(r: StageRow, ed?: StEd): StLevel[] {
 
 /** Trade levels in force: his trade bar when he drew / moved one; else when he edited the base ceiling or a
  *  support / resistance line, recomputed like srs_app.stages (Buy-Stop = ceiling + 0.5% (min $0.05); stop 0.7% under
- *  the nearest support below the entry, else under the 30W SMA; target = nearest resistance > entry + 2%, none = open
+ *  the nearest support below the entry and ABOVE the 30W SMA, else under the SMA -- never under it; target = nearest resistance > entry + 2%, none = open
  *  sky = entry + 2.5 x risk); else the computed plan. R:R / SL% / shares recomputed. */
-export interface EffPlan { entry: number; stop: number; target: number | null; rr: number | null; slPct: number | null; shares: number | null; wide: boolean; his: boolean; basis: string; openSky?: boolean }
+export interface EffPlan { entry: number; stop: number; target: number | null; rr: number | null; slPct: number | null; shares: number | null; wide: boolean; his: boolean; basis: string; openSky?: boolean; overhead?: number | null }
 export function effPlan(r: StageRow, ed: StEd | undefined, maxRisk: number, maxStopPct = 10, R: Record<string, number> = {}): EffPlan | null {
   const p = r.plan, L = ed?.long;
   const rv = (k: string, d: number) => (R[k] != null ? +R[k] : d);
-  const done = (entry: number, stop: number, target: number | null, his: boolean, basis: string, openSky?: boolean): EffPlan => {
+  const done = (entry: number, stop: number, target: number | null, his: boolean, basis: string, openSky?: boolean, overhead?: number | null): EffPlan => {
     const risk = entry - stop;
     const rr = target != null && risk > 0 && target > entry ? (target - entry) / risk : null;
     const slPct = entry ? (risk / entry) * 100 : null;
-    return { entry, stop, target, rr, slPct, shares: risk > 0 ? Math.floor(maxRisk / risk) : null, wide: slPct != null && slPct > maxStopPct, his, basis, openSky };
+    return { entry, stop, target, rr, slPct, shares: risk > 0 ? Math.floor(maxRisk / risk) : null, wide: slPct != null && slPct > maxStopPct, his, basis, openSky, overhead };
   };
   if (L?.entry != null && L.stop != null) return done(+L.entry, +L.stop, L.target == null ? null : +L.target, true, 'שלך');
   const linesEd = (ed?.lines || []).some((x) => x.status !== 'deleted');
@@ -103,13 +103,14 @@ export function effPlan(r: StageRow, ed: StEd | undefined, maxRisk: number, maxS
   if (ed?.zone?.zone_top != null) { const z = +ed.zone.zone_top; entry = Math.round((z + Math.max(z * rv('buy_stop_buf_pct', 0.5) / 100, rv('buy_stop_min_buf', 0.05))) * 100) / 100; }
   if (entry == null) return null;
   const lv = levelsOf(r, ed), buf = rv('stop_buffer_pct', 0.7) / 100;
-  const sups = lv.filter((x) => x.role === 'sup' && x.price < entry!).sort((a, b) => b.price - a.price);
+  // Eyal 2026-11-14 (final): never under the 30W SMA -- a support under the SMA doesn't move the stop (floor = SMA)
+  const sups = lv.filter((x) => x.role === 'sup' && x.price < entry! && x.price > r.ma30).sort((a, b) => b.price - a.price);
   const stop = sups.length ? sups[0].price * (1 - buf) : r.ma30 * (1 - buf);
   const basis = sups.length ? (sups[0].his ? 'תמיכה שלך' : 'שפל') : 'ממוצע';
   const res = lv.filter((x) => x.role === 'res' && x.price > entry! * (1 + rv('target_min_gap_pct', 2) / 100)).sort((a, b) => a.price - b.price);
   const risk = entry - stop;
   const target = res.length ? res[0].price : risk > 0 ? entry + rv('min_rr', 2.5) * risk : null;
-  return done(entry, Math.round(stop * 100) / 100, target == null ? null : Math.round(target * 100) / 100, true, basis, !res.length);
+  return done(entry, Math.round(stop * 100) / 100, target == null ? null : Math.round(target * 100) / 100, true, basis, !res.length, res[0]?.price ?? null);
 }
 /** Computed base ceiling / floor shown as the editable zone: the broken base (2A), the current base, else the stage range. */
 export function zoneOf(r: StageRow): { top: number; bottom: number; start: string | null } | null {
@@ -161,14 +162,20 @@ export function tvUrl(r: Pick<StageRow, 't' | 'ex'>) { return `https://www.tradi
 const kv = (k: string, v: string, cls = '') => `<div class="skv ${cls}"><span>${k}</span><b dir="ltr">${v}</b></div>`;
 const earnTxt = (r: StageRow) => (r.earn ? `${ddmm(r.earn)}${r.earn_est ? ' משוער' : ''}${r.earn_timing === 'a' ? ' אחה״ס' : r.earn_timing === 'b' ? ' לפנ״פ' : ''}${r.earn_td != null ? ` · בעוד ${r.earn_td} ימ״ס` : ''}` : 'לא ידוע');
 const earnBad = (r: StageRow) => (r.earn_block ? 'neg' : '');
+/** overhead resistance in force: his lines (recomputed) when he edited them, else the computed one */
+function ovOf(r: StageRow, e: EffPlan | null): { sky: boolean; lv: number | null; pct: number | null; his: boolean } {
+  const p = r.plan;
+  if (e?.his && e.openSky != null) return { sky: e.openSky, lv: e.overhead ?? null, pct: e.overhead != null ? (e.overhead / e.entry - 1) * 100 : null, his: true };
+  return { sky: !!p?.open_sky, lv: p?.overhead ?? null, pct: p?.overhead_pct ?? null, his: false };
+}
 /** tags of a stock: Buy-Stop candidate, open sky / overhead, don't chase, SL too wide, earnings in the live week, his levels */
 export function tagsHtml(r: StageRow, e: EffPlan | null, hisZone = false): string {
   // hisZone = any of his edits (zone / lines) besides the trade bar
   const p = r.plan, t: string[] = [];
   if (r.bs) t.push('<span class="badge b-pass">מועמדת ל-Buy-Stop</span>');
-  const sky = e?.his && e.openSky != null ? e.openSky : !!p?.open_sky;
-  if (sky) t.push(`<span class="badge b-sky">שמיים פתוחים${p?.ath ? ' · ATH' : ''}</span>`);
-  else if (p?.overhead != null) t.push(`<span class="badge b-off" title="התנגדות תקורה">תקורה $${f(p.overhead)} (+${f(p.overhead_pct, 1)}%)</span>`);
+  const ov = ovOf(r, e);
+  if (ov.sky) t.push(`<span class="badge b-sky">שמיים פתוחים${ov.his ? ' (שלך)' : p?.ath ? ' · ATH' : ''}</span>`);
+  else if (ov.lv != null) t.push(`<span class="badge b-off" title="התנגדות תקורה">תקורה${ov.his ? ' (שלך)' : ''} $${f(ov.lv)} (+${f(ov.pct, 1)}%)</span>`);
   if (p?.chase || (!p && r.stage === 2 && (r.pct_ma ?? 0) > 25)) t.push('<span class="badge b-fail">רחוקה מדי / אל תרדוף</span>');
   if (e?.wide) t.push('<span class="badge b-fail">SL רחב מדי</span>');
   if (r.earn_block) t.push(`<span class="badge b-fail">דוח בעוד ${r.earn_td} ימ״ס${r.earn_est ? ' (משוער)' : ''} – לא להציב Buy-Stop</span>`);
@@ -247,7 +254,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
       <div class="skvs">
         ${kv(e?.his ? 'Buy-Stop (שלך)' : 'Buy-Stop', e ? '$' + f(e.entry) : '—')}${kv('SL' + (e ? ` (${e.basis})` : ''), e ? `$${f(e.stop)} (${f(e.slPct, 1)}%)` : '—', e ? (e.wide ? 'neg' : 'pos') : '')}
         ${kv('יעד', e?.target != null ? '$' + f(e.target) + (e.his ? '' : p?.target_src === 'open_sky' ? ' · 2.5R' : ' · תקורה') : '—')}${kv('R:R', e?.rr != null ? '1:' + f(e.rr) : '—', e?.rr != null && e.rr >= minRr ? 'pos' : 'neg')}
-        ${kv(`מניות בסיכון $${f(maxRisk, 0)}`, e?.shares ? `${e.shares} ($${f(e.shares * e.entry, 0)})` : '—')}${kv('התנגדות תקורה (שנתיים)', p ? (p.open_sky ? 'אין — שמיים פתוחים' : `$${f(p.overhead)} (+${f(p.overhead_pct, 1)}%)`) : '—', p?.open_sky ? 'pos' : '')}
+        ${kv(`מניות בסיכון $${f(maxRisk, 0)}`, e?.shares ? `${e.shares} ($${f(e.shares * e.entry, 0)})` : '—')}${(() => { const ov = ovOf(r, e); return kv('התנגדות תקורה (שנתיים)' + (ov.his ? ' (שלך)' : ''), p || ov.his ? (ov.sky ? 'אין — שמיים פתוחים' : `$${f(ov.lv)} (+${f(ov.pct, 1)}%)`) : '—', ov.sky ? 'pos' : ''); })()}
         ${kv(z ? 'תקרת בסיס (שלך)' : 'תקרת בסיס', ceil != null ? '$' + f(ceil) : '—')}${kv(z ? 'רצפת בסיס (שלך)' : 'רצפת בסיס', floor != null ? '$' + f(floor) : '—')}
         ${kv('מהתקרה', ceil != null ? `${sg((r.close / ceil - 1) * 100)}%` : '—')}${kv('מ-30W SMA', sg(r.pct_ma) + '%', (r.pct_ma ?? 0) > 25 ? 'neg' : '')}
         ${p?.vol_need ? kv('מחזור נדרש בשבוע הפריצה', Math.round(p.vol_need).toLocaleString('en-US')) : ''}${bo ? kv('מחזור פריצה', f(bo.vol_ratio, 1) + 'x', bo.vol_ok ? 'pos' : 'neg') : ''}
@@ -289,7 +296,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל 30W SMA; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
    <li>פריצה (2A): סגירה מעל תקרת ${R.base_window_w} השבועות (שנקבעה לפני ≥${R.min_base_w} ש׳) וגם מעל תקרת טווח שלב 1, מחזור שבוע הפריצה ≥ ${R.vol_mult}x ממוצע ${R.vol_avg_w} שבועות (עליות בתוך הבסיס במחזור רגיל — לא נפסל). לפני פריצה: תנאי על הטריגר — שבוע הפריצה חייב מחזור ≥ ${R.vol_mult}x.</li>
    <li><b>לא רודפים:</b> עד ${R.buy_zone_pct}% מעל רמת הפריצה ועד ${R.max_pct_above_ma}% מעל 30W SMA (מחיר או Buy-Stop), אחרת "רחוקה מדי / אל תרדוף".</li>
-   <li><b>SL:</b> ${R.stop_buffer_pct}% מתחת לשפל הסווינג התקף האחרון (שפל שבועי ב-26 ש׳ שמעולם לא נשבר, מתחת לכניסה); אם אין — ${R.stop_buffer_pct}% מתחת ל-30W SMA. SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" (מעט מניות) — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
+   <li><b>SL:</b> ברירת מחדל ${R.stop_buffer_pct}% מתחת ל-30W SMA ("ממוצע"). אם יש שפל סווינג תקף (שפל שבועי ב-26 ש׳ שמעולם לא נשבר) <b>מעל</b> הממוצע ומתחת לכניסה — ${R.stop_buffer_pct}% מתחתיו ("שפל", SL קטן יותר). לעולם לא מתחת לממוצע (גם קו תמיכה שלך מתחת לממוצע לא מוריד את ה-SL). SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" (מעט מניות) — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
    <li><b>התנגדות תקורה:</b> שיאי סווינג משמעותיים (${R.sig_pivot_w} נרות מכל צד) ב-${R.overhead_w} השבועות האחרונים מעל הכניסה (+${R.target_min_gap_pct}%). הקרובה = היעד. אין = "שמיים פתוחים": יעד = כניסה + ${R.min_rr}×סיכון (R:R ${R.min_rr} בדיוק). R:R ≥ ${R.min_rr}.</li>
    <li><b>דוחות — לפני כניסה:</b> לא מציבים Buy-Stop חדש כשהדוח בתוך ${R.earn_td} ימי המסחר הקרובים (שבוע הדוח והשבוע שלפניו; דוח אחרי הסגירה נספר ליום המסחר הבא) — "דוח בעוד X ימי מסחר – לא להציב Buy-Stop". כש-FinViz מציג רק דוח שעבר: הדוח הבא משוער = האחרון + 13 שבועות ("משוער"), וגם הוא חוסם בתוך החלון. תאריך לא ידוע = לא עובר עד שבודקים.</li>
    <li><b>אחרי דוח (${R.post_earn_td} ימי מסחר):</b> גאפ למעלה (פתיחה ≥ ${R.gap_min_pct}% מעל הסגירה, סגירה מעל ההתנגדות, מחזור ≥ ${R.gap_vol_mult}x ממוצע ${R.gap_vol_avg_d} ימים) = "גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן"; חוזרת להיות מועמדת אחרי ≥ ${R.mini_base_d} ימי מסחר שכולם נסגרו מעל רמת הפריצה (בסיס קטן; נרות יומיים, אחרת סגירה שבועית). הדוח עבר והמחיר עדיין צמוד מתחת להתנגדות = "דוח עבר – להחזיר Buy-Stop".</li>

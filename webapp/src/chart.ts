@@ -516,10 +516,12 @@ export class ChartView {
     };
     const line = (x1: number, x2: number, y: number | null, stroke: string, dash = '') =>
       y == null ? '' : `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="${stroke}" stroke-width="1.5" ${dash ? `stroke-dasharray="${dash}"` : ''}/>`;
+    const tagRects: { x: number; y: number; w: number; h: number }[] = []; // placed drawing tags (stages lines avoid them)
     const tag = (x: number, y: number | null, text: string, color: string, id?: string) => {
       if (y == null) return '';
       const w = text.length * 6.4 + 12;
       const tx = Math.max(2, Math.min(W - w - 2, x - w));
+      tagRects.push({ x: tx, y: y - 9, w, h: 18 });
       return `<g class="tag" ${id ? `data-sel="${id}"` : ''}><rect x="${tx}" y="${y - 9}" width="${w}" height="18" rx="4" fill="${color}"/>` +
         `<text x="${tx + w / 2}" y="${y + 4}" text-anchor="middle">${esc(text)}</text></g>`;
     };
@@ -641,7 +643,19 @@ export class ChartView {
         const col = lm?.color ?? (bot ? '#ff9800' : '#f7c948');
         s += line(0, W, y, col, lm?.dash ?? dash).replace('stroke-width="1.5"', `stroke-width="${sel ? 2.5 : 1.5}"`);
         if (lm?.label && y != null) s += `<g class="tag lhit" data-sel="${d.id}"><rect x="0" y="${y - 7}" width="${W}" height="14" fill="transparent"/></g>`;
-        s += tag(lm?.label ? W * 0.42 : W - 4, y, lm?.label ? `${lm.label} ${(+(d.entry ?? 0)).toFixed(2)}` : 'קו', sel ? col : '#2a2e39', d.id);
+        const ltxt = lm?.label ? `${lm.label} ${(+(d.entry ?? 0)).toFixed(2)}` : 'קו';
+        let lx = lm?.label ? W * 0.42 : W - 4, ly = y;
+        if (lm?.label && y != null) { // a level equal to another (e.g. base floor = swing low): move the tag left, else below
+          const lw = ltxt.length * 6.4 + 12;
+          const free = (x0: number, y0: number) => { const tx = Math.max(2, Math.min(W - lw - 2, x0 - lw)); return !tagRects.some((q) => tx < q.x + q.w && q.x < tx + lw && y0 - 9 < q.y + q.h && q.y < y0 + 9); };
+          let hit = false;
+          for (const dy of [0, 19, -19, 38, -38, 57]) {
+            const c = [W * 0.42, lw + 2, W - 4].find((x0) => free(x0, y + dy));
+            if (c != null) { lx = c; ly = y + dy; hit = true; break; }
+          }
+          if (!hit) { lx = lw + 2; ly = y + 19; }
+        }
+        s += tag(lx, ly, ltxt, sel ? col : '#2a2e39', d.id);
         if (sel && this.editable) handle(d.id, 'entry', W * 0.6, y, col);
       }
     }
