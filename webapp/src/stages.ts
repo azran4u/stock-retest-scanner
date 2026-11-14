@@ -1,3 +1,4 @@
+import { researchHtml, isoLtr, type Research } from './research';
 // Weinstein stage analysis page (#/stages, 'שלבים', Eyal 2026-11-13). Data: stages.json + stages_spark.json from
 // srs_app/stages.py (own FinViz screen + weekly history; separate from the retest scanner). Every stock gets a stage
 // 1-4 + sub-stage + the module-3 identification checks of its stage (✓ / ✗) so Eyal can verify the classification;
@@ -28,6 +29,13 @@ export interface StagesDoc {
   version: number; generated_at: string; week: string; rules: Record<string, number>; screens: Record<string, string>;
   finviz_totals: Record<string, { total: number; read: number }>; skipped: Record<string, number>;
   pre_he: Record<string, string>; buy_stop_candidates?: unknown[]; market: Record<string, EtfStage>; sectors: Record<string, EtfStage>; strong_sectors: string[]; counts: Record<string, number>; rows: StageRow[];
+}
+/** fundamental overviews (Supabase ticker_research, filled by main.ts) -- Buy-Stop candidates (Eyal 2026-11-14) */
+export const stResearch = new Map<string, Research>();
+function rsLine(r: StageRow): string {
+  if (!r.bs) return '';
+  const x = stResearch.get(r.t), sh = x?.data?.short_he as string | undefined;
+  return sh ? `<div class="strs small" title="סקירה פונדמנטלית ${esc(x?.data?.as_of ?? '')}">📊 ${isoLtr(sh)}</div>` : '<div class="strs small muted">📊 סקירה פונדמנטלית: עוד לא נאספה</div>';
 }
 export interface StSpark { w0: string; lo: number; hi: number; n: number; q: string; ma: string }
 
@@ -191,7 +199,7 @@ export function rowHtml(r: StageRow, e: EffPlan | null, sel: boolean, hisZone = 
   const gates = r.entry.filter((c) => !c.info), n = gates.length, ok = gates.filter((c) => c.ok === true).length;
   return `<li class="row strow2${sel ? ' sel' : ''}" data-st="${esc(r.t)}">
   <div class="r1"><b class="sttk" dir="ltr">${esc(r.t)}</b> ${stageBadge(r.stage, r.sub)} <span class="badge conf-${r.conf}" title="${r.score}/4 תנאי זיהוי">${r.score}/4</span>${r.etf ? ` <button class="badge etfl st${r.etf_stage ?? 0}" data-etf="${esc(r.etf)}" title="גרף הסקטור" dir="ltr">${esc(r.etf)}</button>` : ''}</div>
-  <div class="sttags">${tagsHtml(r, e, hisZone)}</div>
+  <div class="sttags">${tagsHtml(r, e, hisZone)}</div>${rsLine(r)}
   <canvas class="stchart" data-stchart="${esc(r.t)}" aria-label="גרף שבועי שנתיים + 30W SMA"></canvas>
   <div class="skvs">
     ${kv('R:R', e?.rr != null ? '1:' + f(e.rr) : '—', e?.rr != null && e.rr >= 2.5 ? 'pos' : 'neg')}${kv('SL', e?.slPct != null ? `${f(e.slPct, 1)}% · ${e.basis}` : '—', e ? (e.wide ? 'neg' : 'pos') : '')}
@@ -261,6 +269,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
       </div>
     </div>
     ${entryChecks.length ? `<h4>תנאי כניסה (${entryChecks.filter((c) => !c.info && c.ok === true).length}/${entryChecks.filter((c) => !c.info).length})</h4><ul class="cks">${entryChecks.map(chk).join('')}</ul>` : ''}
+    ${stResearch.get(r.t) ? `<div class="strsfull">${researchHtml(stResearch.get(r.t), true)}</div>` : r.bs ? '<p class="small muted">סקירה פונדמנטלית: עוד לא נאספה (נוצרת בשגרת השבת לכל מועמדת)</p>' : ''}
     <h4>זיהוי ${esc(STAGE_HE[r.stage])} (${r.score}/4)</h4><ul class="cks">${r.checks.map(chk).join('')}</ul>
     ${r.range ? `<p class="small muted">טווח השלב: $${f(r.range.floor)}–$${f(r.range.ceil)} · בשלב מאז ${ddmm(r.range.since)} (${r.range.since_w} ש׳) — בתוך טווח בסיס, חציית הממוצע לא משנה שלב.</p>` : ''}
     <h4>סינון מקדים</h4><ul class="cks">${r.pre.map((c) => chk({ ...c, he: c.he || d.pre_he?.[c.k] || c.k })).join('')}</ul>

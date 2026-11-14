@@ -12,7 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
-import { UI_DEF, etfCeil, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, stResearch, etfCeil, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -789,6 +789,7 @@ const ST_LS = 'srs-stages-ui';
 let stP: Promise<StagesDoc | null> | null = null;
 let stSpP: Promise<Record<string, StSpark>> | null = null;
 let stEdP: Promise<void> | null = null;
+let stRsP: Promise<void> | null = null;
 const stEdits: StEdits = new Map();
 let stIO: IntersectionObserver | null = null;
 let stCv: ChartView | null = null;
@@ -814,8 +815,9 @@ async function renderStages() {
   stP ??= fetchData('stages.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
   stEdP ??= stLoadEdits();
+  stRsP ??= api.loadResearch().then((rs) => { stResearch.clear(); for (const x of rs) stResearch.set(x.ticker, x); }).catch((e) => console.warn('ticker_research', e));
   if (!stShell) app.innerHTML = '<div class="stages center muted">טוען…</div>';
-  const d = await stP; await stEdP; stDoc = d;
+  const d = await stP; await stEdP; await stRsP; stDoc = d;
   if (!location.hash.startsWith('#/stages')) return;
   if (!d || !d.rows) { stP = null; app.innerHTML = '<header class="top"><a class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין</div></header><div class="center muted">נתוני השלבים לא נטענו</div>'; return; }
   const ui = stUi();

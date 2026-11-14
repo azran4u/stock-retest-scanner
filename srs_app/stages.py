@@ -928,7 +928,7 @@ def candidate(x: Dict[str, Any]) -> Dict[str, Any]:
 KIND_HE = {"breakout": "פריצה טרייה (באזור קנייה)", "trigger": "בסיס שלב 1 מתחת לתקרה", "continuation": "בסיס המשך בשלב 2"}
 
 
-def alert_text(doc: Dict[str, Any]) -> Optional[str]:
+def alert_text(doc: Dict[str, Any], research: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Hebrew Telegram text for the Buy-Stop candidates (None = nothing actionable -> no message)."""
     cs = doc.get("buy_stop_candidates") or []
     if not cs:
@@ -942,6 +942,9 @@ def alert_text(doc: Dict[str, Any]) -> Optional[str]:
                   f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {(c['earn'] + (' (משוער)' if c.get('earn_est') else '') + (f" — בעוד {c['earn_td']} ימ״ס" if c.get('earn_td') is not None else '')) if c['earn'] else 'לא ידוע'}"]
         if c.get("post_earn"):
             lines.append(c["post_earn"])
+        rs = (research or {}).get(c["t"], {}).get("data", {})
+        if rs.get("short_he"):
+            lines.append(f"📊 {rs['short_he']} ({rs.get('as_of', '')})")
         if c["kind"] != "breakout" and c.get("vol_need"):
             lines.append(f"תנאי: מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 ש׳ (≥ {int(c['vol_need']):,} מניות) — אחרת פריצת שווא")
         lines.append("")
@@ -957,7 +960,7 @@ def send_alert(doc: Dict[str, Any]) -> Dict[str, Any]:
     from env TELEGRAM_CHAT_ID or /workspace/cache/telegram_chat_id. Sends only when there is a candidate."""
     import os
     import requests
-    text = alert_text(doc)
+    text = alert_text(doc, research_cache())
     if not text:
         return {"sent": False, "why": "no candidates"}
     tok = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -971,13 +974,86 @@ def send_alert(doc: Dict[str, Any]) -> Dict[str, Any]:
             "n": len(doc["buy_stop_candidates"])}
 
 
+# ----------------------------------------------------------------------------------------------- research
+# Fundamental overview of every Buy-Stop candidate (Eyal 2026-11-14). Same store as the retest PASS overviews:
+# Supabase public.ticker_research (data.scope = 'stage_overview', data.short_he = one line for the card + Telegram,
+# data.consensus / eps_est / valuation ...), written by the bot (Supabase MCP), never by the app. The bot researches
+# (FinViz / Yahoo / MarketBeat ..., real numbers only, missing = 'לא נמצא'), saves a JSON file and runs --research-save,
+# which keeps a local copy (RESEARCH_CACHE: the Telegram alert reads short_he from it) and writes the upsert SQL.
+RESEARCH_CACHE = Path("/workspace/cache/stage_research.json")
+RESEARCH_SQL = Path("/workspace/cache/stage_research_upsert.sql")
+RESEARCH_MAX_AGE_D = 7
+
+
+def research_cache() -> Dict[str, Any]:
+    try:
+        return json.loads(RESEARCH_CACHE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def needs_research(doc: Dict[str, Any], cache: Dict[str, Any], today: Optional[date] = None, max_age_d: int = RESEARCH_MAX_AGE_D) -> List[Dict[str, Any]]:
+    """Candidates without an overview, or with one older than max_age_d days."""
+    today = today or datetime.now().date()
+    out = []
+    for c in doc.get("buy_stop_candidates") or []:
+        r = cache.get(c["t"])
+        asof = (r or {}).get("data", {}).get("as_of")
+        age = (today - date.fromisoformat(asof)).days if asof else None
+        if age is None or age > max_age_d:
+            out.append({"t": c["t"], "n": c.get("n"), "close": c.get("close"), "why": "חסרה" if age is None else f"בת {age} ימים"})
+    return out
+
+
+def _sql_str(x: Optional[str]) -> str:
+    return "null" if x is None else "'" + str(x).replace("'", "''") + "'"
+
+
+def research_upsert_sql(rows: List[Dict[str, Any]]) -> str:
+    vals = []
+    for r in rows:
+        src = "array[" + ",".join(_sql_str(u) for u in (r.get("sources") or [])) + "]::text[]"
+        vals.append(f"({_sql_str(r['ticker'])}, {_sql_str(r['summary_he'])}, {_sql_str(json.dumps(r['data'], ensure_ascii=False))}::jsonb, {src}, now())")
+    return ("insert into public.ticker_research (ticker, summary_he, data, sources, updated_at) values\n" + ",\n".join(vals)
+            + "\non conflict (ticker) do update set summary_he = excluded.summary_he, data = excluded.data, sources = excluded.sources, updated_at = now();\n")
+
+
+def research_save(path: Path) -> Dict[str, Any]:
+    rows = json.loads(Path(path).read_text())
+    rows = rows if isinstance(rows, list) else [rows]
+    for r in rows:
+        assert r.get("ticker") and r.get("summary_he") and isinstance(r.get("data"), dict), "ticker / summary_he / data required"
+        r["data"].setdefault("scope", "stage_overview")
+        r["data"].setdefault("as_of", datetime.now().date().isoformat())
+    cache = research_cache()
+    for r in rows:
+        cache[r["ticker"]] = r
+    RESEARCH_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    RESEARCH_CACHE.write_text(json.dumps(cache, ensure_ascii=False))
+    RESEARCH_SQL.write_text(research_upsert_sql(rows))
+    return {"saved": [r["ticker"] for r in rows], "sql": str(RESEARCH_SQL)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true")
     ap.add_argument("--publish", action="store_true")
     ap.add_argument("--alert", action="store_true", help="Telegram the Buy-Stop candidates (only when there are any)")
+    ap.add_argument("--needs-research", action="store_true", help="list candidates (current stages.json) without a fresh overview")
+    ap.add_argument("--research-save", metavar="JSON", help="store overviews (list of {ticker, summary_he, data, sources}) + write upsert SQL")
+    ap.add_argument("--alert-only", action="store_true", help="Telegram from the current stages.json (no rebuild)")
     a = ap.parse_args()
     sys.path.insert(0, str(REPO))
+    if a.research_save:
+        print(json.dumps(research_save(Path(a.research_save)), ensure_ascii=False))
+        return
+    if a.needs_research or a.alert_only:
+        doc = json.loads(OUT.read_text())
+        if a.needs_research:
+            print(json.dumps(needs_research(doc, research_cache()), ensure_ascii=False))
+        if a.alert_only:
+            print(json.dumps(send_alert(doc), ensure_ascii=False))
+        return
     doc = build(a.offline)
     print(f"[stages] Buy-Stop candidates: {len(doc['buy_stop_candidates'])} " + ", ".join(c["t"] for c in doc["buy_stop_candidates"]))
     if a.publish:

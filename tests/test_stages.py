@@ -233,3 +233,24 @@ def test_sector_status():
     assert sector_status(e(4, 105, 100, "flat"))["ok"] is False      # stage 4 never
     assert sector_status(None)["ok"] is None
     assert sector_status(e(3, 110, 100, "up"))["ok"] is False        # stage 3 top: neither state
+
+
+def test_research_needs_and_sql(tmp_path, monkeypatch):
+    """Eyal 2026-11-14: candidates get a fundamental overview; refresh when older than 7 days; one line in Telegram."""
+    import srs_app.stages as st
+    monkeypatch.setattr(st, "RESEARCH_CACHE", tmp_path / "c.json")
+    monkeypatch.setattr(st, "RESEARCH_SQL", tmp_path / "u.sql")
+    doc = {"week": "2026-11-13", "rules": RULES, "buy_stop_candidates": [{"t": "DUK", "n": "Duke", "close": 129.16}, {"t": "ABC", "n": "Abc", "close": 10}]}
+    f = tmp_path / "r.json"
+    f.write_text('[{"ticker": "DUK", "summary_he": "תחום: חשמל O\'Brien", "data": {"short_he": "Buy · יעד $132", "as_of": "2026-11-14"}, "sources": ["https://finviz.com/quote.ashx?t=DUK"]}]')
+    st.research_save(f)
+    cache = st.research_cache()
+    assert cache["DUK"]["data"]["scope"] == "stage_overview"
+    sql = (tmp_path / "u.sql").read_text()
+    assert "on conflict (ticker) do update" in sql and "O''Brien" in sql
+    assert [x["t"] for x in st.needs_research(doc, cache, date(2026, 11, 20))] == ["ABC"]
+    assert [x["t"] for x in st.needs_research(doc, cache, date(2026, 11, 22))] == ["DUK", "ABC"]   # 8 days old
+    full = {**doc, "buy_stop_candidates": [{"t": "DUK", "n": "Duke", "kind": "trigger", "sub": "1B", "close": 129.16, "level": 132.18, "buy_stop": 132.84,
+             "stop": 121.97, "stop_pct": 8.2, "target": 160.0, "target_src": "open_sky", "open_sky": True, "rr": 2.5, "shares": 5,
+             "pos_usd": 664.0, "vol_need": None, "earn": "2027-02-04", "ex": "NYSE"}]}
+    assert "📊 Buy · יעד $132" in st.alert_text(full, cache)

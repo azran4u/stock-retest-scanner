@@ -15,9 +15,11 @@ const SD = JSON.parse(readFileSync(new URL('../app/data/stages.json', import.met
 const zf = (r) => (r.bo && r.sub === '2A' ? r.bo.base_low : r.base ? r.base.low : r.range?.floor);
 const LT = (SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null && Math.abs(zf(r) / r.plan.swing_low - 1) < 0.003)
   || SD.rows.find((r) => r.plan && (r.plan.ov_levels || []).length >= 1 && r.plan.swing_low != null))?.t;
+const RS = Object.values(JSON.parse(readFileSync('/workspace/cache/stage_research.json', 'utf8')));
 const browser = await chromium.launch();
 for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, false], ['mobile', { width: 390, height: 844 }, true]]) {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: mobile ? 2 : 1, isMobile: mobile, hasTouch: mobile, locale: 'he-IL' });
+  await ctx.addInitScript((rs) => { window.__demoResearch = rs; }, RS);
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE + '?demo=1'); await page.evaluate(() => localStorage.removeItem('srs-stages-ui'));
   await page.waitForSelector('#stagesLink'); await page.waitForTimeout(400);
@@ -29,6 +31,17 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   const cbs = +(await page.locator('[data-tab="bs"] .cnt').innerText());
   ok(nbs === Math.min(cbs, 80), `${name}: Buy-Stop tab lists ${nbs} (count ${cbs})`);
   await page.screenshot({ path: `${OUT}/${name}_bs.png` });
+  // fundamental overview of the Buy-Stop candidates (Eyal 2026-11-14): one line on the card, full on the stock page
+  const bsT = SD.buy_stop_candidates.map((c) => c.t).find((t) => RS.some((x) => x.ticker === t));
+  if (bsT) {
+    const line = await page.locator(`li[data-st="${bsT}"] .strs`).innerText();
+    ok(/Buy|Hold|Sell/.test(line) && line.includes('יעד'), `${name}: ${bsT} card shows the analyst line (${line.slice(0, 60)}…)`);
+    await page.click(`li[data-st="${bsT}"]`); await page.waitForSelector('#stbig canvas'); await page.waitForTimeout(500);
+    const full = await page.locator('.strsfull .research').innerText();
+    ok(full.includes('אנליסטים') && full.includes('סיכונים') && await page.locator('.strsfull .rs-src li').count() >= 3, `${name}: ${bsT} stock page shows the full overview + sources`);
+    await page.locator('.strsfull').screenshot({ path: `${OUT}/${name}_${bsT}_overview.png` });
+    await page.goto(BASE + '?demo=1#/stages'); await page.waitForSelector('[data-tab="bs"]'); await page.waitForTimeout(400);
+  } else ok(false, `${name}: no candidate with an overview to test`);
   for (const s of ['1', '2', '3', '4']) {
     await page.click(`[data-tab="${s}"]`); await page.waitForTimeout(250);
     const b = await page.$$eval('li[data-st] .r1 .badge.st', (x) => x.map((e) => e.className));
