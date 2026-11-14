@@ -3,7 +3,7 @@
 // 1-4 + sub-stage + the module-3 identification checks of its stage (✓ / ✗) so Eyal can verify the classification;
 // 2A = new stage-2 breakout. Rules come from his masterclass page; the thresholds are printed on the page.
 
-export interface Check { k: string; ok: boolean | null; he: string }
+export interface Check { k: string; ok: boolean | null; he: string; info?: boolean }
 export interface Plan {
   kind: 'breakout' | 'trigger' | 'continuation'; entry: number; stop: number; stop_basis: 'low' | 'ma'; swing_low: number | null; target: number | null;
   target_src: 'overhead' | 'open_sky' | null; risk_pct: number | null; stop_wide: boolean; rr: number | null; shares: number | null;
@@ -106,7 +106,7 @@ export function filterRows(rows: StageRow[], ui: UiState, edits?: StEdits, maxRi
   return out;
 }
 
-const chk = (c: Check) => `<li class="${c.ok === true ? 'ok' : c.ok === false ? 'bad' : 'unk'}"><span class="ci">${c.ok === true ? '✓' : c.ok === false ? '✗' : '?'}</span>${esc(c.he)}</li>`;
+const chk = (c: Check) => `<li class="${c.info ? 'unk' : c.ok === true ? 'ok' : c.ok === false ? 'bad' : 'unk'}"><span class="ci">${c.info ? 'ℹ' : c.ok === true ? '✓' : c.ok === false ? '✗' : '?'}</span>${esc(c.he)}</li>`;
 export const stageBadge = (s: number, sub?: string) => `<span class="badge st st${s}">${esc(STAGE_HE[s] || 'שלב ' + s)}${sub ? ' · ' + esc(SUB_HE[sub] || sub) : ''}</span>`;
 
 export function tvUrl(r: Pick<StageRow, 't' | 'ex'>) { return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent((r.ex || '') + ':' + r.t.replace('-', '.'))}&interval=W`; }
@@ -129,7 +129,7 @@ export function tagsHtml(r: StageRow, e: EffPlan | null, hisZone = false): strin
 
 /** One stock in the side list (like the retest list): ticker + stage + tags, mini chart, R:R / SL% / shares / rules. */
 export function rowHtml(r: StageRow, e: EffPlan | null, sel: boolean, hisZone = false): string {
-  const n = r.entry.length, ok = r.entry.filter((c) => c.ok === true).length;
+  const gates = r.entry.filter((c) => !c.info), n = gates.length, ok = gates.filter((c) => c.ok === true).length;
   return `<li class="row strow2${sel ? ' sel' : ''}" data-st="${esc(r.t)}">
   <div class="r1"><b class="sttk" dir="ltr">${esc(r.t)}</b> ${stageBadge(r.stage, r.sub)} <span class="badge conf-${r.conf}" title="${r.score}/4 תנאי זיהוי">${r.score}/4</span></div>
   <div class="sttags">${tagsHtml(r, e, hisZone)}</div>
@@ -175,7 +175,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: { z
   const entryChecks = r.entry.map((c) => {
     if (!e?.his) return c;
     if (c.k === 'rr') return { ...c, ok: e.rr != null && e.rr >= minRr, he: `R:R ≥ ${minRr} לפי הרמות שלך (1:${f(e.rr)})` };
-    if (c.k === 'stop') return { ...c, ok: !e.wide, he: `SL עד ${R.max_stop_pct}% לפי הרמות שלך (${f(e.slPct, 1)}%)` };
+    if (c.k === 'stop') return { ...c, ok: !e.wide, he: `מידע בלבד (לא פוסל): SL ${f(e.slPct, 1)}% לפי הרמות שלך${e.wide ? ' — SL רחב מדי' : ''}` };
     return c;
   });
   return `<div class="cv stcv">
@@ -200,7 +200,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: { z
         ${p?.vol_need ? kv('מחזור נדרש בשבוע הפריצה', Math.round(p.vol_need).toLocaleString('en-US')) : ''}${bo ? kv('מחזור פריצה', f(bo.vol_ratio, 1) + 'x', bo.vol_ok ? 'pos' : 'neg') : ''}
         ${kv('דוח', earnTxt(r), r.earn_live_week ? 'neg' : '')}${kv('Mansfield RS', `${sg(r.rs)} ${r.rs_up == null ? '' : r.rs_up ? '↑' : '↓'}`, (r.rs ?? 0) > 0 ? 'pos' : 'neg')}
       </div></div>
-    ${entryChecks.length ? `<h4>תנאי כניסה (${entryChecks.filter((c) => c.ok === true).length}/${entryChecks.length})</h4><ul class="cks">${entryChecks.map(chk).join('')}</ul>` : ''}
+    ${entryChecks.length ? `<h4>תנאי כניסה (${entryChecks.filter((c) => !c.info && c.ok === true).length}/${entryChecks.filter((c) => !c.info).length})</h4><ul class="cks">${entryChecks.map(chk).join('')}</ul>` : ''}
     <h4>זיהוי ${esc(STAGE_HE[r.stage])} (${r.score}/4)</h4><ul class="cks">${r.checks.map(chk).join('')}</ul>
     ${r.range ? `<p class="small muted">טווח השלב: $${f(r.range.floor)}–$${f(r.range.ceil)} · בשלב מאז ${ddmm(r.range.since)} (${r.range.since_w} ש׳) — בתוך טווח בסיס, חציית הממוצע לא משנה שלב.</p>` : ''}
     <h4>סינון מקדים</h4><ul class="cks">${r.pre.map((c) => chk({ ...c, he: c.he || d.pre_he?.[c.k] || c.k })).join('')}</ul>
@@ -234,7 +234,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל 30W SMA; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
    <li>פריצה (2A): סגירה מעל תקרת ${R.base_window_w} השבועות (שנקבעה לפני ≥${R.min_base_w} ש׳) וגם מעל תקרת טווח שלב 1, מחזור שבוע הפריצה ≥ ${R.vol_mult}x ממוצע ${R.vol_avg_w} שבועות (עליות בתוך הבסיס במחזור רגיל — לא נפסל). לפני פריצה: תנאי על הטריגר — שבוע הפריצה חייב מחזור ≥ ${R.vol_mult}x.</li>
    <li><b>לא רודפים:</b> עד ${R.buy_zone_pct}% מעל רמת הפריצה ועד ${R.max_pct_above_ma}% מעל 30W SMA (מחיר או Buy-Stop), אחרת "רחוקה מדי / אל תרדוף".</li>
-   <li><b>SL:</b> ${R.stop_buffer_pct}% מתחת לשפל הסווינג התקף האחרון (שפל שבועי ב-26 ש׳ שמעולם לא נשבר, מתחת לכניסה); אם אין — ${R.stop_buffer_pct}% מתחת ל-30W SMA. SL מעל ${R.max_stop_pct}% = "SL רחב מדי" (מעט מניות).</li>
+   <li><b>SL:</b> ${R.stop_buffer_pct}% מתחת לשפל הסווינג התקף האחרון (שפל שבועי ב-26 ש׳ שמעולם לא נשבר, מתחת לכניסה); אם אין — ${R.stop_buffer_pct}% מתחת ל-30W SMA. SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" (מעט מניות) — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
    <li><b>התנגדות תקורה:</b> שיאי סווינג משמעותיים (${R.sig_pivot_w} נרות מכל צד) ב-${R.overhead_w} השבועות האחרונים מעל הכניסה (+${R.target_min_gap_pct}%). הקרובה = היעד. אין = "שמיים פתוחים": יעד = כניסה + ${R.min_rr}×סיכון (R:R ${R.min_rr} בדיוק). R:R ≥ ${R.min_rr}.</li>
    <li><b>דוחות:</b> לא משאירים Buy-Stop פתוח לשבוע של דוח (השבוע שבו ההוראה חיה; דוח אחרי הסגירה נספר ליום המסחר הבא), ולא נכנסים ${R.earn_td} ימי מסחר לפני דוח.</li>
    <li>שוק (SPY) לא בשלב 4; סקטור בשלב 2 עם RS &gt; 0; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>

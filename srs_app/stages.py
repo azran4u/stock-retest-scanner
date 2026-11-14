@@ -78,7 +78,7 @@ RULES: Dict[str, Any] = {
     "range_max_w": 52,           # stage 1 / 3 trading range = high / low since the stage began (10-52 weeks)
     "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the 30W SMA (partial exit zone)
     "stop_buffer_pct": 0.7,      # stop = 0.7% under the last valid (never broken) swing low, else under the 30W SMA
-    "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' (too few shares) -> skip / wait
+    "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' flag (info only, never disqualifies)
     "buy_stop_buf_pct": 0.5,     # Buy-Stop = base resistance + 0.5% (min $0.05) -- 'slightly above the ceiling'
     "buy_stop_min_buf": 0.05,
     "pre_bo_pct": 5.0,           # pre-breakout Buy-Stop setup: last close within 5% under the base resistance
@@ -385,6 +385,11 @@ def earnings_live_week(earn: Optional[str], timing: Optional[str], today: date) 
     nxt = today if today.weekday() < 5 else today + timedelta(days=7 - today.weekday())  # weekend run -> next Monday
     fri = nxt + timedelta(days=4 - nxt.weekday())
     return bool(eff <= fri), eff.isoformat(), fri.isoformat()
+
+
+def entry_pass(entry: List[Dict[str, Any]], pre: List[Dict[str, Any]]) -> bool:
+    """All entry gates True (an 'info' check, e.g. a wide SL, never disqualifies) and no pre-filter failure."""
+    return bool(entry) and all(x["ok"] is True for x in entry if not x.get("info")) and all(x["ok"] is not False for x in pre)
 
 
 def trading_days_until(d: Optional[str], today: date) -> Optional[int]:
@@ -697,8 +702,8 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                  "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
                        f"(סגירה {p['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Buy-Stop {p['entry_vs_ma']:+}% מהממוצע)"
                        + (" — רחוקה מדי / אל תרדוף" if p["chase"] else "")},
-                {"k": "stop", "ok": not p["stop_wide"], "he": f"SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, לפי {'שפל תקף' if p['stop_basis'] == 'low' else '30W SMA'})"
-                 + (" — SL רחב מדי (מעט מניות), לדלג או לחכות לבסיס גבוה יותר" if p["stop_wide"] else "")},
+                {"k": "stop", "ok": not p["stop_wide"], "info": True, "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, לפי {'שפל תקף' if p['stop_basis'] == 'low' else '30W SMA'})"
+                 + (" — SL רחב מדי (מעט מניות)" if p["stop_wide"] else "")},
                 {"k": "air", "ok": True if p["open_sky"] else None, "he": ov_he},
                 {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"],
                  "he": f"R:R ≥ {R['min_rr']:g} מה-Buy-Stop ליעד הראשון (1:{p['rr']})"},
@@ -722,7 +727,8 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                     {"k": "ma_ok", "ok": r["close"] > r["ma30"] and r["slope_cls"] != "down",
                      "he": f"המחיר מעל 30W SMA שאינו יורד (שיפוע {r['slope_cls']})"},
                 ]
-        bs = bool(entry) and all(x["ok"] is True for x in entry) and all(x["ok"] is not False for x in pre)
+        # 'info' checks (SL width, Eyal 2026-11-14 'don't disqualify for a wide stop') are shown but never gate
+        bs = entry_pass(entry, pre)
         rows.append({
             "t": t, "n": u.get("company"), "ex": u.get("exchange"), "sec": u.get("sector"), "ind": u.get("industry"),
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,

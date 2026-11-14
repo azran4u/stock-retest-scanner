@@ -131,3 +131,13 @@ def test_alert_text_only_when_candidates():
                                    "shares": 12, "pos_usd": 603.0, "vol_need": 2_000_000, "earn": "2027-01-20", "ex": "NYSE"}]
     txt = alert_text(doc)
     assert "ABC" in txt and "Buy-Stop $50.25" in txt and "R:R 1:2.5" in txt and "12 מניות" in txt and "2027-01-20" in txt and "2,000,000" in txt
+
+
+def test_wide_stop_is_info_only():
+    """Eyal 2026-11-14: don't disqualify for a wide stop, only flag it (SL% sort on the page)."""
+    from srs_app.stages import entry_pass
+    pre = [{"k": "price", "ok": True}]
+    gates = [{"k": "rr", "ok": True}, {"k": "earn", "ok": True}]
+    assert entry_pass(gates + [{"k": "stop", "ok": False, "info": True}], pre)
+    assert not entry_pass(gates + [{"k": "chase", "ok": False}], pre)
+    assert not entry_pass(gates, [{"k": "price", "ok": False}])
