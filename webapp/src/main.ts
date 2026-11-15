@@ -12,7 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
-import { UI_DEF, stResearch, etfCeil, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -957,8 +957,9 @@ async function stRenderEtf(d: StagesDoc, t: string, e: StagesDoc['sectors'][stri
     let sum = 0;
     for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
     cv.setMAs([{ n: 30, color: '#ff9800', data: ma }]);
-    const c = etfCeil(e);
-    cv.setDrawings(c != null ? [{ id: 'etf-ceil', ticker: t, kind: 'line', entry: c, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null, source: 'bot', status: 'active', note: null, meta: { nolabel: true, color: '#2962ff', dash: '' } } as Drawing] : [], null);
+    const c = etfCeil(e), fl = etfFloor(e);
+    const ln = (id: string, p: number, color: string) => ({ id, ticker: t, kind: 'line', entry: p, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null, source: 'bot', status: 'active', note: null, meta: { nolabel: true, color, dash: '' } } as Drawing);
+    cv.setDrawings([...(c != null ? [ln('etf-ceil', c, '#2962ff')] : []), ...(fl != null ? [ln('etf-floor', fl, '#ef5350')] : [])], null);
     cv.fitLevels();
   } catch {
     const nd = $('#stnodata', host); if (nd) nd.hidden = false;

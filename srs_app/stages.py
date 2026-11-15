@@ -86,7 +86,13 @@ RULES: Dict[str, Any] = {
     "overhead_w": 104,           # overhead resistance = significant swing highs of the last 2 years (104 weeks)
     "cong_min_w": 5,             # info: trading block = >= 5 weekly closes inside a 3% band above the entry
     "cong_band_pct": 3.0,
-    "sector_allow_stage3": False,  # sector ETF in stage 3 fails (it is neither 'clear stage 2' nor 'late stage 1')
+    "sector_allow_stage3": False,
+    # index / sector ETF classifier (Eyal 2026-11-15, classify_index)
+    "idx_pivot_w": 3,            # swing high / low of an index = extreme of 3 weekly bars on each side (HH/HL vs LH/LL)
+    "idx_consistent_w": 10,      # 'consistently above' = >= 8 of the last 10 weekly closes above the 30W SMA;
+    "idx_consistent_n": 8,       # 'consistently below' = <= 2 of 10 above; otherwise 'crossing back and forth'
+    "idx_top_w": 10,             # stage 2 -> 3: the SMA lost its rise and no new high of the advance for 10 weeks
+    "mkt_block_stages": [3, 4],  # rule 3: SPY in stage 3 or 4 -> no new long Buy-Stop (was: only stage 4)  # sector ETF in stage 3 fails (it is neither 'clear stage 2' nor 'late stage 1')
     "earn_td": 10,               # no new Buy-Stop when the report session is within the next 10 trading days (Eyal 2026-11-14:
                                  # the report week AND the week before; an after-close report counts on the next session)
     "earn_est_days": 91,         # FinViz has only a PAST date -> next report estimated at +13 weeks ('משוער'), blocks too
@@ -96,7 +102,7 @@ RULES: Dict[str, Any] = {
     "gap_vol_avg_d": 20,
     "mini_base_d": 3,            # ... candidate again after >= 3 sessions after the gap day all closing above the level
     "min_price": 15.0, "hard_min_price": 10.0, "min_dollar_vol_m": 30.0, "min_week_vol": 500_000,
-    "inst_lo": 25.0, "inst_hi": 85.0, "min_weeks": 40, "biotech_cap_b": 2.0,
+    "inst_lo": 25.0, "inst_hi": 85.0, "min_weeks": 156, "biotech_cap_b": 2.0,  # min_weeks: >= 3 years of weekly bars (Eyal 2026-11-15, IEAG), dropped BEFORE classification
     "risk_usd": 55.0, "account_usd": 5000.0, "position_cap_pct": 15.0,
     "spark_weeks": 104, "candle_weeks": 160,
 }
@@ -735,6 +741,208 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
     return out
 
 
+# ----------------------------------------------------------------------------------------------- index / sector ETF stage
+# Eyal 2026-11-15: an index (SPY / QQQ) or sector ETF is classified on its own 4 objective parameters (weekly chart,
+# 30W SMA): (1) price vs the SMA (consistently above / below, or crossing back and forth), (2) the SMA slope,
+# (3) the swing structure (HH/HL vs LH/LL) with the range support / resistance, (4) the practical (top-down) meaning.
+# Rule 1: slope beats a single cross -- stage 4 needs a FALLING SMA AND a close below significant support (the last
+# confirmed swing low / the range floor); a dip under a rising SMA that keeps its higher low stays stage 2.
+# Rule 2: back above a 30W SMA that went flat after a decline = late stage 1 / turning point ('1T').
+# Rule 3: top-down -- market stage 3 / 4 = no new long Buy-Stops; market 2 + sector 2 = full allocation; sector 4 = avoid.
+IDX_TD = {  # top-down meaning (Eyal's table, 'משמעות מעשית למסחר')
+    1: ("caution", "המתנה / זהירות — מותר לסמן מובילות שפורצות מוקדם"),
+    "1T": ("turn", "נקודת מפנה (סוף שלב 1) — מותר לקנות את המובילות שעומדות לפרוץ"),
+    2: ("full", "אור ירוק מלא — פריצות של מניות חזקות"),
+    3: ("defend", "הגנה וצמצום חשיפה — אין לונג חדש, להדק סטופים"),
+    4: ("avoid", "אור אדום ללונג — לא קונים מניות חדשות"),
+    "2-dip": ("full", "שלב 2 — ירידה זמנית מתחת לממוצע עולה, השפל העולה מחזיק (כלל 1)"),
+    "2-weak": ("caution", "שלב 2 בסיכון — השפל העולה נשבר, הממוצע עדיין עולה"),
+}
+
+
+def _swings(h: np.ndarray, l: np.ndarray, i: int, k: int, ph: List[int], pl: List[int]) -> Tuple[List[int], List[int]]:
+    """Swing highs / lows confirmed by week i (a pivot j needs k bars after it: j + k <= i)."""
+    return [j for j in ph if j + k <= i], [j for j in pl if j + k <= i]
+
+
+def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES) -> Optional[Dict[str, Any]]:
+    """Weinstein stage of an index / sector ETF (Eyal 2026-11-15) -- a week-by-week state machine:
+    1 (base after a decline) -> 2 on a close above the base ceiling with the SMA not falling, or a gradual breakout
+      (SMA rising + price consistently above it + HH and HL); -> 4 only with a falling SMA AND a close below the base floor.
+    2 -> 4 only with a falling SMA AND a close below the last confirmed swing low (rule 1); -> 3 when the SMA loses its
+      rise (flat / falling) and there is no new high of the advance for idx_top_w weeks, or the SMA is no longer rising
+      and the higher low broke. A close under a still-rising SMA keeps stage 2 ('2-dip' while the higher low holds).
+    3 (top after an advance) -> 2 on a close above the top's ceiling with a non-falling SMA, or the SMA rising again +
+      consistently above + HH/HL; -> 4 with a falling SMA AND a close below the top's floor / last swing low.
+    4 -> 1 once the SMA stops falling; -> 2 on a close above the last lower high with a rising SMA."""
+    n = len(w)
+    if n < R["ma_weeks"] + R["slope_lookback_w"]:
+        return None
+    h, l, c = (w[k].values.astype(float) for k in ("High", "Low", "Close"))
+    ma = w["Close"].rolling(R["ma_weeks"]).mean().values
+    k = R["idx_pivot_w"]
+    PH, PL = pivots(h, k, True), pivots(l, k, False)
+    cw, cn = R["idx_consistent_w"], R["idx_consistent_n"]
+
+    def above_n(i: int) -> int:
+        a = max(R["ma_weeks"] - 1, i - cw + 1)
+        return int(np.sum(c[a:i + 1] > ma[a:i + 1]))
+
+    def struct(i: int) -> Tuple[Optional[bool], Optional[bool], List[int], List[int]]:
+        ph, pl = _swings(h, l, i, k, PH, PL)
+        hh = bool(h[ph[-1]] > h[ph[-2]]) if len(ph) >= 2 else None
+        hl = bool(l[pl[-1]] > l[pl[-2]]) if len(pl) >= 2 else None
+        # structure in progress: a close above the last swing high = a new higher high being made; a close below the
+        # last swing low = the higher low is gone (a lower low)
+        if ph and c[i] > h[ph[-1]]:
+            hh = True
+        if pl and c[i] < l[pl[-1]]:
+            hl = False
+        return hh, hl, ph, pl
+
+    i0 = R["ma_weeks"] + R["slope_lookback_w"] - 1
+    st, start, peak_i, box_a = None, i0, i0, i0
+    for i in range(i0, n):
+        sc, _ = slope_class(ma, i, R)
+        if sc is None:
+            continue
+        if st is None:
+            st = 2 if sc == "up" else 4 if sc == "down" else (1 if c[i] < ma[i] else 3)
+            start = peak_i = box_a = i
+            continue
+        hh, hl, ph, pl = struct(i)
+        sup = float(l[pl[-1]]) if pl else None          # last confirmed swing low = the support to hold
+        res = float(h[ph[-1]]) if ph else None          # last confirmed swing high
+        cons_up = above_n(i) >= cn
+        new = st
+        if st in (1, 3):
+            # box = at least the last base_window_w (26) weeks; a top's box starts at the advance's peak
+            a = max(0, i - R["range_max_w"], min(box_a, i - R["base_window_w"]))
+            # breakout level = the box's highest CONFIRMED high (not the last idx_pivot_w weeks: an advance that closes
+            # under each new intraweek high would otherwise ratchet the ceiling up forever)
+            ceil, floor = float(h[a:max(a + 1, i - k)].max()), float(l[a:i].min())
+            if (c[i] > ceil and sc != "down") or (sc == "up" and cons_up and hh and hl):
+                new = 2
+            elif sc == "down" and c[i] < floor:
+                new = 4
+        elif st == 2:
+            if h[i] >= h[peak_i]:
+                peak_i = i
+            broke = sup is not None and c[i] < sup
+            if sc == "down" and broke:
+                new = 4
+            elif sc != "up" and (i - peak_i >= R["idx_top_w"] or broke):
+                new = 3
+        elif st == 4:
+            if sc == "up" and res is not None and c[i] > res:
+                new = 2
+            elif sc != "down":
+                new = 1
+        if new != st:
+            box_a = peak_i if (st == 2 and new == 3) else i
+            st, start = new, i
+            peak_i = i
+    i = n - 1
+    sc, slope = slope_class(ma, i, R)
+    hh, hl, ph, pl = struct(i)
+    above = bool(c[i] > ma[i])
+    an = above_n(i)
+    crosses = int(np.sum(np.diff(np.sign(c[-14:] - ma[-14:])) != 0))
+    sup = float(l[pl[-1]]) if pl else None
+    res = float(h[ph[-1]]) if ph else None
+    pos = "above" if (an >= cn and above) else "below" if (an <= cw - cn and not above) else "cross"
+    struct_cls = "HH/HL" if (hh and hl) else "LH/LL" if (hh is False and hl is False) else "mixed"
+    if st in (1, 3):
+        a = max(0, n - R["range_max_w"], min(box_a, n - R["base_window_w"]))
+        ceil, floor = float(h[a:].max()), float(l[a:].min())
+    elif st == 2:
+        ceil, floor = float(h[peak_i:].max()) if peak_i < n else float(h[-1]), sup
+    else:
+        ceil, floor = res, float(l[max(0, n - R["base_window_w"]):].min())
+    broke = bool(sup is not None and c[i] < sup)
+    if st == 2:
+        sub = "2" if above else ("2-dip" if not broke and sc == "up" else "2-weak")
+    elif st == 1:
+        sub = "1T" if above and sc in ("flat", "up") else "1"
+    elif st == 4:
+        sub = "4" if not above else "4-late"
+    else:
+        sub = "3"
+    rs = mansfield(w["Close"], bench_w, R).values if bench_w is not None else np.full(n, np.nan)
+    rs_now = rs[i]
+    rs_prev = rs[i - R["rs_rising_w"]] if i >= R["rs_rising_w"] else np.nan
+    rs_up = bool(rs_now > rs_prev) if not (np.isnan(rs_now) or np.isnan(rs_prev)) else None
+    sl_he = {"up": "עולה", "down": "יורד", "flat": "שטוח"}.get(sc or "", "?")
+    pos_he = {"above": f"מעל הממוצע בעקביות ({an}/{cw} סגירות)", "below": f"מתחת לממוצע בעקביות ({an}/{cw} סגירות מעל)",
+              "cross": f"חוצה את הממוצע הלוך ושוב ({an}/{cw} סגירות מעל, {crosses} חציות ב-13 ש׳)"}[pos]
+    st_he = {"HH/HL": "שיאים עולים ושפלים עולים (HH/HL)", "LH/LL": "שיאים יורדים ושפלים יורדים (LH/LL)", "mixed": "מבנה מעורב / דשדוש"}[struct_cls]
+
+    def ck(key, ok, he):
+        return {"k": key, "ok": None if ok is None else bool(ok), "he": he}
+    fl = f"${floor:.2f}" if floor is not None else "—"
+    ce = f"${ceil:.2f}" if ceil is not None else "—"
+    checks = {
+        1: [ck("pos", pos == "cross" or sub == "1T", f"מחיר מול 30W SMA: {pos_he} — שלב 1: חוצה הלוך ושוב"),
+            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 1: שטוח אחרי ירידה"),
+            ck("struct", struct_cls != "LH/LL", f"מבנה: {st_he} — שלב 1: קופסת דשדוש"),
+            ck("range", floor is not None and ceil is not None and floor <= c[i] <= ceil, f"בתוך הקופסה {fl}–{ce} (תמיכה / התנגדות)")],
+        2: [ck("pos", pos == "above" or (sub == "2-dip"), f"מחיר מול 30W SMA: {pos_he} — שלב 2: מעל בעקביות (סגירה בודדת מתחת לממוצע עולה לא משנה, כלל 1)"),
+            ck("slope", sc == "up", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 2: עולה"),
+            ck("struct", struct_cls == "HH/HL", f"מבנה: {st_he}"),
+            ck("range", not broke, f"השפל העולה האחרון {('$%.2f' % sup) if sup else '—'} לא נשבר" + (" — נשבר" if broke else ""))],
+        3: [ck("pos", pos == "cross", f"מחיר מול 30W SMA: {pos_he} — שלב 3: חוצה מטה ומעלה אחרי עלייה"),
+            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 3: מתיישר"),
+            ck("struct", hh is not True, f"מבנה: {st_he} — שלב 3: כישלון בשיא גבוה משמעותית"),
+            ck("range", floor is not None and ceil is not None and floor <= c[i] <= ceil, f"בתוך קופסת הפסגה {fl}–{ce}")],
+        4: [ck("pos", pos == "below", f"מחיר מול 30W SMA: {pos_he} — שלב 4: מתחת בעקביות"),
+            ck("slope", sc == "down", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 4: יורד"),
+            ck("struct", struct_cls == "LH/LL", f"מבנה: {st_he}"),
+            ck("range", c[i] < (ceil or np.inf), f"מתחת לשיא היורד האחרון {ce} (שבר את תמיכת שלב 3)")],
+    }[st]
+    score = sum(1 for x in checks if x["ok"])
+    td = IDX_TD[sub if sub in ("1T", "2-dip", "2-weak") else st]
+    return {
+        "stage": st, "sub": sub, "score": score, "conf": "high" if score == 4 else "med" if score == 3 else "low",
+        "checks": checks, "week": w.index[i].strftime("%Y-%m-%d"), "close": _f(c[i]), "ma30": _f(ma[i]),
+        "slope": _f(slope), "slope_cls": sc, "pct_ma": _f((c[i] / ma[i] - 1) * 100, 1), "rs": _f(rs_now, 1),
+        "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl, "weeks": n,
+        "idx": {"pos": pos, "above_n": an, "of_w": cw, "crosses13": crosses, "struct": struct_cls,
+                "swing_hi": [_f(h[j]) for j in ph[-2:]], "swing_lo": [_f(l[j]) for j in pl[-2:]],
+                "swing_hi_w": [w.index[j].strftime("%Y-%m-%d") for j in ph[-2:]], "swing_lo_w": [w.index[j].strftime("%Y-%m-%d") for j in pl[-2:]],
+                "support": _f(sup), "resistance": _f(res), "broke_support": broke, "td": td[0], "td_he": td[1]},
+        "range": {"ceil": _f(ceil), "floor": _f(floor), "since_w": n - 1 - start, "since": w.index[start].strftime("%Y-%m-%d")},
+        "bo": None,
+    }
+
+
+def market_gate(spy: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
+    """Rule 3 (Eyal 2026-11-15): SPY stage 3 or 4 -> no new long Buy-Stop. Stage 1 = caution (allowed), 2 = full."""
+    if not spy:
+        return {"ok": None, "he": "שוק (SPY): לא ידוע"}
+    s = spy["stage"]
+    ok = s not in R["mkt_block_stages"]
+    return {"ok": ok, "he": f"שוק כללי (SPY) לא בשלב 3/4 — כעת {('שלב %s' % s)}{' (סוף שלב 1)' if spy.get('sub') == '1T' else ''}: {spy.get('idx', {}).get('td_he', '')}"}
+
+
+def top_down(mkt: Optional[Dict[str, Any]], sec: Optional[Dict[str, Any]], R=RULES) -> Tuple[str, str]:
+    """Rule 3 label per sector: (key, Hebrew)."""
+    ms = (mkt or {}).get("stage")
+    if ms in R["mkt_block_stages"]:
+        return "mkt_off", f"שוק בשלב {ms} — לצמצם חשיפה, אין לונג חדש"
+    if not sec:
+        return "na", "לא ידוע"
+    s, ok = sec["stage"], sec.get("sec_ok")
+    if s == 4:
+        return "avoid", "להימנע מהסקטור (שלב 4)"
+    if s == 3:
+        return "no_new", "אין לונג חדש (פסגה / הפצה)"
+    if ok and sec.get("sec_case") == "2":
+        return ("full", "הקצאה מלאה — פריצות אגרסיביות") if ms == 2 else ("caution", "שלב 2, אבל השוק בשלב 1 — זהירות")
+    if ok:
+        return "early", "זהירות — מובילות מוקדמות (סוף שלב 1)"
+    return "wait", "להמתין — הסקטור לא עומד בכלל"
+
+
 def write_candles(t: str, w: pd.DataFrame, R=RULES) -> None:
     """Weekly OHLCV of the last candle_weeks for the big chart (app/data/stages_candles/T.json), written only on change."""
     wc = w.iloc[-R["candle_weeks"]:]
@@ -761,6 +969,11 @@ def spark(w: pd.DataFrame, weeks: int) -> Dict[str, Any]:
 
 
 # ----------------------------------------------------------------------------------------------- build
+def history_ok(w: pd.DataFrame, R=RULES) -> bool:
+    """>= 3 years of completed weekly bars (min_weeks = 156; Eyal 2026-11-15, IEAG). Checked BEFORE classification."""
+    return len(w) >= R["min_weeks"]
+
+
 def prefilter(u: Dict[str, Any], weeks: int, close: float, dollar_vol_m: Optional[float], R=RULES) -> List[Dict[str, Any]]:
     inst = u.get("inst_own")
     small_bio = (u.get("industry") == "Biotechnology") and (u.get("mcap") or 0) < R["biotech_cap_b"] * 1e9
@@ -771,7 +984,7 @@ def prefilter(u: Dict[str, Any], weeks: int, close: float, dollar_vol_m: Optiona
          "he": "נזילות: מחזור יומי > $30M או > 500K מניות בשבוע"},
         {"k": "inst", "ok": None if inst is None else bool(R["inst_lo"] <= inst <= R["inst_hi"]), "he": "החזקה מוסדית 25%–85%"},
         {"k": "bio", "ok": not small_bio, "he": "לא ביוטק קטן (ביוטכנולוגיה מתחת ל-$2B שווי)"},
-        {"k": "hist", "ok": weeks >= R["min_weeks"], "he": "לפחות 40 שבועות מסחר"},
+        {"k": "hist", "ok": weeks >= R["min_weeks"], "he": f"לפחות 3 שנות מסחר ({R['min_weeks']} נרות שבועיים)"},
     ]
 
 
@@ -793,17 +1006,20 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
     for e in etfs:
         if e == BENCH or e not in hm:
             continue
-        r = classify(weekly(hm[e], last), bw, R)
+        r = classify_index(weekly(hm[e], last), bw, R)  # Eyal 2026-11-15: dedicated index / sector classifier
         if r:
-            etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "slope_cls", "pct_ma", "rs", "rs_up", "week", "checks")}}
+            etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "slope_cls", "pct_ma", "rs", "rs_up", "week", "checks", "hh", "hl", "idx")}}
             ss_ = sector_status(etf_out[e], R)
             etf_out[e].update(sec_ok=ss_["ok"], sec_case=ss_["case"], sec_he=ss_["he"], range=r.get("range"),
-                              base=r.get("base"), bo=r.get("bo"), weeks=r.get("weeks"))
+                              base=None, bo=None, weeks=r.get("weeks"))
+    for e in etf_out:  # rule 3 (top-down) label per sector / market
+        tk, the = top_down(etf_out.get("SPY"), etf_out[e], R) if e not in MARKET else (etf_out[e]["idx"]["td"], etf_out[e]["idx"]["td_he"])
+        etf_out[e].update(td=tk, td_he=the)
     strong = sorted([e for e in SECTOR_ETF.values() if e in etf_out and etf_out[e]["stage"] == 2 and (etf_out[e]["rs"] or -99) > 0],
                     key=lambda e: -(etf_out[e]["rs"] or 0))[:3]
-    mkt_stage4 = etf_out.get("SPY", {}).get("stage") == 4
+    mg = market_gate(etf_out.get("SPY"), R)
 
-    rows, sparks, skipped = [], {}, {"no_history": 0, "short_history": 0}
+    rows, sparks, skipped, short_t = [], {}, {"no_history": 0, "short_history": 0}, []
     OUT_CANDLES.mkdir(parents=True, exist_ok=True)
     for t in tickers:
         u = U[t]
@@ -812,6 +1028,10 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             skipped["no_history"] += 1
             continue
         w = weekly(df, last)
+        if not history_ok(w, R):  # Eyal 2026-11-15: < 3 years of history -> not in any tab / the candidates at all
+            skipped["short_history"] += 1
+            short_t.append(t)
+            continue
         r = classify(w, bw, R)
         if r is None:
             skipped["short_history"] += 1
@@ -834,10 +1054,10 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             ov_he = (f"שמיים פתוחים: אין התנגדות תקורה ב-2 השנים האחרונות{' (שיא כל הזמנים)' if p['ath'] else ''} — יעד = כניסה + {R['min_rr']:g}×סיכון"
                      if p["open_sky"] else f"התנגדות תקורה קרובה ${p['overhead']} (+{p['overhead_pct']}% מהכניסה, שיא סווינג משמעותי ב-2 השנים)")
             entry = [
-                {"k": "mkt", "ok": not mkt_stage4, "he": f"שוק כללי (SPY) לא בשלב 4 (כעת שלב {etf_out.get('SPY', {}).get('stage', '?')})"},
+                {"k": "mkt", "ok": mg["ok"], "he": mg["he"]},
                 {"k": "sector", "ok": None if not e else e["sec_ok"],
                  "he": f"סקטור {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל 30W SMA שהפסיק לרדת)"
-                       + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}; RS {e['rs']} מידע בלבד)" if e else "")},
+                       + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}, מבנה {e['idx']['struct']}; RS {e['rs']} מידע בלבד) · {e.get('td_he', '')}" if e else "")},
                 {"k": "rs", "ok": rs_ok, "he": "Mansfield RS > 0 ועולה"},
                 {"k": "chase", "ok": not p["chase"],
                  "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
@@ -879,6 +1099,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         rows.append({
             "t": t, "n": u.get("company"), "ex": u.get("exchange"), "sec": u.get("sector"), "ind": u.get("industry"),
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,
+            "etf_td": e.get("td") if e else None, "etf_td_he": e.get("td_he") if e else None,
             "mcap_b": _f((u.get("mcap") or 0) / 1e9, 1) if u.get("mcap") else None, "inst": u.get("inst_own"),
             "dv_m": _f(dv, 1), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
             "earn_eff": ei["eff"], "earn_timing": timing, "earn_live_week": in_live, "earn_est": ei["est"],
@@ -903,7 +1124,8 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         "version": 1, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "week": max((x["week"] for x in rows), default=None), "rules": R, "screens": SCREENS,
         "finviz_totals": uni.get("totals"), "finviz_fetched_at": uni.get("fetched_at"), "skipped": skipped,
-        "market": {k: etf_out[k] for k in MARKET if k in etf_out},
+        "short_history_tickers": short_t,
+        "market": {k: etf_out[k] for k in MARKET if k in etf_out}, "market_gate": mg,
         "sectors": {k: etf_out[k] for k in etf_out if k not in MARKET}, "strong_sectors": strong,
         "pre_he": {x["k"]: x["he"] for x in prefilter({}, 0, 0.0, None, R)},  # row 'pre' = [{k, ok}] (text once here)
         "counts": counts, "rows": rows,
@@ -922,7 +1144,8 @@ def candidate(x: Dict[str, Any]) -> Dict[str, Any]:
             "buy_stop": p["entry"], "stop": p["stop"], "stop_pct": p["risk_pct"], "target": p["target"],
             "target_src": p["target_src"], "open_sky": p["open_sky"], "rr": p["rr"], "shares": p["shares"],
             "pos_usd": p["pos_usd"], "vol_need": p.get("vol_need"), "earn": x["earn"], "earn_td": x["earn_td"],
-            "earn_est": x.get("earn_est", False), "post_earn": x.get("post_earn"), "ex": x["ex"]}
+            "earn_est": x.get("earn_est", False), "post_earn": x.get("post_earn"), "ex": x["ex"],
+            "etf": x.get("etf"), "etf_stage": x.get("etf_stage"), "sec_td_he": x.get("etf_td_he")}
 
 
 KIND_HE = {"breakout": "פריצה טרייה (באזור קנייה)", "trigger": "בסיס שלב 1 מתחת לתקרה", "continuation": "בסיס המשך בשלב 2"}
@@ -934,7 +1157,13 @@ def alert_text(doc: Dict[str, Any], research: Optional[Dict[str, Any]] = None) -
     if not cs:
         return None
     R = doc["rules"]
-    lines = [f"🟢 שיטת סטף — מועמדות ל-Buy-Stop (שבוע {doc['week']}): {len(cs)}", ""]
+    lines = [f"🟢 שיטת סטף — מועמדות ל-Buy-Stop (שבוע {doc['week']}): {len(cs)}"]
+    mk = doc.get("market") or {}
+    if mk.get("SPY"):  # rule 3: the market stage + its top-down meaning (QQQ as info)
+        q = mk.get("QQQ")
+        lines.append(f"שוק: SPY שלב {mk['SPY']['stage']} — {mk['SPY'].get('idx', {}).get('td_he', '')}"
+                     + (f" · QQQ שלב {q['stage']} (מידע)" if q else ""))
+    lines.append("")
     for c in cs:
         tgt = f"${c['target']}" + (" (שמיים פתוחים · R:R 2.5)" if c["open_sky"] else " (התנגדות תקורה)")
         lines += [f"{c['t']} · {KIND_HE.get(c['kind'], c['kind'])}",
@@ -942,6 +1171,8 @@ def alert_text(doc: Dict[str, Any], research: Optional[Dict[str, Any]] = None) -
                   f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {(c['earn'] + (' (משוער)' if c.get('earn_est') else '') + (f" — בעוד {c['earn_td']} ימ״ס" if c.get('earn_td') is not None else '')) if c['earn'] else 'לא ידוע'}"]
         if c.get("post_earn"):
             lines.append(c["post_earn"])
+        if c.get("sec_td_he"):
+            lines.append(f"סקטור {c.get('etf')}: שלב {c.get('etf_stage')} — {c['sec_td_he']}")
         rs = (research or {}).get(c["t"], {}).get("data", {})
         if rs.get("short_he"):
             lines.append(f"📊 {rs['short_he']} ({rs.get('as_of', '')})")

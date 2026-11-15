@@ -26,6 +26,9 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.click('#stagesLink'); await page.waitForSelector('[data-tab="bs"]');
   ok(page.url().includes('#/stages'), `${name}: link opens #/stages`);
   ok(await page.locator('.mkts .mk').count() === 3, `${name}: SPY / QQQ / IWM stage shown`);
+  // index / sector classifier (Eyal 2026-11-15): market line with the top-down meaning (SPY gate, QQQ info)
+  const mktd = await page.locator('#mktd').innerText();
+  ok(/SPY\) שלב \d/.test(mktd) && mktd.includes('QQQ'), `${name}: market top-down line (${mktd.slice(0, 70)}…)`);
   ok(await page.locator('[data-tab="bs"].on').count() === 1, `${name}: Buy-Stop candidates tab first + default`);
   const nbs = await page.locator('li[data-st]').count();
   const cbs = +(await page.locator('[data-tab="bs"] .cnt').innerText());
@@ -133,6 +136,16 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.locator('details.secs summary').click(); await page.waitForTimeout(200);
   await page.locator('details.secs a.etfl[data-etf="XLU"]').click(); await page.waitForFunction(() => location.hash === '#/stages/XLU'); await page.waitForTimeout(800);
   ok((await page.locator('#secrule').innerText()).includes('סוף שלב 1 – התעוררות'), `${name}: XLU = late stage 1 / awakening`);
+  ok(await page.locator('#idxkv .skv').count() >= 8 && /מבנה/.test(await page.locator('#idxkv').innerText()), `${name}: XLU page shows the 4 parameters (position / slope / structure / meaning)`);
+  for (const [T, st] of [['XLF', 2], ['SPY', SD.market.SPY.stage], ['QQQ', SD.market.QQQ.stage]]) {
+    await page.evaluate((t) => { location.hash = '#/stages/' + t; }, T);
+    await page.waitForFunction((t) => location.hash === '#/stages/' + t && document.querySelector('#idxkv') && document.querySelector('#stbig canvas'), T); await page.waitForTimeout(700);
+    const kvs = await page.locator('#idxkv').innerText();
+    ok(kvs.includes('שלב ' + st) && /HH\/HL|LH\/LL|מעורב/.test(kvs) && /שיפוע/.test(kvs), `${name}: ${T} page = stage ${st} + slope + structure`);
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (${T})`);
+    await page.screenshot({ path: `${OUT}/${name}_etf_${T}.png`, fullPage: true });
+  }
+  await page.evaluate(() => { location.hash = '#/stages/XLU'; }); await page.waitForTimeout(600);
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (ETF)`);
   await page.screenshot({ path: `${OUT}/${name}_etf_XLU.png` });
   if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); if (/#\/stages\//.test(page.url())) { await page.click('#stback'); } await page.waitForSelector('li[data-st]'); }

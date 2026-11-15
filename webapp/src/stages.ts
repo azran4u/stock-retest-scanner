@@ -24,11 +24,12 @@ export interface StageRow {
   earn_eff?: string | null; earn_timing?: 'a' | 'b' | null; earn_live_week?: boolean;
   earn_est?: boolean; earn_last?: string | null; earn_last_ago?: number | null; earn_block?: boolean; post_earn?: string | null; post_gap?: boolean;
 }
-export interface EtfStage { sec_ok?: boolean | null; sec_case?: string | null; sec_he?: string; range?: StageRow['range']; bo?: StageRow['bo']; base?: StageRow['base']; weeks?: number; slope_cls?: string; name: string; stage: number; sub: string; score: number; conf: string; close: number; ma30: number; slope: number; pct_ma: number; rs: number | null; rs_up: boolean | null; week: string; checks: Check[] }
+export interface IdxInfo { pos: 'above' | 'below' | 'cross'; above_n: number; of_w: number; crosses13: number; struct: 'HH/HL' | 'LH/LL' | 'mixed'; swing_hi: number[]; swing_lo: number[]; swing_hi_w?: string[]; swing_lo_w?: string[]; support: number | null; resistance: number | null; broke_support: boolean; td: string; td_he: string }
+export interface EtfStage { idx?: IdxInfo; td?: string; td_he?: string; hh?: boolean | null; hl?: boolean | null; sec_ok?: boolean | null; sec_case?: string | null; sec_he?: string; range?: StageRow['range']; bo?: StageRow['bo']; base?: StageRow['base']; weeks?: number; slope_cls?: string; name: string; stage: number; sub: string; score: number; conf: string; close: number; ma30: number; slope: number; pct_ma: number; rs: number | null; rs_up: boolean | null; week: string; checks: Check[] }
 export interface StagesDoc {
   version: number; generated_at: string; week: string; rules: Record<string, number>; screens: Record<string, string>;
   finviz_totals: Record<string, { total: number; read: number }>; skipped: Record<string, number>;
-  pre_he: Record<string, string>; buy_stop_candidates?: unknown[]; market: Record<string, EtfStage>; sectors: Record<string, EtfStage>; strong_sectors: string[]; counts: Record<string, number>; rows: StageRow[];
+  pre_he: Record<string, string>; buy_stop_candidates?: unknown[]; market_gate?: { ok: boolean | null; he: string }; market: Record<string, EtfStage>; sectors: Record<string, EtfStage>; strong_sectors: string[]; counts: Record<string, number>; rows: StageRow[];
 }
 /** fundamental overviews (Supabase ticker_research, filled by main.ts) -- Buy-Stop candidates (Eyal 2026-11-14) */
 export const stResearch = new Map<string, Research>();
@@ -47,7 +48,7 @@ const ddmm = (iso?: string | null) => (iso && iso.length >= 10 ? `${iso.slice(8,
 export const STAGE_HE: Record<number, string> = { 1: 'שלב 1 · בסיס', 2: 'שלב 2 · עלייה', 3: 'שלב 3 · פסגה', 4: 'שלב 4 · ירידה' };
 export const SUB_HE: Record<string, string> = {
   '2A': 'פריצה חדשה (2A)', '2': 'מגמה עולה', '2-ext': 'מתוחה מעל הממוצע (>35%)', '2-weak': 'מתחת לממוצע עולה (אזהרה)',
-  '1A': 'בסיס מוקדם (<10 ש׳)', '1B': 'בסיס בוגר (≥10 ש׳)', '3': 'פסגה / הפצה', '4': 'מגמת ירידה', '4-late': 'מעל ממוצע יורד (אולי תחילת שלב 1)',
+  '1A': 'בסיס מוקדם (<10 ש׳)', '1': 'בסיס', '1T': 'סוף שלב 1 · נקודת מפנה', '2-dip': 'מתחת לממוצע עולה, שפל עולה מחזיק', '1B': 'בסיס בוגר (≥10 ש׳)', '3': 'פסגה / הפצה', '4': 'מגמת ירידה', '4-late': 'מעל ממוצע יורד (אולי תחילת שלב 1)',
 };
 const CONF_HE: Record<string, string> = { high: 'ודאות גבוהה', med: 'ודאות בינונית', low: 'ודאות נמוכה' };
 export type Tab = 'bs' | '2A' | '1' | '2' | '3' | '4' | 'novol';
@@ -277,13 +278,18 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
   </div></div>`;
 }
 
+const TD_CLS: Record<string, string> = { full: 'pos', turn: 'pos', early: 'pos', caution: 'warn', wait: 'neg', defend: 'neg', no_new: 'neg', avoid: 'neg', mkt_off: 'neg', na: '' };
+const POS_HE: Record<string, string> = { above: 'מעל בעקביות', below: 'מתחת בעקביות', cross: 'חוצה הלוך ושוב' };
+const SLOPE_HE = (s?: string) => (s === 'up' ? 'עולה' : s === 'down' ? 'יורד' : 'שטוח');
 export function topDownHtml(d: StagesDoc): string {
   const m = (k: string, e?: EtfStage) => e ? `<div class="mk"><a class="etfl" data-etf="${k}" href="#/stages/${k}" dir="ltr"><b>${k}</b></a> ${stageBadge(e.stage, e.sub)}<span class="small muted">RS <span dir="ltr">${sg(e.rs)}</span></span></div>` : '';
+  const spy = d.market.SPY, mg = d.market_gate;
   const secs = Object.entries(d.sectors).sort((a, b) => (b[1].rs ?? -99) - (a[1].rs ?? -99));
   return `<section class="topdown"><div class="mkts">${['SPY', 'QQQ', 'IWM'].map((k) => m(k, d.market[k])).join('')}</div>
+  ${spy ? `<div class="mktd small ${mg?.ok === false ? 'neg' : TD_CLS[spy.idx?.td ?? ''] ?? ''}" id="mktd">${mg?.ok === false ? '⛔' : '🟢'} שוק (SPY) שלב ${spy.stage}: ${esc(spy.idx?.td_he ?? '')}${mg?.ok === false ? ' — אין Buy-Stop חדש' : ''}${d.market.QQQ ? ` · <span class="muted">QQQ שלב ${d.market.QQQ.stage} (מידע): ${esc(d.market.QQQ.idx?.td_he ?? '')}</span>` : ''}</div>` : ''}
   <details class="secs"><summary>סקטורים · עוברים לכניסה: ${secs.filter(([, e]) => e.sec_ok).map(([k]) => esc(k)).join(', ') || 'אין'}</summary>
-  <div class="tbl"><table><tr><th>תעודה</th><th>סקטור</th><th>שלב</th><th>לכניסה</th><th>RS (מידע)</th><th>שיפוע</th><th>מ-30W</th></tr>
-  ${secs.map(([k, e]) => `<tr class="${d.strong_sectors.includes(k) ? 'strong' : ''}"><td dir="ltr"><a class="etfl" data-etf="${k}" href="#/stages/${k}"><b>${k}</b></a>${d.strong_sectors.includes(k) ? ' ★' : ''}</td><td>${esc(e.name)}</td><td>${stageBadge(e.stage, e.sub)}</td><td class="${e.sec_ok ? 'pos' : 'neg'}">${e.sec_ok ? '✓' : '✗'} ${esc(e.sec_he ?? '')}</td><td dir="ltr">${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}</td><td dir="ltr">${sg(e.slope)}%</td><td dir="ltr">${sg(e.pct_ma)}%</td></tr>`).join('')}
+  <div class="tbl"><table><tr><th>תעודה</th><th>סקטור</th><th>שלב</th><th>לכניסה</th><th>משמעות (Top-Down)</th><th>מחיר מול הממוצע</th><th>שיפוע</th><th>מבנה</th><th>מ-30W</th><th>RS (מידע)</th></tr>
+  ${secs.map(([k, e]) => `<tr class="${d.strong_sectors.includes(k) ? 'strong' : ''}"><td dir="ltr"><a class="etfl" data-etf="${k}" href="#/stages/${k}"><b>${k}</b></a>${d.strong_sectors.includes(k) ? ' ★' : ''}</td><td>${esc(e.name)}</td><td>${stageBadge(e.stage, e.sub)}</td><td class="${e.sec_ok ? 'pos' : 'neg'}">${e.sec_ok ? '✓' : '✗'} ${esc(e.sec_he ?? '')}</td><td class="sectd ${TD_CLS[e.td ?? ''] ?? ''}">${esc(e.td_he ?? '')}</td><td>${esc(POS_HE[e.idx?.pos ?? ''] ?? '—')}${e.idx ? ` <span class="muted" dir="ltr">${e.idx.above_n}/${e.idx.of_w}</span>` : ''}</td><td dir="ltr">${SLOPE_HE(e.slope_cls)} ${sg(e.slope)}%</td><td dir="ltr">${esc(e.idx?.struct ?? '—')}</td><td dir="ltr">${sg(e.pct_ma)}%</td><td dir="ltr">${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}</td></tr>`).join('')}
   </table></div></details></section>`;
 }
 
@@ -299,6 +305,13 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li>טווח שלב 1/3 = השיא והשפל מאז שהשלב התחיל (או מהשפל/שיא שסיים את המגמה הקודמת), ${R.min_base_w}–${R.range_max_w} שבועות.</li>
    <li>שלב 2 נשאר שלב 2 (גם בבסיס המשך) עד סגירה מתחת לרצפת הבסיס הנוכחי כשהממוצע כבר לא עולה (→3, או →4 כשהממוצע יורד), או עד שהממוצע משתטח בלי שיא 26 ש׳ חדש ${R.min_base_w} שבועות (→3). שלב 4 עובר לשלב 1 כשהממוצע מפסיק לרדת.</li>
    <li><b>Mansfield RS</b> = ((מניה / S&amp;P 500) / SMA${R.rs_ma_weeks} − 1) × 100. "עולה" = גבוה מלפני ${R.rs_rising_w} שבועות.</li></ul>
+  <h4>שלב של מדד / תעודת סקטור (15/11) — 4 פרמטרים, גרף שבועי + 30W SMA</h4><ul>
+   <li><b>מחיר מול הממוצע:</b> "מעל בעקביות" = ≥ ${R.idx_consistent_n} מ-${R.idx_consistent_w} הסגירות האחרונות מעל 30W SMA; "מתחת בעקביות" = ≤ ${(R.idx_consistent_w ?? 10) - (R.idx_consistent_n ?? 8)}; אחרת "חוצה הלוך ושוב".</li>
+   <li><b>שיפוע:</b> כמו במניות (${R.slope_lookback_w} שבועות, ±${R.slope_flat_pct}%).</li>
+   <li><b>מבנה:</b> שיאי / שפלי סווינג שבועיים (${R.idx_pivot_w} נרות מכל צד): HH/HL = שיאים ושפלים עולים, LH/LL = יורדים; סגירה מעל שיא הסווינג האחרון = HH בהתהוות, מתחת לשפל האחרון = השפל העולה נשבר.</li>
+   <li><b>כלל 1 — השיפוע גובר על חצייה בודדת:</b> שלב 4 רק כשהממוצע יורד <b>וגם</b> סגירה מתחת לתמיכה משמעותית (שפל הסווינג האחרון / רצפת הטווח). סגירה מתחת לממוצע שעדיין עולה, כשהשפל העולה מחזיק = עדיין שלב 2 ("מתחת לממוצע עולה, שפל עולה מחזיק"). שלב 2→3 כשהממוצע מאבד את העלייה ואין שיא חדש ${R.idx_top_w} שבועות (או שהשפל העולה נשבר).</li>
+   <li><b>כלל 2 — סוף שלב 1:</b> חזרה מעל 30W SMA שהשתטח אחרי ירידה = נקודת מפנה (מותר לקנות מובילות בסקטור). שלב 1→2: סגירה מעל תקרת הבסיס (שיא מאושר) כשהממוצע לא יורד, או ממוצע עולה + מעל בעקביות + HH/HL.</li>
+   <li><b>כלל 3 — Top-Down:</b> שוק 2 + סקטור 2 = הקצאה מלאה; סקטור 4 = להימנע; סקטור 3 = אין לונג חדש; שוק בשלב 3/4 = אין Buy-Stop חדש גם אם המניה נראית טוב.</li></ul>
   <h4>Buy-Stop (מועמדות)</h4><ul>
    <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל 30W SMA; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
    <li>פריצה (2A): סגירה מעל תקרת ${R.base_window_w} השבועות (שנקבעה לפני ≥${R.min_base_w} ש׳) וגם מעל תקרת טווח שלב 1, מחזור שבוע הפריצה ≥ ${R.vol_mult}x ממוצע ${R.vol_avg_w} שבועות (עליות בתוך הבסיס במחזור רגיל — לא נפסל). לפני פריצה: תנאי על הטריגר — שבוע הפריצה חייב מחזור ≥ ${R.vol_mult}x.</li>
@@ -308,9 +321,9 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li><b>דוחות — לפני כניסה:</b> לא מציבים Buy-Stop חדש כשהדוח בתוך ${R.earn_td} ימי המסחר הקרובים (שבוע הדוח והשבוע שלפניו; דוח אחרי הסגירה נספר ליום המסחר הבא) — "דוח בעוד X ימי מסחר – לא להציב Buy-Stop". כש-FinViz מציג רק דוח שעבר: הדוח הבא משוער = האחרון + 13 שבועות ("משוער"), וגם הוא חוסם בתוך החלון. תאריך לא ידוע = לא עובר עד שבודקים.</li>
    <li><b>אחרי דוח (${R.post_earn_td} ימי מסחר):</b> גאפ למעלה (פתיחה ≥ ${R.gap_min_pct}% מעל הסגירה, סגירה מעל ההתנגדות, מחזור ≥ ${R.gap_vol_mult}x ממוצע ${R.gap_vol_avg_d} ימים) = "גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן"; חוזרת להיות מועמדת אחרי ≥ ${R.mini_base_d} ימי מסחר שכולם נסגרו מעל רמת הפריצה (בסיס קטן; נרות יומיים, אחרת סגירה שבועית). הדוח עבר והמחיר עדיין צמוד מתחת להתנגדות = "דוח עבר – להחזיר Buy-Stop".</li>
    <li><b>בתוך פוזיציה (הנחיה בלבד, אין מעקב פוזיציות):</b> נכנסת 3–4 שבועות לפני הדוח והמניה +10%–15% מעל הכניסה — אפשר להחזיק דרך הדוח ולהדק את הסטופ מתחת לשפל האחרון. סביב מחיר הכניסה בלי כרית — לצמצם חצי או לצאת לפני הדוח.</li>
-   <li>שוק (SPY) לא בשלב 4; <b>סקטור</b> (תעודת הסל הענפית) לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); RS הסקטור — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
+   <li><b>שוק (SPY) לא בשלב 3 או 4</b> (כלל Top-Down, 15/11; QQQ מוצג כמידע); <b>סקטור</b> (תעודת הסל הענפית) לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); RS הסקטור — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
    <li>התראת טלגרם בשבת אחרי הסגירה השבועית — רק כשיש מועמדות. אין פקודות אוטומטיות.</li></ul>
-  <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מחזור יומי &gt; $${R.min_dollar_vol_m}M או &gt; 500K מניות בשבוע · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · ≥ ${R.min_weeks} שבועות.</li></ul>
+  <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מחזור יומי &gt; $${R.min_dollar_vol_m}M או &gt; 500K מניות בשבוע · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · <b>לפחות 3 שנות היסטוריה (≥ ${R.min_weeks} נרות שבועיים)</b> — מניה צעירה יותר לא מסווגת בכלל ולא מופיעה באף לשון.</li></ul>
   <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (בסיס ה-SL: שפל תקף מעל הממוצע, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום את ה-SL (לא מתחת לממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
 }
 
@@ -351,15 +364,25 @@ export function drawStChart(cv: HTMLCanvasElement, sp: StSpark | undefined, r?: 
 /** Sector / market ETF page (#/stages/XLU, Eyal 2026-11-14): big weekly chart + 30W SMA, stage, slope and the sector
  *  rule (not stage 4 + 'שלב 2 מובהק' / 'סוף שלב 1 – התעוררות'), base ceiling when relevant. Read-only. */
 export function etfCeil(e: EtfStage): number | null {
+  if (e.idx) return e.stage === 2 ? null : e.range?.ceil ?? null;
   if (e.bo && e.sub === '2A') return e.bo.level;
   if (e.base) return e.base.top;
   if ((e.stage === 1 || e.stage === 3) && e.range?.ceil != null) return e.range.ceil;
   return null;
 }
+/** support line of an index / sector: the last confirmed swing low (stage 2) or the range floor (1 / 3 / 4) */
+export function etfFloor(e: EtfStage): number | null {
+  if (e.idx) return e.stage === 2 ? e.idx.support : e.range?.floor ?? null;
+  return null;
+}
 export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string | null): string {
   const isMkt = !!d.market[t];
-  const ok = e.sec_ok, cls = ok ? 'pos' : 'neg', ceil = etfCeil(e);
-  const users = d.rows.filter((r) => r.etf === t).length;
+  const ok = isMkt && t === 'SPY' ? d.market_gate?.ok ?? e.sec_ok : e.sec_ok, cls = ok ? 'pos' : 'neg', ceil = etfCeil(e), floor = etfFloor(e);
+  const users = d.rows.filter((r) => r.etf === t).length, x = e.idx;
+  const ruleTxt = isMkt
+    ? (t === 'SPY' ? `כלל השוק: ${esc(d.market_gate?.he ?? '')}` : `${esc(t)} — מידע בלבד (השער הוא SPY): ${esc(x?.td_he ?? '')}`)
+    : `כלל הסקטור: ${esc(e.sec_he || (ok ? '' : 'נכשל'))}`;
+  const sw = (v?: number[], ws?: string[]) => (v?.length ? v.map((p, i) => `$${f(p)}${ws?.[i] ? ` (${ddmm(ws[i])})` : ''}`).join(' → ') : '—');
   return `<div class="cv stcv stetf">
   <header class="top ch" id="chhead">
     <a id="stback" class="ghost icon btnlike" href="${from ? '#/stages/' + encodeURIComponent(from) : '#/stages'}" aria-label="חזרה">→</a>
@@ -367,18 +390,21 @@ export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string
       <div class="small muted stname">${esc(e.name)} · ${isMkt ? 'מדד שוק' : 'תעודת סל ענפית'}${users ? ` · ${users} מניות ברשימה` : ''}${from ? ` · חזרה ל-<bdi dir="ltr">${esc(from)}</bdi>` : ''}</div></div>
     <span></span>
   </header>
-  <div class="sttags pad"><span class="badge ${ok ? 'b-pass' : 'b-fail'}" id="secrule">${ok ? '✓' : '✗'} כלל הסקטור: ${esc(e.sec_he || (ok ? '' : 'נכשל'))}</span></div>
+  <div class="sttags pad"><span class="badge ${isMkt && t !== 'SPY' ? 'b-off' : ok ? 'b-pass' : 'b-fail'}" id="secrule">${isMkt && t !== 'SPY' ? 'ℹ' : ok ? '✓' : '✗'} ${ruleTxt}</span>${e.td_he ? ` <span class="badge b-off" id="sectd">${esc(isMkt ? 'משמעות' : 'Top-Down')}: ${esc(e.td_he)}</span>` : ''}</div>
   <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים</div></div>
-  <div class="tools"><span class="small muted">כתום = 30W SMA${ceil != null ? ' · כחול = תקרת הבסיס' : ''} · קריאה בלבד</span></div>
+  <div class="tools"><span class="small muted">כתום = 30W SMA${ceil != null ? ' · כחול = התנגדות (תקרת הטווח)' : ''}${floor != null ? ' · אדום = תמיכה (' + (e.stage === 2 ? 'השפל העולה האחרון' : 'רצפת הטווח') + ')' : ''} · קריאה בלבד</span></div>
   <div class="panel stpanel">
-    <div class="stplan"><b>כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת)</b>
-      <div class="skvs">
-        ${kv('תוצאה', `${ok ? '✓ עובר' : '✗ נכשל'} · ${esc(e.sec_he ?? '')}`, cls)}${kv('שלב', esc(STAGE_HE[e.stage] || String(e.stage)))}
-        ${kv('מעל 30W SMA', e.close > e.ma30 ? `כן (${sg(e.pct_ma)}%)` : `לא (${sg(e.pct_ma)}%)`, e.close > e.ma30 ? 'pos' : 'neg')}${kv('שיפוע הממוצע', `${esc(e.slope_cls === 'up' ? 'עולה' : e.slope_cls === 'down' ? 'יורד' : 'שטוח')} (${sg(e.slope)}%)`, e.slope_cls === 'down' ? 'neg' : 'pos')}
+    <div class="stplan"><b>${isMkt ? 'שלב המדד (ויינשטיין, 4 פרמטרים)' : 'כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת)'}</b>
+      <div class="skvs" id="idxkv">
+        ${kv('תוצאה', isMkt && t !== 'SPY' ? 'מידע בלבד' : `${ok ? '✓ עובר' : '✗ נכשל'} · ${esc(isMkt ? `שלב ${e.stage}` : e.sec_he ?? '')}`, isMkt && t !== 'SPY' ? '' : cls)}${kv('שלב', esc(STAGE_HE[e.stage] || String(e.stage)) + (e.sub && SUB_HE[e.sub] && e.sub !== String(e.stage) ? ' · ' + esc(SUB_HE[e.sub]) : ''))}
+        ${kv('1 · מחיר מול 30W SMA', x ? `${esc(POS_HE[x.pos])} (${x.above_n}/${x.of_w} מעל · ${sg(e.pct_ma)}%)` : (e.close > e.ma30 ? `מעל (${sg(e.pct_ma)}%)` : `מתחת (${sg(e.pct_ma)}%)`), e.close > e.ma30 ? 'pos' : 'neg')}${kv('2 · שיפוע הממוצע', `${SLOPE_HE(e.slope_cls)} (${sg(e.slope)}%)`, e.slope_cls === 'down' ? 'neg' : e.slope_cls === 'up' ? 'pos' : '')}
+        ${kv('3 · מבנה (HH/HL)', x ? esc(x.struct === 'HH/HL' ? 'HH/HL — שיאים ושפלים עולים' : x.struct === 'LH/LL' ? 'LH/LL — שיאים ושפלים יורדים' : 'מעורב / דשדוש') : '—', x?.struct === 'HH/HL' ? 'pos' : x?.struct === 'LH/LL' ? 'neg' : '')}${kv('4 · משמעות', esc(e.td_he ?? x?.td_he ?? '—'), TD_CLS[e.td ?? ''] ?? '')}
+        ${kv('שיאי סווינג', sw(x?.swing_hi, x?.swing_hi_w))}${kv('שפלי סווינג', sw(x?.swing_lo, x?.swing_lo_w))}
+        ${kv('תמיכה', floor != null ? '$' + f(floor) + (x?.broke_support ? ' (נשברה)' : '') : '—', x?.broke_support ? 'neg' : '')}${kv('התנגדות', ceil != null ? '$' + f(ceil) : x?.resistance != null ? '$' + f(x.resistance) : '—')}
         ${kv('30W SMA', '$' + f(e.ma30))}${kv('Mansfield RS (מידע בלבד)', `${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}`)}
-        ${ceil != null ? kv('תקרת בסיס', '$' + f(ceil)) : ''}${e.range?.floor != null && (e.stage === 1 || e.stage === 3) ? kv('רצפת בסיס', '$' + f(e.range.floor)) : ''}
       </div></div>
     <h4>זיהוי ${esc(STAGE_HE[e.stage] || '')} (${e.score}/4)</h4><ul class="cks">${e.checks.map(chk).join('')}</ul>
-    <p class="small muted">שבוע ${ddmm(e.week)} · <a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent('AMEX:' + t)}&interval=W" target="_blank" rel="noopener">TradingView</a></p>
+    ${e.range ? `<p class="small muted">בשלב ${e.stage} מאז ${ddmm(e.range.since)} (${e.range.since_w} ש׳)${e.stage === 2 ? ' — סגירה בודדת מתחת לממוצע עולה לא מעבירה לשלב 4 כל עוד השפל העולה מחזיק (כלל 1)' : ''}.</p>` : ''}
+    <p class="small muted">שבוע ${ddmm(e.week)} · <a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent((t === 'QQQ' ? 'NASDAQ:' : 'AMEX:') + t)}&interval=W" target="_blank" rel="noopener">TradingView</a></p>
   </div></div>`;
 }

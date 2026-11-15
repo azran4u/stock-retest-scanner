@@ -254,3 +254,97 @@ def test_research_needs_and_sql(tmp_path, monkeypatch):
              "stop": 121.97, "stop_pct": 8.2, "target": 160.0, "target_src": "open_sky", "open_sky": True, "rr": 2.5, "shares": 5,
              "pos_usd": 664.0, "vol_need": None, "earn": "2027-02-04", "ex": "NYSE"}]}
     assert "📊 Buy · יעד $132" in st.alert_text(full, cache)
+
+
+# ---------------------------------------------------------------- Eyal 2026-11-15: index / sector ETF classifier
+from srs_app.stages import classify_index, market_gate, top_down, sector_status as _sector_status
+
+
+def _ohlc(c, rng=0.01):
+    c = np.asarray(c, float)
+    idx = pd.date_range("2023-01-06", periods=len(c), freq="W-FRI")
+    o = np.r_[c[0], c[:-1]]
+    return pd.DataFrame({"Open": o, "High": np.maximum(o, c) * (1 + rng), "Low": np.minimum(o, c) * (1 - rng),
+                         "Close": c, "Volume": np.full(len(c), 1e6)}, index=idx)
+
+
+def test_index_xlf_like_dip_under_rising_sma_stays_stage2():
+    """Rule 1: one weekly close under a still-rising 30W SMA, the higher low intact -> stage 2, not 4."""
+    k = np.arange(70)
+    up = 40 * (1.006 ** k) * (1 + 0.03 * np.sin(k / 2))
+    ma0 = _ohlc(up)["Close"].rolling(30).mean().values[-1]
+    c = np.r_[up, ma0 * 0.985]               # one weekly close ~1.5% under the rising SMA, above the last swing low
+    w = _ohlc(c)
+    assert c[-1] < w["Close"].rolling(30).mean().values[-1]
+    r = classify_index(w)
+    assert r["stage"] == 2 and r["slope_cls"] == "up" and r["sub"] == "2-dip"
+    assert not r["idx"]["broke_support"] and r["idx"]["td"] == "full"
+    assert _sector_status(r)["ok"] is False          # sector gate unchanged: 'clear stage 2' needs a close above the SMA
+    # even a deeper close that undercuts the last swing low is not stage 4 while the SMA still rises ('2-weak')
+    r2 = classify_index(_ohlc(np.r_[up, ma0 * 0.97]))
+    assert r2["stage"] == 2 and r2["sub"] == "2-weak" and r2["idx"]["broke_support"]
+
+
+def test_index_xlu_like_back_above_flat_sma_is_late_stage1():
+    """Rule 2: decline, then a flat 30W SMA base, close back above the flat SMA -> stage 1, sub '1T' (turning point)."""
+    c = np.r_[np.linspace(60, 40, 45), 40 + 1.2 * np.sin(np.arange(40) / 2.5), 41.0]
+    w = _ohlc(c)
+    r = classify_index(w)
+    assert r["stage"] == 1 and r["sub"] == "1T" and r["slope_cls"] == "flat" and r["close"] > r["ma30"]
+    assert r["idx"]["td"] == "turn"
+    s = _sector_status(r)
+    assert s["ok"] is True and s["case"] == "1late"
+
+
+def test_index_real_stage4_needs_falling_sma_and_support_break():
+    """Stage 4 only with a falling SMA AND a close below the support (last swing low / range floor)."""
+    top = 60 + 1.5 * np.sin(np.arange(30) / 2)
+    c = np.r_[np.linspace(30, 60, 50), top, np.linspace(59, 42, 18)]
+    r = classify_index(_ohlc(c))
+    assert r["stage"] == 4 and r["slope_cls"] == "down" and r["idx"]["pos"] == "below" and r["idx"]["td"] == "avoid"
+    assert _sector_status(r)["ok"] is False
+
+
+def test_index_stage3_top_not_stage4_while_sma_flat():
+    c = np.r_[np.linspace(30, 60, 60), 60 + 2.0 * np.sin(np.arange(30) / 2)]
+    r = classify_index(_ohlc(c))
+    assert r["stage"] == 3
+
+
+def test_xlf_real_candles_stage2():
+    """Eyal 2026-11-15 (CINF): XLF is stage 2 -- the old stock classifier said 3 (after the June breakout the flat SMA +
+    'no new 26-week high' rule fired on the pre-correction peak, then the top's ceiling ratcheted up with each new
+    intraweek high). Real weekly candles to 2026-11-13."""
+    w = wk("xlf")
+    r = classify_index(w)
+    assert r["stage"] == 2 and r["sub"] == "2" and r["slope_cls"] == "up"
+    assert r["idx"]["struct"] == "HH/HL" and r["idx"]["pos"] == "above" and not r["idx"]["broke_support"]
+    s = _sector_status(r)
+    assert s["ok"] is True and s["case"] == "2"
+    # the earlier weeks around the October pullback (low 52.81 held above the 2026 low) stayed stage 2
+    for end in ("2026-10-02", "2026-10-09", "2026-10-16"):
+        assert classify_index(w[w.index <= end])["stage"] == 2, end
+
+
+def test_xlu_real_candles_turning_point():
+    r = classify_index(wk("xlu"))
+    assert r["stage"] == 1 and r["sub"] == "1T" and _sector_status(r)["case"] == "1late"
+
+
+def test_market_gate_blocks_stage3_and_4():
+    g = lambda st: market_gate({"stage": st, "sub": str(st), "idx": {"td_he": "x"}})["ok"]
+    assert g(2) is True and g(1) is True and g(3) is False and g(4) is False
+    assert market_gate(None)["ok"] is None
+    assert top_down({"stage": 3}, {"stage": 2, "sec_ok": True, "sec_case": "2"})[0] == "mkt_off"
+    assert top_down({"stage": 2}, {"stage": 2, "sec_ok": True, "sec_case": "2"})[0] == "full"
+    assert top_down({"stage": 2}, {"stage": 4, "sec_ok": False})[0] == "avoid"
+    assert top_down({"stage": 2}, {"stage": 3, "sec_ok": False})[0] == "no_new"
+    assert top_down({"stage": 2}, {"stage": 1, "sec_ok": True, "sec_case": "1late"})[0] == "early"
+
+
+def test_three_year_history_required():
+    """Eyal 2026-11-15 (IEAG): < 3 years of weekly bars -> dropped before classification (no tab, no candidate)."""
+    from srs_app.stages import history_ok
+    assert RULES["min_weeks"] == 156
+    assert not history_ok(_ohlc(np.linspace(20, 40, 155)))
+    assert history_ok(_ohlc(np.linspace(20, 40, 156)))
