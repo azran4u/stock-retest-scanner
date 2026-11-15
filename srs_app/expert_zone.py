@@ -32,9 +32,8 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
                         'סגירה שבועית מתחת לאזור' with its date, and -10 points per such week (max -20)
                     the current (running) price more than 3% under the bottom also counts as broken
        pulled back toward it from above: last close <= post-breakout high - 1 A, and last close <= top + 2 A
-       stage 2   : the 30-week SMA of weekly closes is not falling (now >= 4 weeks ago). A falling 30-week MA during
-                   the pullback = stage 3/4, no longer a retest (Weinstein; research page 'ביטול וסימני כישלון').
-                   Added 2026-11-01 for all stocks (crashes of 50%+ fell back to old bases far under the high).
+       (Eyal 2026-11-15: no 30-week SMA slope / 'price vs SMA' gate here. Weinstein stage 2/3/4 belongs only to
+        the stages page, srs_app/stages.py.)
   4. v7 (Eyal 2026-11-01): ONLY the breakout-retest scenario. The expert zone is always a broken resistance level
      (the base top above). Support-shelf detection (v4-v6) was removed: too complex and noisy. No valid broken
      resistance -> no expert level.
@@ -89,7 +88,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v7-2026-11-01"
+RULE_VERSION = "expert-v8-2026-11-15"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -204,12 +203,6 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
     if not A:
         return {"ok": False, "reason": "short history"}
     last = Wall[-1]["close"]                  # current price (the running week counts for 'where is price now')
-    if n >= 34:
-        ma_now = sum(x["close"] for x in W[-30:]) / 30
-        ma_4 = sum(x["close"] for x in W[-34:-4]) / 30
-        if ma_now < ma_4:
-            return {"ok": False, "reason": f"30-week MA falling ({ma_4:.2f} -> {ma_now:.2f}): stage 3/4, not a retest (Weinstein)",
-                    "atr_w": round(A, 4)}
     first_reason = None
     for b in range(n - 1, max(BASE_W, n - LOOKBACK_W) - 1, -1):
         R = max(W[k]["high"] for k in range(b - BASE_W, b))

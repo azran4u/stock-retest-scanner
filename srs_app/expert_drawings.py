@@ -1,10 +1,10 @@
 """Expert zones become THE zone / Long of every stock (Eyal 2026-11-02, "מכאן והלאה נגדיר את האזור על פי המומחים").
 
 Replaces the bot drawing computation (srs_app.bot_drawings v5) in the nightly pipeline:
-  - every ticker with a valid expert-v7 zone (app/data/expert_zones.json, ok + trade) gets an EXPERT drawing pair in
+  - every ticker with a valid expert zone (app/data/expert_zones.json, ok + trade) gets an EXPERT drawing pair in
     public.drawings: zone = [bottom, top] from the pivot week, Long = entry top / SL / TP of the expert trade
     (t_start = week after the last completed week, t_end = +20 weekly bars). Rows are source 'bot' (the column's check
-    constraint), meta = {rule_version: expert-v7-..., expert: true, why: {...}}, note "EXPERT ...". The app and the
+    constraint), meta = {rule_version: expert-v8-..., expert: true, why: {...}}, note "EXPERT ...". The app and the
     report show them as "מומחים".
   - no valid expert zone (no clear retest) -> no zone and no Long: any live bot row is retired (-> not PASS).
   - every live bot drawing of the old method (v3d / v3e / v4 / v5, no meta.expert) is retired: status 'obsolete' +

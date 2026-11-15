@@ -214,11 +214,20 @@ def test_expert_trade_entry_sl_tp():
     assert tr["tp_mm"] > r["top"] and isinstance(tr["confirmed"], bool)
 
 
-def test_falling_30_week_ma_is_not_a_retest():
-    """Stage 3/4 (Weinstein): a spike then a crash back to the old base top is not a retest even if the base held."""
+def test_falling_30_week_ma_does_not_block_a_retest():
+    """Eyal 2026-11-15: a falling 30-week SMA is a stages-page (Weinstein) rule only; it does not reject a retest."""
     path = base_path()[:-4] + rally(3, 115, 200) + [(200, 201, 199, 200)] * 20 + rally(12, 200, 102)
-    r = E.find(daily(path))
-    assert not r["ok"] and r["reason"].startswith("30-week MA falling")
+    rows = daily(path)
+    r = E.find(rows)
+    assert not (r.get("reason") or "").startswith("30-week MA falling"), r
+    # The same path used to be rejected solely for a falling SMA; the old base at 100 held (pullback to 102).
+    W = E.weekly(rows)
+    assert len(W) >= 34
+    ma_now = sum(x["close"] for x in W[-30:]) / 30
+    ma_4 = sum(x["close"] for x in W[-34:-4]) / 30
+    assert ma_now < ma_4, (ma_4, ma_now)
+    assert r["ok"], r
+    assert r["top"] == 100.0
 
 
 def test_gpix_stop_is_one_weekly_atr_not_four_percent():

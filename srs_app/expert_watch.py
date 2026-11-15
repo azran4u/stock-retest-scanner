@@ -6,7 +6,7 @@ Written nightly by the export to app/data/expert_watch.json (separate file, neve
    entry, sl, tp, rr, risk_pct, shares, signals: [...], reason_he}]}
 
 Criteria (all must hold; constants below):
-  1. valid v7 expert zone (expert_zones.json ok) - implies the 30-week MA is not falling (expert_zone rule 3)
+  1. valid expert zone (expert_zones.json ok)
   2. price inside the zone or above it by <= WATCH_MAX_DIST_ATR weekly ATR (not under the bottom)
   3. expert R:R >= WATCH_MIN_RR
   4. no earnings within EARN_DAYS days and the last completed week is not an earnings week (the export's gates
