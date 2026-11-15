@@ -1198,11 +1198,33 @@ def send_alert(doc: Dict[str, Any]) -> Dict[str, Any]:
     chat = os.environ.get("TELEGRAM_CHAT_ID") or (TG_CHAT_FILE.read_text().strip() if TG_CHAT_FILE.exists() else "")
     if not tok or not chat:
         return {"sent": False, "why": "missing TELEGRAM_BOT_TOKEN or chat id"}
-    r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=30,
-                      json={"chat_id": chat, "text": text, "disable_web_page_preview": True})
-    j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-    return {"sent": bool(j.get("ok")), "message_id": (j.get("result") or {}).get("message_id"), "why": j.get("description"),
-            "n": len(doc["buy_stop_candidates"])}
+    ids, why = [], None
+    for part in split_message(text):  # Telegram caps a message at 4096 chars: split between candidates
+        r = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=30,
+                          json={"chat_id": chat, "text": part, "disable_web_page_preview": True})
+        j = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if not j.get("ok"):
+            why = j.get("description"); break
+        ids.append((j.get("result") or {}).get("message_id"))
+    return {"sent": bool(ids) and why is None, "message_ids": ids, "why": why, "n": len(doc["buy_stop_candidates"])}
+
+
+def split_message(text: str, limit: int = 3900) -> List[str]:
+    """Split at blank lines (between candidates) into parts <= limit chars."""
+    parts, cur = [], ""
+    for block in text.split("\n\n"):
+        add = block if not cur else cur + "\n\n" + block
+        if len(add) <= limit:
+            cur = add
+            continue
+        if cur:
+            parts.append(cur)
+        while len(block) > limit:
+            parts.append(block[:limit]); block = block[limit:]
+        cur = block
+    if cur:
+        parts.append(cur)
+    return parts
 
 
 # ----------------------------------------------------------------------------------------------- research

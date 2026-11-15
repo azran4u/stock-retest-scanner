@@ -348,3 +348,11 @@ def test_three_year_history_required():
     assert RULES["min_weeks"] == 156
     assert not history_ok(_ohlc(np.linspace(20, 40, 155)))
     assert history_ok(_ohlc(np.linspace(20, 40, 156)))
+
+
+def test_split_long_telegram_message():
+    from srs_app.stages import split_message
+    text = "\n\n".join(f"T{i} " + "x" * 300 for i in range(20))
+    parts = split_message(text)
+    assert len(parts) > 1 and all(len(p) <= 3900 for p in parts) and "\n\n".join(parts) == text
+    assert split_message("short") == ["short"]
