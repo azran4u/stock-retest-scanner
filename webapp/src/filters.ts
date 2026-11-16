@@ -111,7 +111,7 @@ export const FILTERS: FilterDef[] = [
   { id: 'tradable', label: 'סחירה לחשבון (ATR שבועי < סיכון)', group: 'setup', test: (f) => t(f.tradable) },
   { id: 'fromAbove', label: 'חזרה לאזור מלמעלה', group: 'setup', test: (f) => t(f.fromAbove) },
   { id: 'noInvHammer', label: 'אין פטיש הפוך', group: 'setup', test: (f) => f.noInvHammer !== false },
-  { id: 'noRedVol', label: 'אין שבוע אדום עם מחזור גבוה', group: 'setup', test: (f) => f.noRedVol !== false },
+  { id: 'noRedVol', label: 'אין נר אדום עם מחזור גבוה שנסגר מתחת לאזור', group: 'setup', test: (f) => f.noRedVol !== false },
   { id: 'smooth', label: 'ירידה רגועה ≥', group: 'setup', param: { def: 5, min: 0, max: 104, step: 1, unit: 'שבועות' }, test: (f, s) => f.smoothWeeks != null && f.smoothWeeks >= (s.x ?? 5) },
   { id: 'fib', label: 'התלכדות פיבונאצי', group: 'setup', test: (f) => f.fib },
   // expert zone (Eyal 2026-11-01): a separate overlay; this filter only shows / hides rows, it never changes PASS

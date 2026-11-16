@@ -9,7 +9,10 @@
   (near new high + 30w EMA +16.8%); v2.1+ rejects it as a multi-year sideways range.
 - v3 (2026-10-26, Eyal's calibration answers): LNTH (V-recovery ~6.5 ATR below the high), IDCC (strong rise then
   sideways near the high) and MTG (slow riser) ARE primary uptrends; BIO, PRU, TROW (multi-year range back at its
-  top) are NOT."""
+  top) are NOT.
+- v4 (2026-11-16, Eyal): the primary trend is the classic Dow structure of the weekly swings (srs_app/dow_trend.py);
+  the v3 tests below run the v3 paths explicitly (tech_method='v3'); the Dow tests are at the end.
+"""
 from pathlib import Path
 
 import pandas as pd
@@ -42,11 +45,15 @@ def _with(hist, drop_keys=(), **over):
 
 
 def _v21(hist):
-    return _with(hist, V3_KEYS)["f_technical"]
+    return _with(hist, V3_KEYS, tech_method="v3")["f_technical"]
 
 
 def _v2(hist):
-    return _with(hist, V3_KEYS, tech_flat_windows=())["f_technical"]
+    return _with(hist, V3_KEYS, tech_flat_windows=(), tech_method="v3")["f_technical"]
+
+
+def _v3(hist):
+    return _with(hist, (), tech_method="v3")
 
 
 def test_golden_up_charts_kept_and_accuracy_not_lower():
@@ -58,7 +65,7 @@ def test_golden_up_charts_kept_and_accuracy_not_lower():
             continue
         up = c["up"] or c["ticker"] in RELABEL_UP
         h = _cut(d, c["asof"])
-        new, old = rf.compute_technical(h)["f_technical"], _v21(h)
+        new, old = _v3(h)["f_technical"], _v21(h)
         n += 1
         ok_new += new == up
         ok_old += old == up
@@ -71,7 +78,7 @@ def test_golden_up_charts_kept_and_accuracy_not_lower():
 def test_crgy_multi_year_range_not_technical():
     d = pd.read_csv(DATA / "feedback_crgy_daily.csv.gz", parse_dates=["Date"]).set_index("Date")
     assert _v2(d) is True  # what let it through
-    t = rf.compute_technical(d)
+    t = _v3(d)
     assert t["f_technical"] is False
     assert "range" in t["tech_detail"]
 
@@ -88,7 +95,7 @@ CAL = _calib()
 def test_v3_calibration_uptrends(ticker, path):
     h = CAL[ticker]
     assert _v21(h) is False  # v2.1 missed it
-    t = rf.compute_technical(h)
+    t = _v3(h)
     assert t["f_technical"] is True, t["tech_detail"]
     assert t["tech_path"] == path
 
@@ -97,7 +104,7 @@ def test_v3_calibration_uptrends(ticker, path):
 def test_v3_multi_year_range_back_at_top_rejected(ticker):
     h = CAL[ticker]
     assert _v21(h) is True  # v2.1 let it through
-    t = rf.compute_technical(h)
+    t = _v3(h)
     assert t["f_technical"] is False
     assert t["tech_range"] is True
     assert "multi-year range back at its top" in t["tech_detail"]
@@ -107,6 +114,97 @@ def test_v3_multi_year_range_back_at_top_rejected(ticker):
 def test_v3_bottoming_downtrend_not_a_v_recovery(ticker):
     """Sharp rebounds that are still far below the 3-year high (close < 75% of it) are not V-recovery uptrends -
     these let path B in during the 2026-10-26 check of newly accepted names (tech_vrec_close_hi156_min)."""
-    t = rf.compute_technical(CAL[ticker])
+    t = _v3(CAL[ticker])
     assert t["f_technical"] is False
     assert _with(CAL[ticker], (), tech_vrec_close_hi156_min=0.0)["tech_path"] == "B"
+
+
+# ----------------------------------------------------------------------------------------------- v4 Dow (2026-11-16)
+NEG_1009 = ["LPLA", "MDLZ", "REGN", "AJG", "AMP", "CACI", "CHD", "ICE", "LW", "MTG"]
+# 10-09 negatives the Dow structure (k = 5) still calls UP on their 2026-10-09 data: their swings were rising then
+# (his 7-day overrides expired long ago; he can mark them again in the app)
+DOW_UP_NEG = {"MDLZ", "AMP", "CHD"}
+
+
+def _case(t, asof):
+    d = load_daily()[t]
+    return d[d.index <= pd.Timestamp(asof)]
+
+
+def test_dow_is_the_primary_trend():
+    t = rf.compute_technical(_case("EQIX", "2026-10-09"))
+    assert rf.CONFIG["tech_method"] == "dow" and rf.CONFIG["tech_version"].startswith("dow-v4")
+    assert t["tech_trend"] == "up" and t["tech_trend_he"] == "עלייה" and t["f_technical"] is True   # EQIX = uptrend
+    assert t["tech_v3"] is True and t["tech_trend_detail"]
+
+
+@pytest.mark.parametrize("ticker", [t for t in NEG_1009 if t not in DOW_UP_NEG])
+def test_dow_1009_negatives_not_up(ticker):
+    t = rf.compute_technical(_case(ticker, "2026-10-09"))
+    assert t["f_technical"] is False and t["tech_trend"] in ("down", "sideways"), t["tech_trend_detail"]
+
+
+def test_dow_golden_agreement_recorded():
+    """2026-11-16: Dow (k = 5, close breaks, persistence, same-type swings >= 8 weeks apart) 98/130 on the golden set
+    with EQIX as up (v3: 117/130; no spacing 96/130; k = 3 without spacing 81/130)."""
+    ok = n = 0
+    for c in load_cases():
+        d = load_daily().get(c["ticker"])
+        if d is None:
+            continue
+        up = c["up"] or c["ticker"] == "EQIX"
+        n += 1
+        ok += rf.compute_technical(_cut(d, c["asof"]))["f_technical"] == up
+    assert ok >= 97, (ok, n)
+
+
+@pytest.mark.parametrize("ticker,trend", [("IDCC", "up"), ("LNTH", "up"), ("BIO", "sideways"), ("PRU", "sideways"),
+                                          ("TROW", "sideways"), ("MTG", "sideways")])
+def test_dow_calibration_marks(ticker, trend):
+    """His 2026-10-26 marks: IDCC / LNTH up, BIO / PRU / TROW not -> agree; MTG (marked up) = sideways under Dow."""
+    t = rf.compute_technical(CAL[ticker][CAL[ticker].index <= pd.Timestamp("2026-10-26")])
+    assert t["tech_trend"] == trend, t["tech_trend_detail"]
+
+
+def test_dow_structure_unit():
+    from srs_app.dow_trend import trend
+    up_h = [10, 11, 12, 11, 10, 11, 13, 14, 15, 14, 13, 14, 16, 17, 18, 17, 16, 17, 19, 20]
+    up_l = [x - 2 for x in up_h]
+    assert trend(up_h, up_l, up_l[:], k=2, gap=0)["trend"] == "up"
+    dn_h = [-x for x in up_l][::1]
+    dn_l = [-x for x in up_h]
+    assert trend([x + 40 for x in dn_h], [x + 40 for x in dn_l], [x + 40 for x in dn_l], k=2, gap=0)["trend"] == "down"
+    # a fresh weekly CLOSE under the last swing low ends an uptrend at once (not yet a confirmed pivot)
+    h2, l2 = up_h + [18, 15], up_l + [16, 11]
+    c2 = l2[:]
+    assert trend(h2, l2, c2, k=2, gap=0)["trend"] != "up"
+    # a wick under the swing low without a close under it does not break it
+    assert trend(up_h + [19], up_l + [13.9], up_l + [17.5], k=2, gap=0)["broken_lo"] is False
+
+
+def test_swing_spacing_merges_close_swings():
+    """Eyal 2026-11-16: swings of the same type >= tech_swing_min_gap_weeks (8) apart; closer -> keep the extreme."""
+    from srs_app.dow_trend import space
+    assert rf.CONFIG["tech_swing_min_gap_weeks"] == 8
+    assert space([(10, 5.0), (14, 6.0), (30, 4.0)], 8, "hi") == [(14, 6.0), (30, 4.0)]
+    assert space([(10, 5.0), (14, 6.0), (30, 4.0)], 8, "lo") == [(10, 5.0), (30, 4.0)]
+    assert space([(10, 5.0), (18, 6.0)], 8, "hi") == [(10, 5.0), (18, 6.0)]          # exactly 8 weeks: two swings
+    assert space([(10, 5.0), (14, 6.0)], 0, "hi") == [(10, 5.0), (14, 6.0)]          # 0 = off
+
+
+def test_swing_spacing_turns_a_minor_dip_into_one_swing():
+    """A dip 4 weeks after a swing low, a bit under it: without spacing it is a new LOWER low (uptrend ends); with the
+    8-week spacing the two lows are one swing (the lower one) and the higher-low structure stays."""
+    from srs_app.dow_trend import trend
+    h = [10 + i * 0.5 + 2 * (i % 10 if i % 10 <= 5 else 10 - i % 10) for i in range(62)]
+    l = [x - 1 for x in h]
+    l[54] = l[50] - 0.5
+    h[54] = l[54] + 1
+    assert trend(h, l, l[:], k=2, gap=0)["trend"] == "sideways"
+    assert trend(h, l, l[:], k=2, gap=8)["trend"] == "up"
+
+
+def test_compute_technical_uses_the_configured_gap():
+    d = _case("LW", "2026-10-09")
+    assert rf.compute_technical(d)["tech_trend"] != "up"                      # 8 weeks: not an uptrend
+    assert _with(d, (), tech_swing_min_gap_weeks=0)["tech_trend"] == "up"     # without spacing it was

@@ -1,5 +1,7 @@
 """f_no_red_vol_week (Eyal 2026-10-23, example CLMT): a healthy red last COMPLETED weekly candle on
-above-average volume -> a warning. Since 2026-10-26 (WAIT cancelled) information only, not a PASS gate.
+above-average volume = 'red high-volume last week'. Core gate since 2026-11-09; since 2026-11-16 it blocks ONLY when
+that week closed below the zone in use (the planned SL; zone bottom without a Long). Most tests here pass SL_ABOVE
+(a stop above every close = the zone broke) to check the candle / week detection itself.
 
 healthy red = Close < Open and body >= 50% of the week's range; above average = the week's average daily
 volume > the average daily volume of the 30 trading days before the week."""
@@ -39,8 +41,11 @@ def _week(o, c, h, l, vol):
     return out
 
 
-def _run(df, now=AFTER_CLOSE):
-    return rf.compute_red_vol_week(df, date(2026, 10, 23), now_et=now)
+SL_ABOVE = 1000.0   # planned SL above the week's close -> the loud red week closed below the zone
+
+
+def _run(df, now=AFTER_CLOSE, sl=SL_ABOVE, zone_bottom=None):
+    return rf.compute_red_vol_week(df, date(2026, 10, 23), now_et=now, sl=sl, zone_bottom=zone_bottom)
 
 
 def test_clmt_like_red_week_waits():
@@ -51,7 +56,8 @@ def test_clmt_like_red_week_waits():
     assert out["red_vol_week_date"] == "2026-10-23"
     assert out["f_no_red_vol_week"] is False
     assert out["red_vol_body_pct"] >= 50 and out["red_vol_ratio"] > 1
-    assert out["red_vol_detail"].startswith("falling knife")
+    assert out["red_vol_detail"].startswith("red high-volume last week, closed below the zone")
+    assert out["red_vol_loud"] is True and out["red_vol_held"] is False and out["red_vol_close"] == 49.0
 
 
 def test_week_not_complete_before_friday_1630():
@@ -111,8 +117,36 @@ def test_next_week_clears_block():
 def test_red_week_blocks_pass_again():
     """Eyal 2026-11-09 (falling knife): a healthy red loud last week is a core FAIL gate again (it was info only
     2026-10-26 .. 2026-11-09)."""
-    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True, "f_after_earnings_week": True}
+    base = {"f_dollar_vol": True, "f_no_earnings_14d": True, "f_history": True, "f_rr": True, "f_from_above": True, "f_no_inv_hammer": True, "f_after_earnings_week": True, "f_technical": True}
     assert rf.finalize_status({**base, "f_no_red_vol_week": True})["status"] == "PASS"
     r = rf.finalize_status({**base, "f_no_red_vol_week": False})
     assert r["status"] == "FAIL" and r["failed_filters"] == "no_red_vol_week"
     assert rf.finalize_status({**base, "f_rr": False, "f_no_red_vol_week": False})["status"] == "FAIL"
+
+
+def test_zone_held_does_not_block_2026_11_16():
+    """Eyal 2026-11-16: no separate falling-knife criterion; the loud red week blocks only when it closed below the
+    planned SL. Close 90 >= SL 88 -> the zone held -> legitimate; SL 92 -> broke -> blocks."""
+    d = _daily(_week(100, 90, 100.5, 89.5, 3_000_000))
+    held = _run(d, sl=88.0)
+    assert held["red_vol_loud"] is True and held["red_vol_held"] is True and held["f_no_red_vol_week"] is True
+    assert "the zone held" in held["red_vol_detail"]
+    broke = _run(d, sl=92.0)
+    assert broke["red_vol_held"] is False and broke["f_no_red_vol_week"] is False
+    assert "closed below the zone" in broke["red_vol_detail"]
+    # no Long: the zone bottom is the level; no zone at all -> nothing to break
+    assert _run(d, sl=None, zone_bottom=91.0)["f_no_red_vol_week"] is False
+    assert _run(d, sl=None, zone_bottom=89.0)["f_no_red_vol_week"] is True
+    none = _run(d, sl=None)
+    assert none["f_no_red_vol_week"] is True and none["red_vol_loud"] is True and none["red_vol_held"] is None
+
+
+def test_compute_row_uses_the_drawing_sl():
+    """The report row checks the loud red week against its own Long (tv_sl)."""
+    d = _daily(_week(100, 90, 100.5, 89.5, 3_000_000))
+    rec = {"found": True, "zone_top": 95.0, "zone_bottom": 93.0, "entry": 95.0, "sl": 89.0, "tp": 110.0, "rr": 2.5,
+           "read_date": "2026-10-23"}
+    r = rf.compute_row("TST", d, date(2026, 10, 23), tv_rec=rec)
+    assert r["red_vol_loud"] is True and r["f_no_red_vol_week"] is True        # close 90 >= SL 89: held
+    r2 = rf.compute_row("TST", d, date(2026, 10, 23), tv_rec={**rec, "sl": 91.0})
+    assert r2["f_no_red_vol_week"] is False                                       # close 90 < SL 91: broke

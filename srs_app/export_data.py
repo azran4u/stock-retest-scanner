@@ -45,11 +45,12 @@ INDEX_COLS = [
     "ticker", "status", "current_price", "dollar_vol_30d", "days_to_earnings", "earnings_date", "earnings_none", "earnings_estimated",
     "tv_zone_top", "tv_zone_bottom", "tv_entry", "tv_sl", "tv_tp", "tv_rr", "tv_source", "tv_read_date",
     "tv_zone_dist_atr", "tv_stale", "tv_stale_detail", "tv_bot_status", "weekly_atr",
-    "f_technical", "f_near_zone", "needs_drawing", "f_bot_review", "f_tv_stale", "f_last_week_reversal",
+    "f_technical", "tech_trend", "tech_trend_he", "tech_trend_detail", "f_near_zone", "needs_drawing", "f_bot_review", "f_tv_stale", "f_last_week_reversal",
     "last_week_reversal_kind", "hammer_entry", "hammer_sl", "hammer_tp", "hammer_rr", "hammer_calm_weeks",
     "hammer_score", "inst_own_pct", "short_float_pct", "tradingview_url",
     "f_dollar_vol", "f_history", "f_no_earnings_14d",
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
+    "red_vol_loud", "red_vol_close", "red_vol_ref", "red_vol_held",
     "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
     "f_no_inv_hammer", "inv_hammer_week_date", "inv_hammer_detail",
     "f_after_earnings_week", "earn_week_report", "earn_week_detail",  # PASS gate (Eyal 2026-10-31, CHRW)
@@ -107,7 +108,7 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         if r.get("status") == "PASS":
             badges.append("pass")
         # (WAIT / badge 'waiting' cancelled 2026-10-26: the app shows the inverted-hammer warning as an info badge;
-        # f_no_red_vol_week = falling knife is a PASS gate again since 2026-11-09)
+        # f_no_red_vol_week = red high-volume week that closed below the zone, a PASS gate since 2026-11-09 / 2026-11-16)
         if _truthy(r.get("needs_drawing")):
             badges.append("needs_drawing")
         if _truthy(r.get("f_bot_review")):
@@ -541,8 +542,9 @@ def attach_earnings_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = 
 
 def attach_red_vol_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = None,
                         hist: Optional[Dict[str, Any]] = None) -> List[str]:
-    """f_no_red_vol_week = falling-knife gate at export time (Eyal 2026-11-09: "the last weekly candle was a healthy red
-    candle on above-average volume -> no entry even if price closed on the support; wait for next week's close").
+    """f_no_red_vol_week = red high-volume last week gate at export time (Eyal 2026-11-09; zone-aware since 2026-11-16:
+    "no separate falling-knife criterion - if the zone held the stock is legitimate"): blocks only when that healthy red,
+    loud week closed below the zone in use = the row's planned SL (tv_sl; zone bottom when there is no Long).
     Re-checked as of the later of the export day and asof_date (report_filters.compute_red_vol_week on the history
     cache: last COMPLETED W-FRI week, close < open, body >= 50% of the range, average daily volume > the 30 trading days
     before it), so the block clears by itself once the next weekly candle closes. A PASS row that fails it becomes FAIL.
@@ -561,9 +563,9 @@ def attach_red_vol_week(rows: List[Dict[str, Any]], asof_date: Optional[str] = N
         if df is None or getattr(df, "empty", True):
             continue
         try:
-            o = rf.compute_red_vol_week(df, rd)
+            o = rf.compute_red_vol_week(df, rd, sl=r.get("tv_sl"), zone_bottom=r.get("tv_zone_bottom"))
         except Exception as e:  # never block the export
-            print(f"  [falling knife] {r['ticker']}: {e}")
+            print(f"  [red vol week] {r['ticker']}: {e}")
             continue
         for k in ("f_no_red_vol_week", *rf.RED_VOL_COLS):
             r[k] = o.get(k)
@@ -672,10 +674,10 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
         print(f"  [app data] earnings week skipped: {e}")
     try:
         _knife = attach_red_vol_week(rows, report_date)
-        print(f"  [app data] falling knife (healthy red loud week, wait for the next weekly close): {len(_knife)} rows"
+        print(f"  [app data] red high-volume last week closed below the zone (not PASS): {len(_knife)} rows"
               + (f" ({', '.join(sorted(_knife)[:40])})" if _knife else ""))
     except Exception as e:  # never block the export
-        print(f"  [app data] falling knife skipped: {e}")
+        print(f"  [app data] red vol week skipped: {e}")
     try:  # expert watchlist (Eyal 2026-11-01): near a valid expert zone, R:R >= 2, tradable, ranked by readiness
         from srs_app.expert_watch import build as _ew_build
         import datetime as _dt  # earnings gate is evaluated on the later of the report date and today (bug 2026-11-01)

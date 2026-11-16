@@ -95,7 +95,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v9-2026-11-16"
+RULE_VERSION = "expert-v10-2026-11-16"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -109,6 +109,8 @@ NEAR_ATR = 2.0
 ATR_N = 14
 SWING_W = 2           # v9 fallback: a lower resistance = weekly swing high (2 weeks each side)
 FALLBACK_CLOSE_TOL = 0.01   # v9: a weekly close <= 1% above a level does not break it (Murphy 1% filter)
+DOW_GAP = 8           # v10: same-type swings >= 8 weeks apart (= report tech_swing_min_gap_weeks)
+DOW_K = 5             # v10: primary trend = Dow structure of the weekly swings (srs_app/dow_trend, = report tech_dow_k)
 
 SRC = {
     "level": "Weinstein; Bulkowski; IBD (pivot = last resistance before the breakout)",
@@ -200,17 +202,40 @@ def _zone_of(W: List[Dict[str, Any]], b: int, A: float) -> Dict[str, Any]:
     return {"top": R, "bottom": body, "pivot": p, "cluster": cluster, "base_lo": lo, "width_note": width_note}
 
 
-def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str, Any]:
-    """The expert zone + significance score of one ticker (see module doc). {'ok': False, 'reason': ...} when none."""
+def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None, trend: Optional[str] = None,
+         ceiling: Optional[float] = None) -> Dict[str, Any]:
+    """The expert zone + significance score of one ticker (see module doc). {'ok': False, 'reason': ...} when none.
+    v10 (Eyal 2026-11-16): trend = the stock's primary trend label ('up' / 'down' / 'sideways', report tech_trend after
+    his overrides; None = computed here from the completed weekly bars); 'down' -> no trade ('מגמת ירידה'). No strict
+    expert zone -> the nearest unbroken support below the price (_nearest), so every non-downtrend stock has a plan.
+    ceiling = his broken drawing's level: only zones whose top is under it (the NEXT lower support)."""
+    res = _find(daily, asof, ceiling)
+    if res.get("short"):
+        return res
+    tr = trend or res.pop("_trend", None)
+    res.pop("_trend", None)
+    res["trend"] = tr
+    if tr == "down":
+        out = {"ok": False, "reason": "downtrend (lower highs and lower lows): no trade", "trend": tr,
+               "reason_he": "מגמת ירידה (שיאים יורדים ושפלים יורדים) — אין עסקה", "atr_w": res.get("atr_w")}
+        if res.get("ok"):
+            out["dropped"] = {"top": res["top"], "bottom": res["bottom"], "kind": res.get("kind")}
+        return out
+    return res
+
+
+def _find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None, ceiling: Optional[float] = None) -> Dict[str, Any]:
     Wall = weekly(daily)
     if len(Wall) < BASE_W + 10:
-        return {"ok": False, "reason": "short history"}
+        return {"ok": False, "reason": "short history", "short": True}
     done = week_complete(Wall[-1]["last"], asof)
     W = Wall if done else Wall[:-1]           # structure from completed weeks only
     n = len(W)
     A = wilder_atr(W)
     if not A:
-        return {"ok": False, "reason": "short history"}
+        return {"ok": False, "reason": "short history", "short": True}
+    from srs_app.dow_trend import trend as _dow
+    _tr = _dow([x["high"] for x in W], [x["low"] for x in W], [x["close"] for x in W], DOW_K, gap=DOW_GAP)["trend"]
     last = Wall[-1]["close"]                  # current price (the running week counts for 'where is price now')
     first_reason = None
     for b in range(n - 1, max(BASE_W, n - LOOKBACK_W) - 1, -1):
@@ -219,6 +244,8 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
             continue
         z = _zone_of(W, b, A)
         if b - z["pivot"] < MIN_BASE_GAP:
+            continue
+        if ceiling is not None and z["top"] >= ceiling:
             continue
         top, bot = z["top"], z["bottom"]
         post_hi = max(x["high"] for x in Wall[b:])
@@ -246,8 +273,80 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
         if z.get("fallback"):
             res["fallback"] = z["fallback"]
         res.update(hammers(W, res["top"], res["bottom"], A))
+        res["kind"] = "expert"
+        res["_trend"] = _tr
         return res
-    return {"ok": False, "reason": first_reason or "no breakout above a 26-week base in 3 years", "atr_w": round(A, 4)}
+    strict_reason = first_reason or "no breakout above a 26-week base in 3 years"
+    nz = _nearest(W, Wall, A, last, n, ceiling)
+    if nz is not None:
+        b, z = nz["b"], nz["z"]
+        post_hi = max(x["high"] for x in Wall[b:])
+        res = _result(Wall, W, b, z, A, last, post_hi, daily)
+        res.update(hammers(W, res["top"], res["bottom"], A))
+        res["kind"] = "nearest"
+        res["strict_reason"] = strict_reason
+        res["soft"] = nz["soft"]
+        res["_trend"] = _tr
+        return res
+    return {"ok": False, "reason": strict_reason + "; no unbroken broken-resistance support below the price",
+            "atr_w": round(A, 4), "_trend": _tr}
+
+
+def _nearest(W, Wall, A, last, n, ceiling=None) -> Optional[Dict[str, Any]]:
+    """v10 (Eyal 2026-11-16: "every stock in an uptrend should have its nearest support that has not been broken yet,
+    including a planned Long"). Used only when no strict expert zone exists. Candidates = every weekly swing high
+    (SWING_W weeks each side) of the completed history that later became support by the same expert rules:
+      broken resistance : a later weekly CLOSE above it (breakout week b = the first such close)
+      zone              : top = the swing high, cluster = the weeks of the 26 before b whose high is within
+                          [top - 0.5 A, top x 1.01], bottom = their highest body top, same width sanity (0.25-0.5 A)
+      not broken since  : no completed weekly close more than 3% under the bottom, no two consecutive closes under it,
+                          the current price not more than 3% under it (identical to rule 3 'not broken')
+      from above        : it is under the price (top <= the post-breakout high, the breakout closed above it)
+      ceiling           : top < ceiling (his broken drawing)
+    The NEAREST one = the highest top among them (ties -> the newer breakout). The strict-only rules (2 ATR move-away,
+    >= 4 weeks since the breakout, a pullback of >= 1 ATR, price <= 2 ATR above the top) are soft here: whichever it
+    misses is listed in 'soft' (shown on the stock page), never a reason to leave the stock without a plan."""
+    best = None
+    for p in range(SWING_W, n - SWING_W):
+        L = W[p]["high"]
+        if ceiling is not None and L >= ceiling:
+            continue
+        if any(W[k]["high"] >= L for k in range(p - SWING_W, p + SWING_W + 1) if k != p):
+            continue
+        b = next((k for k in range(p + 1, n) if W[k]["close"] > L), None)
+        if b is None:
+            continue
+        lo = max(0, b - BASE_W)
+        cluster = [k for k in range(lo, b) if L - CLUSTER_ATR * A <= W[k]["high"] <= L * (1 + FALLBACK_CLOSE_TOL)] or [p]
+        body = min(max(max(W[k]["open"], W[k]["close"]) for k in cluster), L)
+        note = None
+        if L - body < MIN_W_ATR * A:
+            body, note = L - MIN_W_ATR * A, "widened"
+        elif L - body > MAX_W_ATR * A:
+            body, note = L - MAX_W_ATR * A, "clamped"
+        if any(W[k]["close"] < body * (1 - BREAK_PCT) for k in range(b + 1, n)) or last < body * (1 - BREAK_PCT):
+            continue
+        if any(W[k]["close"] < body and W[k + 1]["close"] < body for k in range(b + 1, n - 1)):
+            continue
+        key = (L, b)
+        if best is None or key > best[0]:
+            best = (key, p, b, body, note, cluster)
+    if best is None:
+        return None
+    (_, _), p, b, body, note, cluster = best
+    L = W[p]["high"]
+    post_hi = max(x["high"] for x in Wall[b:])
+    soft = []
+    if post_hi < L + MOVE_AWAY_ATR * A:
+        soft.append(f"never moved {MOVE_AWAY_ATR:g} ATR above it")
+    if n - 1 - b < RALLY_WEEKS:
+        soft.append(f"< {RALLY_WEEKS} weeks since the breakout")
+    if last > post_hi - PULLBACK_ATR * A:
+        soft.append("no pullback yet (price within 1 ATR of the post-breakout high)")
+    if last > L + NEAR_ATR * A:
+        soft.append(f"price {(last - L) / A:.1f} ATR above the zone")
+    z = {"top": L, "bottom": body, "pivot": p, "cluster": cluster, "base_lo": max(0, b - BASE_W), "width_note": note}
+    return {"b": b, "z": z, "soft": soft}
 
 
 def _fallback(W, Wall, b, z, A, last, post_hi, n) -> Optional[Dict[str, Any]]:
@@ -457,16 +556,83 @@ def _yf_rows(t: str) -> Optional[List[List[Any]]]:
         return None
 
 
-def build(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fetch: bool = False) -> Dict[str, Any]:
+REPORT = Path(__file__).resolve().parent.parent / "historical-reports" / "latest.csv"
+HIS_BROKEN = "his_broken.json"   # app/data/his_broken.json, written by srs_app.expert_drawings (his broken drawings)
+
+
+def report_universe(report: Path = REPORT) -> Dict[str, Dict[str, Any]]:
+    """{ticker: {'trend': up|down|sideways|None, 'liquid': bool}} from the latest report: trend = 'up' when f_technical is
+    True (his override included), else tech_trend; liquid = f_dollar_vol AND f_history (the 'always a plan' universe)."""
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        import csv
+        tr = lambda v: str(v).strip().lower() in ("true", "1", "1.0", "yes")
+        with open(report, newline="") as fh:
+            for r in csv.DictReader(fh):
+                t = str(r.get("ticker") or "").strip().upper()
+                if not t:
+                    continue
+                lab = "up" if tr(r.get("f_technical")) else (r.get("tech_trend") or None)
+                out[t] = {"trend": lab, "liquid": tr(r.get("f_dollar_vol")) and tr(r.get("f_history"))}
+    except Exception:
+        pass
+    return out
+
+
+def load_ceilings(data_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """{ticker: his_broken entry (ids, level, kind, week, close, ceiling)} from app/data/his_broken.json."""
+    try:
+        d = json.loads((data_dir / HIS_BROKEN).read_text()).get("tickers", {})
+        return {t: v for t, v in d.items() if v.get("ceiling") is not None}
+    except Exception:
+        return {}
+
+
+_HIST = None
+
+
+def _hist_rows(t: str) -> Optional[List[List[Any]]]:
+    """5y daily rows from the scanner's history cache (tickers the export wrote no candles for)."""
+    global _HIST
+    try:
+        import pandas as pd
+        from srs_app.export_data import HIST_CACHE, YEARS
+        if _HIST is None:
+            _HIST = dict(pd.read_pickle(HIST_CACHE))
+        df = _HIST.get(t)
+        if df is None or getattr(df, "empty", True):
+            return None
+        d = df.copy()
+        if isinstance(d.columns, pd.MultiIndex):
+            d.columns = d.columns.get_level_values(-1)
+        d.index = pd.to_datetime(d.index)
+        if getattr(d.index, "tz", None) is not None:
+            d.index = d.index.tz_localize(None)
+        cut = pd.Timestamp(datetime.now() - timedelta(days=int(365.25 * YEARS)))
+        d = d[d.index >= cut].dropna(subset=["Open", "High", "Low", "Close"])
+        return [[i.strftime("%Y-%m-%d"), float(r["Open"]), float(r["High"]), float(r["Low"]), float(r["Close"]),
+                 0.0 if pd.isna(r["Volume"]) else float(r["Volume"])] for i, r in d.iterrows()] or None
+    except Exception:
+        return None
+
+
+def build(tickers: Sequence[str], data_dir: Path, asof: Optional[str] = None, fetch: bool = False,
+          trends: Optional[Dict[str, Optional[str]]] = None, ceilings: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    trends = trends if trends is not None else {t: v.get("trend") for t, v in report_universe().items()}
+    ceilings = ceilings if ceilings is not None else load_ceilings(data_dir)
     out: Dict[str, Any] = {}
     for t in tickers:
         f = data_dir / "candles" / f"{t}.json"
-        rows = json.loads(f.read_text())["d"] if f.exists() else (_yf_rows(t) if fetch else None)
+        rows = json.loads(f.read_text())["d"] if f.exists() else (_hist_rows(t) or (_yf_rows(t) if fetch else None))
         if not rows:
             out[t] = {"ok": False, "reason": "no candles"}
             continue
         try:
-            out[t] = find(rows, asof)
+            hb = ceilings.get(t)
+            out[t] = find(rows, asof, trends.get(t), float(hb["ceiling"]) if hb else None)
+            if hb:
+                out[t]["below_his"] = round(float(hb["ceiling"]), 2)
+                out[t]["his_broken"] = hb
         except Exception as e:  # never block the export
             out[t] = {"ok": False, "reason": f"error: {e}"}
     return out
@@ -530,6 +696,9 @@ def sync_all(data_dir: Path, asof: Optional[str] = None, state_path: Optional[st
         ts |= set(starred(state_path))
     except Exception:
         pass
+    # v10 (Eyal 2026-11-16, "always a planned trade"): every liquid stock with enough history in the latest report
+    # (f_dollar_vol AND f_history), not only the ones already in the app, so each non-downtrend stock gets its plan
+    ts |= {t for t, v in report_universe().items() if v.get("liquid")}
     return write(sorted(ts), data_dir, asof, fetch)
 
 

@@ -69,24 +69,43 @@ async function guard<T>(p: Promise<T>, ok?: string): Promise<T | undefined> {
 }
 
 const BADGES: Record<string, [string, string]> = {
-  pass: ['PASS', 'b-pass'], redvol: ['שבוע אדום במחזור גבוה', 'b-wait'], invh: ['פטיש הפוך', 'b-wait'], review: ['לבדיקה', 'b-review'],
+  pass: ['PASS', 'b-pass'], redvol: ['נר אדום עם מחזור גבוה · נסגר מתחת לאזור', 'b-wait'], redvolok: ['נר אדום עם מחזור גבוה · האזור נשמר', 'b-off'], invh: ['פטיש הפוך', 'b-wait'], review: ['לבדיקה', 'b-review'],
   obsolete: ['לא עדכני', 'b-obs'], hammer: ['פטיש', 'b-hammer'], position: ['פוזיציה', 'b-pos'], off_screen: ['מחוץ לסריקה', 'b-off'],
+  trend_up: ['מגמה: עלייה', 'b-tup'], trend_down: ['מגמת ירידה', 'b-tdown'], trend_sideways: ['מגמה: דשדוש', 'b-tside'],
   watch: ['מעקב', 'b-watch'], ni: ['לא מתאימה לשיטה', 'b-ni'], nodata: ['אין נתונים עדיין', 'b-off'],
 };
 /** Last-week candles (Eyal 2026-10-23 / 2026-10-24): inverted hammer (BFH) = information only since 2026-10-26;
- *  healthy red bar on above-average volume = falling knife, a PASS / entry gate again since 2026-11-09. */
-const KNIFE_HE = 'נר אדום בריא במחזור גבוה — ממתינים לסגירת השבוע הבא';
+ *  red high-volume last week (healthy red bar on above-average volume): a PASS / entry gate since 2026-11-09, and since
+ *  2026-11-16 ONLY when that week closed below the zone in use = the planned SL of the Long that counts (zone bottom
+ *  without a Long). Eyal: "there is no separate falling-knife criterion - if the zone held, the stock is legitimate". */
+const RED_VOL_HE = 'נר אדום עם מחזור גבוה בשבוע האחרון';
+const KNIFE_HE = RED_VOL_HE + ' — נסגר מתחת לאזור';
+/** 'below' = the loud red week closed under the planned SL (blocks), 'held' = the zone held (info), null = no such week.
+ *  Live: against the Long / zone that count now; older exports without red_vol_loud: the exported flag. */
+function redVolOf(r: Row): 'below' | 'held' | null {
+  if (r.red_vol_loud == null) return r.f_no_red_vol_week === false ? 'below' : null;
+  if (!r.red_vol_loud) return null;
+  const lg = countedOf(r.ticker, 'long'), z = countedOf(r.ticker, 'zone');
+  const n = (x: unknown) => (x == null || (x as any) === '' || !isFinite(+(x as any)) ? null : +(x as any));
+  const ref = lg ? n(lg.stop) : z ? n(z.zone_bottom) : n(r.red_vol_ref);
+  const c = n(r.red_vol_close);
+  if (ref == null || c == null) return r.f_no_red_vol_week === false ? 'below' : 'held';
+  return c < ref ? 'below' : 'held';
+}
 const ddmm = (iso: unknown) => (typeof iso === 'string' && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '');
 function waitShort(r: Row): string {
   const parts: string[] = [];
   if (r.f_no_inv_hammer === false) parts.push(`פטיש הפוך ${ddmm(r.inv_hammer_week_date)}`);
-  if (r.f_no_red_vol_week === false) parts.push(`נר אדום ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום`);
+  const rv = redVolOf(r);
+  if (rv) parts.push(`${RED_VOL_HE} ${ddmm(r.red_vol_week_date)} · מחזור ${fmt(r.red_vol_ratio, 2)}× ממוצע 30 יום · ${rv === 'below' ? 'נסגר מתחת לאזור' : 'האזור נשמר'}`);
   return parts.join(' · ');
 }
 function waitLong(r: Row): string {
   const parts: string[] = [];
   if (r.f_no_inv_hammer === false) parts.push(`הנר השבועי של השבוע שהסתיים ב-${ddmm(r.inv_hammer_week_date)} הוא פטיש הפוך — הקונים נדחו למעלה, סימן שלילי. מידע בלבד, לא משנה את ה-PASS.`);
-  if (r.f_no_red_vol_week === false) parts.push(`נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו — מוכרים חזקים, אולי סכין נופלת. לא נכנסים גם אם המחיר נסגר על התמיכה: ממתינים לסגירת השבוע הבא.`);
+  const rv = redVolOf(r);
+  if (rv) parts.push(`${RED_VOL_HE}: נר שבועי אדום בריא בשבוע שהסתיים ב-${ddmm(r.red_vol_week_date)} (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח), עם מחזור יומי ממוצע פי ${fmt(r.red_vol_ratio, 2)} מממוצע 30 ימי המסחר שלפניו. ` +
+    (rv === 'below' ? 'הנר נסגר מתחת לאזור (מתחת ל-SL המתוכנן), כלומר הרמה נשברה — לא ב-PASS. מחפשים את רמת התמיכה הבאה שלא נשברה.' : 'האזור נשמר (הסגירה מעל ה-SL המתוכנן), ולכן המניה לגיטימית — מידע בלבד, לא חוסם PASS.'));
   return parts.join(' ');
 }
 const badgeHtml = (b: string) => (BADGES[b] ? `<span class="badge ${BADGES[b][1]}">${BADGES[b][0]}</span>`
@@ -128,6 +147,13 @@ function fromBelowOf(r: Row): boolean {
   if (z && z.zone_top != null && z.zone_bottom != null && cl && cl.length) return zoneApproach(cl, +z.zone_bottom, +z.zone_top, FROM_ABOVE_TOL_ATR * (Number(r.weekly_atr) || 0)) === 'below';
   return r.f_from_above === false;
 }
+/** Dow trend label of the row (tech_trend); his manual verdict (f_technical true) counts as an uptrend */
+function trendOf(r: Row): 'up' | 'down' | 'sideways' | null {
+  const t = r.tech_trend;
+  if (r.f_technical === true) return 'up';
+  return t === 'up' || t === 'down' || t === 'sideways' ? t : null;
+}
+const TREND_WHY: Record<string, string> = { down: 'מגמת ירידה', sideways: 'מגמה: דשדוש' };
 function liveOf(r: Row): Live | null {
   if (GATES.some((g) => r[g] === undefined)) return null; // no gate data exported for this row -> keep the export
   const gatesOk = GATES.every((g) => r[g] === true);
@@ -138,11 +164,16 @@ function liveOf(r: Row): Live | null {
   // earnings week (Eyal 2026-10-31, CHRW): the last completed week (or the running one) traded a report -> not PASS
   // until the following week closes. Only an explicit false blocks (older exports lack the column).
   const earnWeek = r.f_after_earnings_week === false;
-  // falling knife (Eyal 2026-11-09): the last completed weekly candle is a healthy red bar on above-average volume ->
-  // no entry even if price closed on the support; the next weekly close decides (nightly re-check). Only explicit false.
-  const knife = r.f_no_red_vol_week === false;
-  const status = !gatesOk || !rrOk || fromBelow || earnWeek || knife ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (inverted hammer = info)
-  const why = fromBelow ? 'חזרה לאזור מלמטה'
+  // red high-volume last week (Eyal 2026-11-09 / 2026-11-16): blocks only when it closed below the planned SL of the
+  // Long that counts now (the zone broke); the zone held -> legitimate (info badge only).
+  const knife = redVolOf(r) === 'below';
+  // primary uptrend (Dow, Eyal 2026-11-16) is a PASS condition: sideways / downtrend -> FAIL (an older export without
+  // the column does not block)
+  const trendOk = r.f_technical !== false;
+  const status = !gatesOk || !trendOk || !rrOk || fromBelow || earnWeek || knife ? 'FAIL' : 'PASS'; // WAIT cancelled 2026-10-26 (inverted hammer = info)
+  const tr = trendOf(r);
+  const why = gatesOk && !trendOk ? (tr && TREND_WHY[tr]) || 'אין מגמת עליה'
+    : fromBelow ? 'חזרה לאזור מלמטה'
     : earnWeek ? 'שבוע דוחות — ממתינים לסגירת השבוע הבא'
     : knife ? KNIFE_HE
     : rrOk ? '' : q == null ? (lg ? 'R:R לא תקין' : 'אין לונג') : `R:R ${q.toFixed(2)} < ${RR_MIN}`;
@@ -185,6 +216,17 @@ const secHtml = (r: Row) => {
  *  that count (newest active / approved row per kind = the expert pair, or a drawing he makes from now on). Obsolete,
  *  retired, rejected and older rows are never drawn. */
 function shownDrawings(t: string): Drawing[] { return [countedOf(t, 'zone'), countedOf(t, 'long')].filter((d): d is Drawing => !!d); }
+/** chart drawings = the counted ones + his BROKEN drawings (Eyal 2026-11-16: a weekly close under his planned SL): kept
+ *  visible, dashed grey 'שלך · נשבר', read-only copies (id 'broken:<id>', never saved); the next lower expert zone is
+ *  the plan that counts. His rows are never deleted / changed. */
+function chartDrawings(t: string): Drawing[] {
+  const out = shownDrawings(t);
+  const ids = new Set((expertOf(t)?.his_broken?.ids || []).map(String));
+  if (ids.size) for (const d of S.drawings.values())
+    if (d.ticker === t && ids.has(String(d.id)) && d.status !== 'deleted' && !out.some((o) => o.id === d.id))
+      out.push({ ...d, id: 'broken:' + d.id, broken: true } as Drawing);
+  return out;
+}
 /** his own live drawings (app / TV), for the ✎ badge and the 'my drawings' chip */
 function hisDrawings(t: string) { return userDrawings(t).filter((d) => d.source === 'user' || d.source === 'tv'); }
 function userDrawings(t: string) { return [...S.drawings.values()].filter((d) => d.ticker === t && d.status !== 'obsolete' && d.status !== 'deleted'); }
@@ -206,7 +248,10 @@ function badgesOf(r: Row): string[] {
   else if (live && live.gatesOk && live.why) b.unshift('rrfail:' + live.why); // would pass except the R:R
 
   if (r.f_no_inv_hammer === false) b.push('invh');
-  if (r.f_no_red_vol_week === false) b.push('redvol');
+  // Dow trend on weekly swings (Eyal 2026-11-16): עלייה / ירידה / דשדוש on the card and the stock page
+  const tr = trendOf(r); if (tr) b.push('trend_' + tr);
+  const rv = redVolOf(r);
+  if (rv === 'below') b.push('redvol'); else if (rv === 'held') b.push('redvolok');
   if (isWatched(r.ticker)) b.unshift('watch');
   if (isNi(r.ticker)) b.unshift('ni');
   return b;
@@ -417,7 +462,7 @@ function factsOf(r: Row): Facts {
     history: bool(r.f_history),
     tradable: wa == null ? null : wa < maxRiskUsd(),
     fromAbove: live ? !live.fromBelow : bool(r.f_from_above),
-    noInvHammer: bool(r.f_no_inv_hammer), noRedVol: bool(r.f_no_red_vol_week),
+    noInvHammer: bool(r.f_no_inv_hammer), noRedVol: redVolOf(r) === 'below' ? false : bool(r.f_no_red_vol_week) == null ? null : true, // live: closed below the zone that counts now
     smoothWeeks: numOrNull(r.smooth_streak_weeks),
     sector: (r.sector as string) || null,
     instOwn: numOrNull(r.inst_own_pct), shortFloat: numOrNull(r.short_float_pct),
@@ -1676,7 +1721,7 @@ function applyBars() {
 
 function syncChart() {
   if (!cv || !S.ticker) return;
-  cv.setDrawings(shownDrawings(S.ticker), S.selected);
+  cv.setDrawings(chartDrawings(S.ticker), S.selected);
   applyExpert();   // the dashed expert copy hides / shows with the counted pair
   cv.fitLevels();
 }
@@ -1798,7 +1843,7 @@ function feedbackHtml(d: Drawing) {
 function liveBoxHtml(r: Row): string {
   const l = liveOf(r); if (!l || !l.gatesOk) return '';
   if (l.status === 'FAIL' && r.f_after_earnings_week === false && !l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">המניה פרסמה דוחות${r.earn_week_report ? ` ב-${ddmm(r.earn_week_report)}` : ''}, ולכן המחזור ותנועת המחיר בשבוע הדוחות מושפעים מהם. נחליט אם היא עומדת בכללים רק אחרי הסגירה של השבוע שאחרי.</div></section>`;
-  if (l.status === 'FAIL' && l.knife && !l.fromBelow) return `<section class="wait-box rr-box" data-knife="1"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הנר השבועי שנסגר ב-${ddmm(r.red_vol_week_date)} אדום ובריא (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח) במחזור פי ${fmt(r.red_vol_ratio, 2)} מהממוצע — אולי סכין נופלת. לא נכנסים גם אם המחיר נסגר על התמיכה; הכללים יחליטו שוב אחרי הסגירה של השבוע הבא.</div></section>`;
+  if (l.status === 'FAIL' && l.knife && !l.fromBelow) return `<section class="wait-box rr-box" data-knife="1"><h3>לא ב-PASS · <bdi>${esc(KNIFE_HE)}</bdi></h3><div class="small">הנר השבועי שנסגר ב-${ddmm(r.red_vol_week_date)} אדום ובריא (גוף ${fmt(r.red_vol_body_pct, 0)}% מהטווח) במחזור פי ${fmt(r.red_vol_ratio, 2)} מהממוצע, ונסגר מתחת לאזור (מתחת ל-SL המתוכנן) — הרמה נשברה. הבוט מחפש את רמת התמיכה הבאה שלא נשברה ומתכנן עליה לונג חדש.</div></section>`;
   if (l.status === 'FAIL' && l.fromBelow) return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">הסגירה השבועית האחרונה מחוץ לאזור הייתה מתחתיו, כלומר המניה חזרה לאזור מלמטה. היא תחזור להיות מעניינת רק אחרי סגירה שבועית מעל האזור וחזרה אליו מלמעלה.</div></section>`;
   if (l.status === 'FAIL') return `<section class="wait-box rr-box"><h3>לא ב-PASS · <bdi>${esc(l.why)}</bdi></h3><div class="small">${l.rr == null ? 'אין לונג פעיל, ולכן ה-R:R לא ידוע.' : 'ה-R:R של הלונג הנוכחי מתחת ל-2.'} הסטטוס מתעדכן מיד כשמשנים אזור או לונג.</div></section>`;
   return '';
@@ -2103,7 +2148,7 @@ function watchHeadHtml(): string {
   const n = expertWatch?.items.length ?? 0, nr = expertWatch?.items.filter((x) => x.tier === EW_READY).length ?? 0;
   return `<li class="ewhead small" id="ewHead"><b>רשימת מעקב מומחים</b> · ${n} מניות (${nr} מוכנות, ${n - nr} ממתינות לאישור) · מחושבת כל לילה${expertWatch?.asof ? ` (<bdi dir="ltr">${esc(expertWatch.asof)}</bdi>)` : ''}
     <div class="muted">תנאים: אזור מומחים תקף (רמת התנגדות שנפרצה, ממוצע 30 שבועות לא יורד); המחיר בתוך האזור או עד ${c.max_dist_atr ?? 1} ATR שבועי מעליו; R:R מומחים ≥ ${c.min_rr ?? 2}; אין דוחות ב-${c.earn_days ?? 14} הימים הקרובים והשבוע האחרון לא שבוע דוחות; סיכון למניה ≤ $${c.max_risk_usd ?? 55} וסיכון ≤ ${c.max_risk_pct ?? 10}%.
-    <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג), או שהנר השבועי האחרון אדום ובריא במחזור גבוה (סכין נופלת — ממתינים לסגירת השבוע הבא). דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
+    <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג), או שהיה נר אדום עם מחזור גבוה בשבוע האחרון שנסגר מתחת לאזור. דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
 }
 // ---------------- confirmation candlestick patterns on the level (Eyal 2026-11-16): evidence / entry signal, never PASS ----------------
 let confDoc: ConfDoc | null = null;
@@ -2155,7 +2200,7 @@ function confPanelHtml(t: string): string {
   return `<section class="confbox" id="secConfirm"><h3>תבניות אישור על הרמה ${l?.entry ? '<span class="badge b-pass">אות כניסה</span>' : ''}</h3>
     ${zs.length ? `<div class="small muted">נבדק על ${zs.map((z) => `${zl(z.src)} <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>`).join(' ועל ')} · נרות שבועיים (${cs.keep_weeks ?? 8} שבועות אחרונים) ויומיים (${cs.keep_days ?? 20} ימי מסחר)</div>` : '<div class="small muted">אין אזור לבדיקה</div>'}
     ${items ? `<ul class="conflist small">${items}</ul>` : `<div class="small">${zs.length ? 'אין תבנית אישור על האזור' : ''}</div>`}
-    <div class="muted small">תבניות היפוך שוריות סטנדרטיות (TA-Lib / Nison): בליעה שורית, כוכב בוקר (ודוג'י), קו חודר, שלושה מבפנים למעלה, פטיש + נר אישור (נר ירוק שנסגר מעל השיא של הפטיש), תחתית פינצטה (הנר הירוק עם גוף אמיתי שנסגר מעל אמצע הנר האדום). נספרות רק אחרי מגמת ירידה אל התבנית (באותו טווח זמן: הסגירה של הנר שלפניה מתחת לממוצע נע ${cs.trend_sma ?? 10} נרות שיורד ביחס ל-${cs.trend_slope_bars ?? 3} נרות קודם, והשפל שלה הנמוך ב-${cs.low_lookback ?? 10} הנרות שלפניה; דשדוש צדדי לא נחשב) וכשהשפל נוגע באזור עצמו (סטייה של עד ${cs.zone_tol_atr ?? 0.1} ATR או ${(100 * (cs.zone_tol_pct ?? 0.01)).toFixed(0)}%, הקטן מביניהם). <b>אות כניסה</b> = תבנית שבועית שהסתיימה ב-${cs.entry_weeks ?? 2} השבועות האחרונים, או תבנית יומית אחרי ירידה יומית שהשפל שלה על האזור השבועי (הסטייה לפי ATR יומי) והסתיימה ב-${cs.entry_days ?? 5} ימי המסחר האחרונים; בשני המקרים המחיר לא נסגר מאז מתחת לשפל התבנית. תבנית יומית ישנה יותר = אישור בלבד. ראיה חיובית בלבד: לא משנה PASS, סכין נופלת או שבוע דוחות.</div></section>`;
+    <div class="muted small">תבניות היפוך שוריות סטנדרטיות (TA-Lib / Nison): בליעה שורית, כוכב בוקר (ודוג'י), קו חודר, שלושה מבפנים למעלה, פטיש + נר אישור (נר ירוק שנסגר מעל השיא של הפטיש), תחתית פינצטה (הנר הירוק עם גוף אמיתי שנסגר מעל אמצע הנר האדום). נספרות רק אחרי מגמת ירידה אל התבנית (באותו טווח זמן: הסגירה של הנר שלפניה מתחת לממוצע נע ${cs.trend_sma ?? 10} נרות שיורד ביחס ל-${cs.trend_slope_bars ?? 3} נרות קודם, והשפל שלה הנמוך ב-${cs.low_lookback ?? 10} הנרות שלפניה; דשדוש צדדי לא נחשב) וכשהשפל נוגע באזור עצמו (סטייה של עד ${cs.zone_tol_atr ?? 0.1} ATR או ${(100 * (cs.zone_tol_pct ?? 0.01)).toFixed(0)}%, הקטן מביניהם). <b>אות כניסה</b> = תבנית שבועית שהסתיימה ב-${cs.entry_weeks ?? 2} השבועות האחרונים, או תבנית יומית אחרי ירידה יומית שהשפל שלה על האזור השבועי (הסטייה לפי ATR יומי) והסתיימה ב-${cs.entry_days ?? 5} ימי המסחר האחרונים; בשני המקרים המחיר לא נסגר מאז מתחת לשפל התבנית. תבנית יומית ישנה יותר = אישור בלבד. ראיה חיובית בלבד: לא משנה PASS, נר אדום עם מחזור גבוה או שבוע דוחות.</div></section>`;
 }
 function applyConfirm() {
   if (!cv) return;
@@ -2226,7 +2271,7 @@ function expertPanelHtml(t: string): string {
   const head = `<h3>אזור מומחים <span class="badge b-expert">${e.ok ? `ציון ${e.score}/100` : 'אין רמה'}</span></h3>`;
   const foot = `<div class="muted small">שכבה נפרדת לקריאה בלבד: לא משנה את האזור הנוכחי ולא נכנסת ל-PASS, ל-R:R, לגודל הפוזיציה או לסינון. ${expertDoc?.rule_version ? `<bdi dir="ltr">${esc(expertDoc.rule_version)}</bdi>` : ''}</div>`;
   if (!e.ok) {
-    const he = EXPERT_REASON_HE.find(([re]) => re.test(e.reason || ''))?.[1] || '';
+    const he = e.reason_he || EXPERT_REASON_HE.find(([re]) => re.test(e.reason || ''))?.[1] || '';
     return `<section class="expertbox" id="secExpert">${head}<div class="small">אין רמת מומחים: ${esc(he)}</div><div class="muted small" dir="ltr">${esc(e.reason || '')}</div>${foot}</section>`;
   }
   const z = liveZoneOf(t, S.byT.get(t));
@@ -2237,6 +2282,8 @@ function expertPanelHtml(t: string): string {
     ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
     ${(() => { const hs = (e.hammers || []).filter((h) => h.k <= 12); return `<div class="small exham" data-ham="${hs.map((h) => h.w + ':' + h.s).join(',')}">פטישים על האזור ב-12 השבועות האחרונים: ${hs.length ? hs.map((h) => `<bdi dir="ltr">${ddmm(h.w)} ${h.s}</bdi>`).join(', ') + ' <span class="muted">(H = פטיש קלאסי, h = כמעט פטיש)</span>' : 'אין'}</div>`; })()}
     ${e.fallback ? `<div class="small">גג הבסיס <bdi dir="ltr">${e.fallback.from_top.toFixed(2)}</bdi> לא עמד בכלל ההתרחקות (2 ATR), לכן האזור הוא ההתנגדות הנמוכה יותר שנפרצה (שיא <bdi dir="ltr">${esc(e.pivot_week || '')}</bdi>)</div>` : ''}
+    ${e.kind === 'nearest' ? `<div class="small exnote" data-exkind="nearest">רמת התמיכה הקרובה שלא נשברה (התנגדות שנפרצה והפכה לתמיכה), כי אין רמה שעומדת בכל כללי הריטסט${(e.soft || []).length ? `: <span class="muted" dir="ltr">${esc((e.soft || []).join('; '))}</span>` : ''}</div>` : ''}
+    ${e.his_broken ? `<div class="small exnote" data-hisbroken="${esc(e.his_broken.week)}">השרטוט שלך נשבר: סגירה שבועית <bdi dir="ltr">${e.his_broken.close}</bdi> מתחת ל-${e.his_broken.kind === 'sl' ? 'SL' : 'אזור'} <bdi dir="ltr">${e.his_broken.level}</bdi> (שבוע <bdi dir="ltr">${esc(e.his_broken.week)}</bdi>). הוא נשאר בגרף באפור מקווקו ("שלך · נשבר"), והעסקה המתוכננת היא ברמה הבאה למטה.</div>` : ''}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}

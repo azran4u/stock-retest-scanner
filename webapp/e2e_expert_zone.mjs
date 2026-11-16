@@ -80,7 +80,7 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   }
   if (noT.length) {
     const t = noT[0];
-    await page.goto(BASE + `?demo=1#/t/${t}`); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(400);
+    await page.goto(BASE + `?demo=1#/t/${t}`); await page.waitForSelector('#chart canvas'); await page.waitForSelector('#secExpert', { timeout: 15000 }); await page.waitForTimeout(400);
     ok(await page.locator('#chart g.expert').count() === 0 && (await page.locator('#secExpert').textContent()).includes('אין רמת מומחים'), `${name} ${t}: 'no expert level' shown, no box`);
   }
   const drawAfter = await page.evaluate(() => JSON.stringify(window.__demoApi.drawings));

@@ -1,5 +1,6 @@
-"""Falling-knife gate (Eyal 2026-11-09): "when the last weekly candle was a healthy red candle on above-average volume we
-do not enter even if price closed on the support; wait for next week's close so it is not a falling knife".
+"""Red high-volume last week (Eyal 2026-11-09, zone-aware 2026-11-16). 2026-11-09: "when the last weekly candle was a
+healthy red candle on above-average volume we do not enter". 2026-11-16: "there is no separate falling-knife criterion;
+if the zone held, the stock is legitimate" -> it blocks ONLY when that week closed below the planned SL (the zone broke).
 
 = f_no_red_vol_week, a CORE PASS gate again (info only 2026-10-26 .. 2026-11-09): last COMPLETED W-FRI weekly candle with
 close < open, body >= 50% of the high-low range (a hammer / doji is never 'healthy'), and the week's average daily
@@ -45,11 +46,22 @@ RED_HAMMER_LOUD = (100, 99.5, 100.2, 90, 2_000_000)     # lower shadow 9.5 >= 2x
 RED_QUIET = (100, 90, 100.5, 89.5, 800_000)             # healthy red body but volume 0.8x average
 
 
-def _k(df, now):
-    return rf.compute_red_vol_week(df, now.date(), now_et=now)
+SL_BROKE = 95.0   # HEALTHY_RED_LOUD closes at 90: below this planned SL -> the zone broke
+SL_HELD = 85.0    # under the close -> the zone held
 
 
-def test_healthy_red_high_volume_week_blocks():
+def _k(df, now, sl=SL_BROKE):
+    return rf.compute_red_vol_week(df, now.date(), now_et=now, sl=sl)
+
+
+def test_healthy_red_high_volume_week_held_zone_is_legitimate():
+    out = _k(_hist(HEALTHY_RED_LOUD), FRI_AFTER, sl=SL_HELD)
+    assert out["red_vol_loud"] is True and out["red_vol_held"] is True and out["f_no_red_vol_week"] is True
+    base = {f: True for f in rf.CORE_FILTERS}
+    assert rf.finalize_status({**base, "f_no_red_vol_week": out["f_no_red_vol_week"]})["status"] == "PASS"
+
+
+def test_healthy_red_high_volume_week_below_the_zone_blocks():
     out = _k(_hist(HEALTHY_RED_LOUD), FRI_AFTER)
     assert out["f_no_red_vol_week"] is False and out["red_vol_week_date"] == "2026-10-23"
     assert out["red_vol_body_pct"] >= 50 and out["red_vol_ratio"] > 1
@@ -86,9 +98,13 @@ def test_running_week_not_judged_and_block_clears_after_next_week_closes():
 
 def test_export_recheck_turns_pass_into_fail():
     hist = {"KNIFE": _hist(HEALTHY_RED_LOUD), "OK": _hist(RED_QUIET)}
-    rows = [{"ticker": "KNIFE", "status": "PASS", "badges": ["pass"]}, {"ticker": "OK", "status": "PASS", "badges": ["pass"]}]
+    hist["HELD"] = _hist(HEALTHY_RED_LOUD)
+    rows = [{"ticker": "KNIFE", "status": "PASS", "badges": ["pass"], "tv_sl": "95"},
+            {"ticker": "OK", "status": "PASS", "badges": ["pass"], "tv_sl": "95"},
+            {"ticker": "HELD", "status": "PASS", "badges": ["pass"], "tv_sl": "85"}]
     blocked = XD.attach_red_vol_week(rows, "2026-10-24", hist=hist)
     assert blocked == ["KNIFE"]
+    assert rows[2]["status"] == "PASS" and rows[2]["f_no_red_vol_week"] is True and rows[2]["red_vol_held"] is True
     assert rows[0]["status"] == "FAIL" and "pass" not in rows[0]["badges"] and rows[0]["f_no_red_vol_week"] is False
     assert rows[1]["status"] == "PASS" and rows[1]["f_no_red_vol_week"] is True
 
@@ -110,9 +126,16 @@ def test_hot_list_never_ready_with_a_knife(tmp_path):
     for t in ("A", "B"):
         (tmp_path / "candles" / f"{t}.json").write_text(json.dumps({"t": t, "d": d}))
     mh = {"f_technical": True, "f_dollar_vol": True, "f_history": True, "current_price": 101.0}
-    rows = [{**mh, "ticker": "A", "f_no_red_vol_week": False}, {**mh, "ticker": "B", "f_no_red_vol_week": True}]
+    (tmp_path / "expert_zones.json").write_text(json.dumps({"rule_version": "t", "tickers": {"A": z, "B": z, "C": z}}))
+    (tmp_path / "candles" / "C.json").write_text(json.dumps({"t": "C", "d": d}))
+    rows = [{**mh, "ticker": "A", "f_no_red_vol_week": False},
+            {**mh, "ticker": "B", "f_no_red_vol_week": True},
+            # loud red week that closed at 99 >= the expert SL 98: the zone held -> ready as usual
+            {**mh, "ticker": "C", "f_no_red_vol_week": True, "red_vol_loud": True, "red_vol_close": 99.0}]
     res = X.build(tmp_path, rows, {}, "2026-11-01")
     by = {x["t"]: x for x in res["items"]}
+    assert by["C"]["tier"] == X.TIER_READY and by["C"]["knife"] is False
+    assert X.is_knife({"red_vol_loud": True, "red_vol_close": 97.0}, 98.0) is True
     assert by["B"]["tier"] == X.TIER_READY and by["B"]["knife"] is False
     assert by["A"]["tier"] == X.TIER_WAIT and by["A"]["knife"] is True
     assert by["A"]["reason_he"].startswith(X.KNIFE_HE)

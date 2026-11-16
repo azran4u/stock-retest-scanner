@@ -539,3 +539,7 @@ a.badge.etfl { text-decoration: none; }
 .confbox h3 { margin: 0 0 4px; }
 .confbox .conflist { margin: 4px 0; padding-inline-start: 18px; }
 .confbox .conflist li { margin: 2px 0; overflow-wrap: anywhere; }
+/* Dow trend label (Eyal 2026-11-16): עלייה / ירידה / דשדוש */
+.b-tup { background: rgba(38,166,154,.10); color: #8fd9cf; border: 1px solid rgba(38,166,154,.35); }
+.b-tdown { background: rgba(239,83,80,.10); color: #ff9a8f; border: 1px solid rgba(239,83,80,.35); }
+.b-tside { background: var(--bg3); color: var(--mut); border: 1px solid rgba(120,123,134,.35); }

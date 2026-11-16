@@ -6,6 +6,16 @@ from datetime import date, timedelta
 from srs_app import expert_zone as E
 
 
+def strict_ok(r):
+    """v10: a stock without a strict expert zone gets its NEAREST unbroken support (kind 'nearest'); the strict rule's
+    verdict is kept in strict_reason."""
+    return bool(r["ok"]) and r.get("kind") != "nearest"
+
+
+def strict_reason(r):
+    return r.get("strict_reason") or r.get("reason") or ""
+
+
 def daily(weeks, start=date(2023, 1, 2), vol=None):
     """weeks = [(open, high, low, close)] -> Mon..Fri daily rows; Mon opens, Tue high, Wed low, Fri closes."""
     rows, d = [], start
@@ -74,16 +84,16 @@ def test_broken_level_gives_no_expert_level():
 
 def test_no_pullback_yet():
     path = base_path()[:-4] + rally(2, 115, 116)
-    r = E.find(daily(path))
-    assert not r["ok"] and "no pullback" in r["reason"]
+    r = E.find(daily(path), trend="up")
+    assert not strict_ok(r) and "no pullback" in strict_reason(r)
 
 
 def test_never_moved_away():
     w = rally(30, 60, 92)
     base = [(92, 100, 91, 97)] + [(97, 99, 93, 96)] * 8
     path = w + base + [(96, 101, 95, 100.5), (100.5, 101, 99, 100)]
-    r = E.find(daily(path))
-    assert not r["ok"]
+    r = E.find(daily(path), trend="up")
+    assert not strict_ok(r)
 
 
 def test_breakout_volume_counts_in_score():
@@ -195,6 +205,8 @@ def test_sync_all_covers_every_exported_ticker_and_stars(tmp_path, monkeypatch):
     st = tmp_path / "app_state.json"
     st.write_text(json.dumps({"watchlist": ["OUT"]}))                        # starred, outside the universe
     monkeypatch.setattr(E, "_yf_rows", lambda t: daily(base_path()) if t == "OUT" else None)
+    monkeypatch.setattr(E, "report_universe", lambda *a, **k: {})
+    monkeypatch.setattr(E, "_hist_rows", lambda t: None)
     doc = json.loads(E.sync_all(tmp_path, state_path=str(st)).read_text())
     assert set(doc["tickers"]) == {"AAA", "BBB", "BAD", "OUT"}
     assert doc["tickers"]["OUT"]["ok"] and doc["tickers"]["AAA"]["ok"]
@@ -235,7 +247,7 @@ def test_gpix_stop_is_one_weekly_atr_not_four_percent():
     trade test. Since v5 (Eyal 2026-11-01, KBWB) GPIX has NO expert level: its breakouts never rallied 2 ATR away, so
     there is no retest (a covered-call ETF that barely trends)."""
     r = E.find(_fixture("gpix_daily_20261030.json"), asof="2026-11-01")
-    assert not r["ok"] and r["reason"].startswith("never moved away"), r
+    assert not strict_ok(r) and strict_reason(r).startswith("never moved away"), r
 
 
 def test_stld_v7_breakout_level_only():
@@ -303,14 +315,19 @@ def test_kbwb_no_expert_level():
     """KBWB: the June breakout level 89.02-89.94 is broken (two consecutive weekly closes under it) and no older
     broken resistance passes -> no expert level (the 9/28 + 10/12 pullback lows are not a retest of broken resistance)."""
     r = E.find(_fixture("kbwb_daily_20261030.json"), asof="2026-11-01")
-    assert not r["ok"] and "broken" in r["reason"], r
+    assert not strict_ok(r) and "broken" in strict_reason(r), r
+    # v10: the nearest unbroken support under the broken June level becomes the plan
+    assert r["ok"] and r["kind"] == "nearest" and r["top"] < 89.02 and r["trade"]["entry"] == r["top"]
 
 
 def test_armk_no_expert_level():
     """ARMK: the 6/22 breakout level 54.07-54.82 is broken; the May breakout level 45.93-46.68 is intact but price is
     2.4 ATR above it (no retest now) -> no expert level."""
     r = E.find(_fixture("armk_daily_20261030.json"), asof="2026-11-01")
-    assert not r["ok"], r
+    assert not strict_ok(r), r
+    # v10: the intact May level is the nearest unbroken support -> the plan, 'too far' only a soft note
+    assert r["kind"] == "nearest" and (r["bottom"], r["top"]) == (45.93, 46.68)
+    assert any("ATR above the zone" in x for x in r["soft"])
 
 def test_crwd_v9_falls_back_to_the_lower_broken_resistance():
     """CRWD (Eyal 2026-11-16): the 9/14 breakout cleared the 8/31 wick 233.88 but the run topped at 286.99, under
@@ -329,4 +346,24 @@ def test_fallback_keeps_gpix_without_a_level():
     """v9 fallback needs a DISTINCT lower resistance (> 0.5 ATR under the failed top): GPIX's 54.34 swing high sits
     inside the failed 54.54 top's band -> still no expert level (never moved away)."""
     r = E.find(_fixture("gpix_daily_20261030.json"), asof="2026-11-01")
-    assert not r["ok"] and r["reason"].startswith("never moved away"), r
+    assert not strict_ok(r) and strict_reason(r).startswith("never moved away"), r
+
+
+def test_v10_downtrend_gets_no_trade():
+    """Eyal 2026-11-16: the only stocks without a planned trade are downtrend stocks (lower highs + lower lows)."""
+    r = E.find(daily(base_path()), trend="down")
+    assert not r["ok"] and r["trend"] == "down" and r["reason"].startswith("downtrend")
+    assert r["reason_he"].startswith("מגמת ירידה") and r["dropped"]["top"] == 100.0
+
+
+def test_v10_ceiling_plans_the_next_lower_support():
+    """His broken drawing = a ceiling: the plan moves to the next lower unbroken support under it (KBWB)."""
+    r0 = E.find(_fixture("kbwb_daily_20261030.json"), asof="2026-11-01", trend="up")
+    r = E.find(_fixture("kbwb_daily_20261030.json"), asof="2026-11-01", trend="up", ceiling=r0["bottom"])
+    assert r["ok"] and r["top"] < r0["bottom"]
+
+
+def test_v10_strict_zones_unchanged_by_the_nearest_fallback():
+    """A strict expert zone (all v9 rules) is still returned as before (kind 'expert')."""
+    r = E.find(_fixture("crwd_daily_20261113.json"), asof="2026-11-16", trend="up")
+    assert r["kind"] == "expert" and (r["bottom"], r["top"]) == (210.65, 217.5)

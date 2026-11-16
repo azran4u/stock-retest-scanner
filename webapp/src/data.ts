@@ -127,6 +127,10 @@ export interface ExpertZone {
   /** single weekly close under the zone bottom since the breakout (not followed by a second): valid, flagged, -10 pts */
   warnings?: { k: string; date: string; he: string }[];
   /** expert Entry / SL / TP (srs_app/expert_zone._trade): separate overlay, never a Long / PASS / sizing input */
+  /** v10 (2026-11-16): 'expert' = strict retest rules, 'nearest' = nearest unbroken broken-resistance support (soft = unmet strict rules) */
+  kind?: 'expert' | 'nearest'; soft?: string[]; strict_reason?: string; trend?: string | null; reason_he?: string;
+  /** his drawing broke (weekly close under his SL): kept, flagged; this zone is the next lower plan, under below_his */
+  below_his?: number; his_broken?: { ids: string[]; level: number; kind: string; week: string; close: number; ceiling: number; since?: string };
   trade?: { entry: number; sl: number; tp: number; rr: number | null; tp_mm: number; retest_low: number; risk_pct: number; confirmed: boolean; notes: string[] } | null;
 }
 export interface ExpertWatchItem { t: string; tier: string; rank: number; comp: number; zone: [number, number]; score: number | null; dist: number;

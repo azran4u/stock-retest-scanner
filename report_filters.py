@@ -8,7 +8,7 @@ False with a note in `filter_notes`.
 
 `status` = PASS iff ALL core filters are true (drives the Grok watchlist
 sync): f_dollar_vol, f_no_earnings_14d, f_history, f_rr, f_from_above, f_after_earnings_week (2026-10-31),
-f_no_red_vol_week (falling-knife gate, core again since 2026-11-09); else FAIL. The WAIT status (Eyal 2026-10-23)
+f_no_red_vol_week (red high-volume last week that closed below the zone in use, core since 2026-11-09, zone-aware 2026-11-16); else FAIL. The WAIT status (Eyal 2026-10-23)
 was cancelled 2026-10-26; f_no_inv_hammer (last completed weekly candle = inverted hammer) is an informational
 warning (WARN_FILTERS). (f_short_float / f_inst_own are
 informational dashboard filters since 2026-10-14; None = data missing.)
@@ -121,7 +121,17 @@ CONFIG: Dict[str, Any] = {
     #  C  CONSOLIDATION AFTER A STRONG ADVANCE (IDCC): 30w EMA +50% in 104w, recent high within 3 ATR of the
     #     prior high, R2 >= 0.5
     #  R  MULTI-YEAR RANGE back at its top (BIO, PRU, TROW): best R2 < 0.2 AND 30w EMA < +20% in 52w
-    "tech_version": "v3-2026-10-26",
+    # v4 DOW (Eyal 2026-11-16): the PRIMARY trend is the classic Dow structure of the weekly swings (srs_app/dow_trend.py):
+    # up = higher highs + higher lows, down = lower highs + lower lows, sideways = mixed swings inside a band. Swing
+    # pivots tech_dow_k weeks on each side; a swing is broken on a weekly CLOSE beyond it (Dow: closing basis) and the
+    # break counts at once; a trend persists through a counter-swing until it is reversed (an uptrend ends on a lower
+    # low, a downtrend on a higher high). f_technical = (trend == up). The v3 paths below are still computed and stored
+    # (tech_v3) for comparison only. k = 5 (not tech_pivot_k = 3): validated on his golden charts / calibration marks /
+    # 2026-10-09 negatives, k = 3 agreed far less (minor 3-week swings flip on every pullback), see RULES.md.
+    "tech_version": "dow-v4-2026-11-16",
+    "tech_method": "dow",
+    "tech_dow_k": 5,
+    "tech_swing_min_gap_weeks": 8,   # Eyal 2026-11-16: same-type swings >= 8 weeks apart (closer -> keep the extreme)
     "tech_slow_ema_min_pct": 4.0,
     "tech_slow_r2_min": 0.6,
     "tech_vrec_ema26_min_pct": 25.0,
@@ -141,7 +151,7 @@ CONFIG: Dict[str, Any] = {
     # f_no_red_vol_week (Eyal 2026-10-23, CLMT): the last COMPLETED weekly candle is a healthy red bar
     # (close < open, body >= red_vol_body_min x the week's high-low range) on above-average volume
     # (the week's average daily volume > the average daily volume of the red_vol_avg_days trading days
-    # before that week = same 30-day basis as $vol) -> falling knife: not PASS until a later weekly close (core 2026-11-09)
+    # before that week = same 30-day basis as $vol) -> blocks PASS only when that week closed below the zone in use (planned SL; Eyal 2026-11-16)
     "red_vol_body_min": 0.5,
     "red_vol_avg_days": 30,
     # f_from_above (Eyal 2026-10-24, USB): a stock that comes back INTO its zone from BELOW is not interesting -
@@ -165,16 +175,20 @@ CONFIG: Dict[str, Any] = {
 
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
     "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above", "f_after_earnings_week",
-    # falling knife (Eyal 2026-11-09): the last COMPLETED weekly candle is a healthy red bar on above-average volume ->
-    # no entry even if price closed on the support; wait for the next weekly close (compute_red_vol_week)
+    # red high-volume last week (Eyal 2026-11-09 / 2026-11-16): the last COMPLETED weekly candle is a healthy red bar on above-average volume AND it closed below the planned SL ->
+    # the zone broke; if the zone held the stock is legitimate (compute_red_vol_week)
     "f_no_red_vol_week",
+    # primary uptrend (Eyal 2026-11-16): Dow structure of the weekly swings must be UP (higher highs + higher lows) -
+    # sideways (a range) and downtrend stocks are not PASS; his user_overrides.json verdict still wins
+    "f_technical",
 ]
 EARN_WEEK_COLS = ["earn_week_date", "earn_week_report", "earn_week_detail"]
 # Informational warnings on the last completed weekly candle (Eyal 2026-10-26: status WAIT cancelled; they were
 # WAIT gates 2026-10-23 / 2026-10-24). Still computed for every row, shown as badges / app filters, NOT in status.
-WARN_FILTERS = ["f_no_inv_hammer"]  # f_no_red_vol_week is a core gate again since 2026-11-09 (falling knife)
+WARN_FILTERS = ["f_no_inv_hammer"]  # f_no_red_vol_week is a core gate (red high-volume week closed below the zone)
 INV_HAMMER_COLS = ["inv_hammer_week_date", "inv_hammer_detail"]
-RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail"]
+RED_VOL_COLS = ["red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail", "red_vol_loud",
+                "red_vol_close", "red_vol_ref", "red_vol_held"]
 FROM_ABOVE_COLS = ["from_above_side", "from_above_date", "from_above_detail"]
 # ownership data (informational filters; None = data missing, never silently False)
 OWNERSHIP_COLS = ["f_short_float", "f_inst_own", "short_float_src", "inst_own_src", "ownership_missing"]
@@ -192,7 +206,8 @@ STALE_COLS = ["f_tv_stale", "tv_stale", "tv_stale_detail"]
 # technical = clear weekly uptrend (every row with >= tech_min_weekly_bars weekly bars; else empty)
 TECH_COLS = ["f_technical", "tech_computed", "tech_override", "tech_new_high_atr", "tech_hh", "tech_hl", "tech_structure",
              "tech_ema30_slope_pct", "tech_ema_rising", "tech_detail", "tech_path", "tech_ema30_slope52_pct",
-             "tech_ema30_slope104_pct", "tech_r2max", "tech_range"]
+             "tech_ema30_slope104_pct", "tech_r2max", "tech_range", "tech_trend", "tech_trend_he", "tech_trend_detail",
+             "tech_v3"]
 # reversal evidence at the TV zone (compute_evidence; grade is computed live in the browser)
 EVIDENCE_COLS = [
     "ev_pullback_high", "ev_pullback_high_date",
@@ -228,6 +243,7 @@ REPORT_COLS = [
     "smooth_pullback", "earnings_known", "earnings_blackout", "earnings_estimated", "earnings_none",
     "filter_notes", "tradingview_url", "finviz_url", "reason",
 ]
+REPORT_COLS = list(dict.fromkeys(REPORT_COLS))  # f_technical is a core filter AND a TECH_COLS column (2026-11-16)
 
 _REPO_DIR = Path("/workspace/publish-stock-retest-scanner")  # charts/latest/ lives here
 FV_CACHE_DIR = Path("/workspace/cache")
@@ -747,7 +763,7 @@ def compute_row(
     except Exception as e:  # pragma: no cover
         notes.append(f"reversal error: {e}")
     try:
-        r.update(compute_red_vol_week(daily, report_date))
+        r.update(compute_red_vol_week(daily, report_date, sl=r.get("tv_sl"), zone_bottom=r.get("tv_zone_bottom")))
     except Exception as e:  # pragma: no cover
         r["f_no_red_vol_week"] = True
         notes.append(f"red-vol-week error: {e}")
@@ -818,15 +834,19 @@ RED_VOL_WEEK_CLOSE_MIN = 16 * 60 + 30  # a W-FRI week is complete after Friday 1
 
 
 def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
-                         now_et: Optional[pd.Timestamp] = None) -> Dict[str, Any]:
+                         now_et: Optional[pd.Timestamp] = None, sl: Any = None,
+                         zone_bottom: Any = None) -> Dict[str, Any]:
     """f_no_red_vol_week (Eyal 2026-10-23, example CLMT). On the last COMPLETED W-FRI week (Mon-Fri; complete
     after Friday 16:30 New York; report_date < today -> as of the end of the report day):
       healthy red  = Close < Open AND |Close - Open| >= red_vol_body_min (0.5) x (High - Low)
       above avg    = the week's average daily volume (week volume / trading days in the week)
                      > the average daily volume of the red_vol_avg_days (30) trading days before the week
-    Both -> f_no_red_vol_week False = falling knife (Eyal 2026-11-09, core PASS gate again: "don't enter even if price
-    closed on the support, wait for next week's close"): not PASS / not 'ready' / no entry alerts; a later week that
-    closes without being another healthy red loud week clears it, a close below the zone/SL is 'broken' as usual.
+    Both = 'red high-volume last week' (red_vol_loud True, described in red_vol_* columns).
+    v2 (Eyal 2026-11-16: "there is no separate falling-knife criterion ... if the zone held, the stock is legitimate";
+    "broke the level = closed below the planned SL"): such a week blocks (f_no_red_vol_week False -> not PASS / not
+    'ready' / no entry alerts) ONLY when its weekly close is below the zone in use = the planned SL (`sl`, the Long that
+    counts), or the zone bottom when there is no Long. Close >= that level -> the zone held -> True (detail
+    'האזור נשמר'). No zone / Long in use -> True (nothing to break; f_rr blocks PASS anyway).
     A hammer is never 'healthy red': body >= 50% of the range leaves a lower shadow <= the body (a hammer needs a
     lower shadow > the body, TA-Lib CDLHAMMER / >= 2x body classic).
     Not enough data -> True (the rule only blocks on evidence). red_vol_* columns describe the checked week."""
@@ -873,9 +893,26 @@ def compute_red_vol_week(daily: Optional[pd.DataFrame], report_date: date,
     vtxt = "n/a" if ratio is None else f"{ratio:.2f}x"
     out["red_vol_detail"] = (f"week {wend.date().isoformat()}: {col}, body {body_pct * 100:.0f}% of range, "
                              f"avg daily vol {vtxt} the {int(C['red_vol_avg_days'])}d avg before it")
+    out["red_vol_loud"] = bool(healthy and loud)
+    out["red_vol_close"] = round(c, 4)
+    ref = _num(sl)
+    ref_kind = "SL"
+    if ref is None:
+        ref, ref_kind = _num(zone_bottom), "zone bottom"
+    out["red_vol_ref"] = ref
     if healthy and loud:
-        out["f_no_red_vol_week"] = False
-        out["red_vol_detail"] = "falling knife - healthy red " + out["red_vol_detail"]
+        if ref is None:
+            out["red_vol_held"] = None
+            out["red_vol_detail"] = "red high-volume last week (no zone in use) - " + out["red_vol_detail"]
+        elif c < ref:
+            out["red_vol_held"] = False
+            out["f_no_red_vol_week"] = False
+            out["red_vol_detail"] = (f"red high-volume last week, closed below the zone ({c:g} < {ref_kind} {ref:g}) - "
+                                     + out["red_vol_detail"])
+        else:
+            out["red_vol_held"] = True
+            out["red_vol_detail"] = (f"red high-volume last week, the zone held ({c:g} >= {ref_kind} {ref:g}) - "
+                                     + out["red_vol_detail"])
     return out
 
 
@@ -1218,7 +1255,10 @@ def _trend_r2(closes: np.ndarray) -> float:
 
 
 def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
-    """'Technical' = CLEAR weekly uptrend, v2 (2026-10-09, tuned on the user's calls). Both, on W-FRI
+    """'Technical' = PRIMARY weekly uptrend. Since v4 (2026-11-16, Eyal) = the classic Dow structure of the weekly
+    swings (srs_app/dow_trend.trend: HH+HL up / LH+LL down / mixed sideways, CONFIG tech_dow_k, close-confirmed breaks,
+    persistence); f_technical = trend == 'up', tech_trend / tech_trend_he / tech_trend_detail; the v3 result below is
+    still computed into tech_v3 for comparison only. Old v2/v3 doc: v2 (2026-10-09, tuned on the user's calls). Both, on W-FRI
     weekly bars from the cached daily history cut at the report date (current week may be partial):
       1. NEAR / AT NEW HIGHS: recent high (max High of the last 26 weeks) >= the highest High of the
          2.5 years before it (weeks 27-130 back) - 1.0 weekly ATR(14)   (tech_newhi_atr = -1.0).
@@ -1316,6 +1356,15 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
                 "tech_ema30_slope104_pct": round(slope104, 1), "tech_r2max": round(r2max, 3),
                 "tech_range": rng,
                 "tech_detail": "; ".join(why)})
+    if str(C.get("tech_method", "")) == "dow":
+        from srs_app.dow_trend import trend as dow_trend
+        ds = dow_trend(h.tolist(), l.tolist(), c.tolist(), int(C.get("tech_dow_k", 5)),
+                       gap=int(C.get("tech_swing_min_gap_weeks", 8)))
+        out["tech_v3"] = tech
+        out["tech_trend"], out["tech_trend_he"], out["tech_trend_detail"] = ds["trend"], ds["he"], ds.get("detail") or ""
+        out["f_technical"] = ds["trend"] == "up"
+        out["tech_detail"] = (f"Dow {ds['trend']} ({ds['he']}): {ds.get('detail') or ''}; "
+                              f"v3 {'up' if tech else 'not up'}: {out['tech_detail']}")
     return out
 
 
@@ -1802,7 +1851,7 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
     failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
     # PASS / FAIL only (Eyal 2026-10-26: WAIT cancelled; inverted-hammer weeks are informational; a red-volume week
-    # = falling knife is a FAIL gate again since 2026-11-09)
+    # that closed below the zone in use is a FAIL gate, 2026-11-09 / 2026-11-16)
     r["status"] = "PASS" if not failed else "FAIL"
     r["failed_filters"] = ",".join(f[2:] for f in failed)
     return r
@@ -1848,8 +1897,10 @@ def status_reason(r: Dict[str, Any], screen_reason: Any) -> str:
             f = f"no_inv_hammer ({r.get('inv_hammer_detail') or 'last week an inverted hammer'})"
         elif f == "after_earnings_week":
             f = f"after_earnings_week ({r.get('earn_week_detail') or 'earnings week: wait for the next weekly close'})"
+        elif f == "technical":
+            f = f"technical (trend: {r.get('tech_trend') or 'n/a'}{', ' + r['tech_override'] if r.get('tech_override') else ''})"
         elif f == "no_red_vol_week":
-            f = f"no_red_vol_week ({r.get('red_vol_detail') or 'falling knife: healthy red week on above-average volume'})"
+            f = f"no_red_vol_week ({r.get('red_vol_detail') or 'red high-volume last week closed below the zone'})"
         fails.append(f)
     tag = "WAIT" if r["status"] == "WAIT" else "FAIL"
     return f"{base} | {tag}: {', '.join(fails)}".strip(" |")

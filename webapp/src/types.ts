@@ -95,12 +95,19 @@ export interface Row {
   hammer_tp?: number | null;
   last_week_reversal_kind?: string | null;
   f_technical?: boolean | null;
+  tech_trend?: 'up' | 'down' | 'sideways' | string | null;
+  tech_trend_he?: string | null;
+  tech_trend_detail?: string | null;
   /** WAIT rule (healthy red last completed week on above-average volume) */
   f_no_red_vol_week?: boolean | null;
   red_vol_week_date?: string | null;
   red_vol_body_pct?: number | null;
   red_vol_ratio?: number | null;
   red_vol_detail?: string | null;
+  red_vol_loud?: boolean | null;   // healthy red + above-average volume last completed week (2026-11-16)
+  red_vol_close?: number | null;
+  red_vol_ref?: number | null;
+  red_vol_held?: boolean | null;
   /** Eyal 2026-10-24 (USB): back in the zone from below = not interesting until a weekly close above the zone top */
   f_no_inv_hammer?: boolean | null;
   f_after_earnings_week?: boolean | null;

@@ -62,6 +62,7 @@ def levels(t: str, z: Dict[str, Any], rule_version: str) -> Optional[Dict[str, A
     zs = z.get("pivot_week") or z.get("base_start") or z.get("breakout_week")
     why = {k: z.get(k) for k in ("pivot_week", "breakout_week", "breakout_close", "post_high", "score", "atr_w", "width_note")}
     why.update(retest_low=tr.get("retest_low"), risk_pct=tr.get("risk_pct"), notes=tr.get("notes"), tp_mm=tr.get("tp_mm"))
+    why.update(kind=z.get("kind") or "expert", soft=z.get("soft"), below_his=z.get("below_his"), trend=z.get("trend"))
     return {"ticker": t, "zone_top": z["top"], "zone_bottom": z["bottom"], "zone_t_start": zs, "entry": tr["entry"],
             "stop": tr["sl"], "target": tr["tp"], "rr": tr.get("rr"), "t_start": t_start, "t_end": t_end,
             "meta": {"rule_version": rule_version, "expert": True, "why": why}}
@@ -76,15 +77,71 @@ def _same(rows: List[Dict[str, Any]], lv: Dict[str, Any], kinds=("zone", "long")
     return zok and lok
 
 
-def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any]) -> Dict[str, Any]:
-    """{insert: [levels], retire: {ticker: [rows]}, why: {ticker: reason}, his: [tickers with his override], keep: [..]}"""
+def _weekly_rows(t: str, data_dir: Path):
+    from srs_app import expert_zone as E
+    f = data_dir / "candles" / f"{t}.json"
+    try:
+        rows = json.loads(f.read_text())["d"] if f.exists() else E._hist_rows(t)
+    except Exception:
+        rows = None
+    return rows
+
+
+def his_broken(t: str, his: List[Dict[str, Any]], data_dir: Path, asof: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """v10 (Eyal 2026-11-16: "if the stock closed below the planned SL, look for the next level where it should hold").
+    His drawing is BROKEN when a COMPLETED weekly close since the week he saved it is under his planned SL (his Long's
+    stop); a zone-only drawing breaks by the expert rule (a close > 3% under its bottom, or two consecutive closes
+    under it). Returns {ids, level, kind, week, close, ceiling} (ceiling = the lowest of his zone bottom / SL: the next
+    plan must sit under it) or None. His rows are never modified - only flagged in the app."""
+    from srs_app import expert_zone as E
+    z = next((d for d in his if d.get("kind") == "zone"), None)
+    lg = next((d for d in his if d.get("kind") == "long"), None)
+    num = lambda v: None if v in (None, "") else float(v)
+    sl = num(lg.get("stop")) if lg else None
+    zb = num(z.get("zone_bottom")) if z else None
+    zt = num(z.get("zone_top")) if z else None
+    if zb is not None and zt is not None and zt < zb:
+        zb = zt
+    if sl is None and zb is None:
+        return None
+    rows = _weekly_rows(t, data_dir)
+    if not rows:
+        return None
+    W = E.weekly(rows)
+    if W and not E.week_complete(W[-1]["last"], asof):
+        W = W[:-1]
+    since = max(str(d.get("updated_at") or d.get("created_at") or "")[:10] for d in his) or "0000-00-00"
+    sw = E._monday(since) if since[:4].isdigit() else "0000-00-00"
+    after = [w for w in W if w["time"] >= sw]
+    hit = None
+    if sl is not None:
+        hit = next((w for w in after if w["close"] < sl), None)
+        kind, level = "sl", sl
+    else:
+        kind, level = "zone", zb
+        for i, w in enumerate(after):
+            if w["close"] < zb * (1 - E.BREAK_PCT) or (w["close"] < zb and i + 1 < len(after) and after[i + 1]["close"] < zb):
+                hit = w
+                break
+    if hit is None:
+        return None
+    ceil = min(x for x in (sl, zb) if x is not None)
+    return {"ids": [str(d.get("id")) for d in his], "level": round(level, 2), "kind": kind, "week": hit["time"],
+            "close": round(hit["close"], 2), "ceiling": round(ceil, 2), "since": since}
+
+
+def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any], data_dir: Optional[Path] = None,
+         asof: Optional[str] = None) -> Dict[str, Any]:
+    """{insert: [levels], retire: {ticker: [rows]}, why: {ticker: reason}, his: [tickers with his override], keep: [..],
+    his_broken: {ticker: {...}}}. data_dir (app/data) enables the v10 broken-drawing check: his broken drawing stays
+    (flagged), the expert plan under it (computed with a ceiling, written into zones_doc) becomes the active pair."""
     rv = zones_doc.get("rule_version") or "expert"
     zones = zones_doc.get("tickers", {})
     by_t: Dict[str, List[Dict[str, Any]]] = {}
     for d in drawings:
         if d.get("status") in LIVE:
             by_t.setdefault(str(d["ticker"]).upper(), []).append(d)
-    out = {"insert": [], "retire": {}, "why": {}, "his": [], "keep": [], "none": []}
+    out = {"insert": [], "retire": {}, "why": {}, "his": [], "keep": [], "none": [], "his_broken": {}}
     for t in sorted(set(by_t) | set(zones)):
         rows = by_t.get(t, [])
         his = [d for d in rows if d.get("source") in ("user", "tv")]
@@ -98,6 +155,21 @@ def plan(drawings: Iterable[Dict[str, Any]], zones_doc: Dict[str, Any]) -> Dict[
         his_kinds = {d.get("kind") for d in his if d.get("kind") in ("zone", "long")}
         if his:
             out["his"].append(t)
+        hb = his_broken(t, [d for d in his if d.get("kind") in ("zone", "long")], data_dir, asof) if (his and data_dir) else None
+        if hb:
+            from srs_app import expert_zone as E
+            out["his_broken"][t] = hb
+            rows_d = _weekly_rows(t, data_dir)
+            trend = (zones.get(t) or {}).get("trend")
+            try:
+                nz = E.find(rows_d, asof, trend, hb["ceiling"]) if rows_d else {"ok": False, "reason": "no candles"}
+            except Exception as e:
+                nz = {"ok": False, "reason": f"error: {e}"}
+            nz["below_his"] = hb["ceiling"]
+            nz["his_broken"] = hb
+            zones[t] = nz
+            lv = levels(t, nz, rv)
+            his_kinds = set()                     # his broken drawing no longer overrides: the next lower plan does
         if his_kinds:                             # his override wins per kind (his zone + expert Long is possible)
             dup = [d for d in exp if d.get("kind") in his_kinds]
             if dup:
@@ -137,7 +209,11 @@ def emit_sql(pl: Dict[str, Any]) -> List[str]:
     for t, rows in pl["retire"].items():
         out += [sql_retire(str(d["id"]), pl["why"].get(t, RETIRE_WHY)) for d in rows if d.get("source") == "bot"]
     for lv in pl["insert"]:
-        note = f"EXPERT {lv['meta']['rule_version']}: retest of the {lv['meta']['why'].get('breakout_week')} breakout"
+        w = lv["meta"]["why"]
+        note = (f"EXPERT {lv['meta']['rule_version']}: "
+                + (f"nearest unbroken support (broken resistance of {w.get('breakout_week')})" if w.get("kind") == "nearest"
+                   else f"retest of the {w.get('breakout_week')} breakout")
+                + (f", under his broken drawing ({w.get('below_his')})" if w.get("below_his") else ""))
         ks = lv.get("kinds", ("zone", "long"))
         if "zone" in ks:
             out.append(sql_insert_bot_drawing(lv["ticker"], "zone", zone_top=lv["zone_top"], zone_bottom=lv["zone_bottom"],
@@ -166,6 +242,17 @@ def backup(pl: Dict[str, Any], today: Optional[str] = None, out_dir: Optional[Pa
     return p
 
 
+def write_broken(data_dir: Path, pl: Dict[str, Any], zdoc: Dict[str, Any]) -> None:
+    """app/data/his_broken.json (ceilings for the nightly expert_zone build) + the recomputed zones in expert_zones.json."""
+    from datetime import datetime, timezone
+    (data_dir / "his_broken.json").write_text(json.dumps(
+        {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tickers": pl.get("his_broken", {})},
+        separators=(",", ":")))
+    if pl.get("his_broken"):
+        from srs_app import expert_zone as E
+        E._save(data_dir, zdoc.get("tickers", {}))
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--drawings-json", required=True)
@@ -174,13 +261,17 @@ def main(argv=None) -> None:
     ap.add_argument("--out")
     a, _ = ap.parse_known_args(argv)
     from srs_app.app_drawings import load_rows
-    pl = plan(load_rows(Path(a.drawings_json)), json.loads(Path(a.zones).read_text()))
+    zp = Path(a.zones)
+    zdoc = json.loads(zp.read_text())
+    pl = plan(load_rows(Path(a.drawings_json)), zdoc, zp.parent)
+    write_broken(zp.parent, pl, zdoc)
     if a.out:
         Path(a.out).write_text(json.dumps(pl, indent=1, default=str))
     bp = backup(pl)
     print(f"-- expert sync: insert {len(pl['insert'])}, keep {len(pl['keep'])}, retire "
           f"{sum(len(v) for v in pl['retire'].values())} rows / {len(pl['retire'])} tickers, his overrides {len(pl['his'])}, "
-          f"no expert zone {len(pl['none'])}" + (f", backup {bp}" if bp else ""), file=sys.stderr)
+          f"no expert zone {len(pl['none'])}, his broken drawings {len(pl['his_broken'])}"
+          + (f" ({', '.join(sorted(pl['his_broken']))})" if pl['his_broken'] else "") + (f", backup {bp}" if bp else ""), file=sys.stderr)
     if a.emit_sql:
         print("\n".join(emit_sql(pl)))
 

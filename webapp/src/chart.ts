@@ -616,10 +616,11 @@ export class ChartView {
       }
     }
     for (const d of this.drawings) {
-      const sel = d.id === this.selected;
+      const sel = d.id === this.selected && !(d as any).broken; // his broken drawing: read-only (never selected / dragged)
       const bot = d.source === 'bot';
       const expert = bot && !!(d as any).meta?.expert;
-      const pre = d.source === 'tv' ? 'TV ' : expert ? 'מומחים ' : bot ? 'BOT ' : '';
+      const broken = !!(d as any).broken; // his drawing that broke (close under his SL): dashed grey, read-only label
+      const pre = broken ? 'שלך · נשבר ' : d.source === 'tv' ? 'TV ' : expert ? 'מומחים ' : bot ? 'BOT ' : '';
       const review = d.status === 'review';
       let x1 = clampX(this.X(d.t_start), 0);
       let x2 = clampX(d.t_end ? this.X(d.t_end) : null, W);
@@ -634,11 +635,11 @@ export class ChartView {
         if (x2 - x1 < 1) { if (sel && this.editable) handle(d.id, 't_start', Math.max(8, Math.min(W - 8, a)), this.Y(d.entry), '#d1d4dc'); continue; }
       }
       const hx = Math.max(x1 + 24, Math.min(x2 - 30, x1 + (x2 - x1) * 0.6));
-      const dash = review ? '6 4' : '';
+      const dash = broken ? '3 3' : review ? '6 4' : '';
       const sw = sel ? 2 : 1;
       if (d.kind === 'zone') {
-        const fill = bot ? 'rgba(255,152,0,.16)' : 'rgba(41,98,255,.20)';
-        const stroke = bot ? '#ff9800' : '#2962ff';
+        const fill = broken ? 'rgba(120,123,134,.10)' : bot ? 'rgba(255,152,0,.16)' : 'rgba(41,98,255,.20)';
+        const stroke = broken ? '#787b86' : bot ? '#ff9800' : '#2962ff';
         s += box(x1, x2, this.Y(d.zone_top), this.Y(d.zone_bottom), fill, stroke, dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
         const zm = (d as any).meta; // stages page (Eyal 2026-11-14): labelled base ceiling / floor
         s += tag(x2 - 4, this.Y(d.zone_top), zm?.labTop ?? pre + (review ? 'לבדיקה' : 'אזור'), sel ? stroke : '#2a2e39', d.id);
@@ -650,8 +651,8 @@ export class ChartView {
           handle(d.id, 't_start', x1, ym, stroke);
         }
       } else if (d.kind === 'long') {
-        s += box(x1, x2, this.Y(d.entry), this.Y(d.target), 'rgba(38,166,154,.22)', '#26a69a', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
-        s += box(x1, x2, this.Y(d.stop), this.Y(d.entry), 'rgba(239,83,80,.22)', '#ef5350', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
+        s += box(x1, x2, this.Y(d.entry), this.Y(d.target), broken ? 'rgba(120,123,134,.10)' : 'rgba(38,166,154,.22)', broken ? '#787b86' : '#26a69a', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
+        s += box(x1, x2, this.Y(d.stop), this.Y(d.entry), broken ? 'rgba(120,123,134,.14)' : 'rgba(239,83,80,.22)', broken ? '#787b86' : '#ef5350', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
         s += line(x1, x2, this.Y(d.entry), '#d1d4dc');
         const q = rr(d.entry, d.stop, d.target);
         const rrTxt = pre + 'R:R ' + (q != null ? q.toFixed(2) : '—');
