@@ -218,7 +218,7 @@ def detect(B: Sequence[Dict[str, Any]], keep: int) -> List[Dict[str, Any]]:
                 hit = fn(B, i)
             except (KeyError, TypeError, ZeroDivisionError):
                 hit = False
-            if not hit:
+            if not hit or (code == "mstar" and mdoji(B, i)):   # a doji star is reported once, as the doji variant
                 continue
             f = i - NBARS[code] + 1
             lo = min(b["low"] for b in B[f:i + 1])
