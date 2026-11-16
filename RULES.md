@@ -541,17 +541,18 @@ Equal = 5% of the average range of 5 bars) and cross-checked against TA-Lib in `
 
 | code | Hebrew | definition |
 |---|---|---|
-| engulf | בליעה שורית | CDLENGULFING: black candle, then a white one whose real body engulfs it |
+| engulf | בליעה שורית | CDLENGULFING: black candle, then a white one whose real body engulfs it; + Nison: the white body is not short (> BodyShort average) |
 | mstar | כוכב בוקר | CDLMORNINGSTAR (penetration 0.3): long black, short body gapping down (body gap), white closing > close1 + 30% of body1 |
 | mdoji | כוכב בוקר דוג'י | CDLMORNINGDOJISTAR: as mstar with a doji in the middle |
 | pierce | קו חודר | CDLPIERCING: long black, long white opening under its low and closing above its body midpoint (under its open) |
 | inside3 | שלושה מבפנים למעלה | CDL3INSIDE: long black, short body inside it (harami), white closing above open1 |
-| hammerc | פטיש + נר אישור | the scanner's textbook hammer (`hammer_shape` 'H', unchanged) + next candle white and closing above the hammer's close |
-| tweezer | תחתית פינצטה | black then white candle with matching lows (|Δlow| <= TA-Lib Equal) |
+| hammerc | פטיש + נר אישור | the scanner's textbook hammer (`hammer_shape` 'H', unchanged) + next candle white and closing above the hammer's HIGH (StockCharts / Bulkowski) |
+| tweezer | תחתית פינצטה | black then white candle with matching lows (|Δlow| <= TA-Lib Equal); the white candle shows real buying: body > BodyShort average AND close above the black body's midpoint |
 
 Gates (constants `CONFIRM`): **pullback** = the pattern low is the lowest low of the 5 bars before it and ≥ 1 ATR(14)
-under their highest high; **on the level** = low ≤ top + 0.5 ATR and (low ≥ bottom − 0.5 ATR or the last close ≥ bottom),
-ATR of the same timeframe, checked live in the app on the zone that counts now AND on the expert zone; **אות כניסה** = a
+under their highest high; **on the level** = the pattern low actually touches the zone: bottom − tol ≤ low ≤ top + tol,
+tol = min(0.1 ATR of the same timeframe, 1% of the zone top) (v2, Eyal 2026-11-16 NTRA: v1's 0.5 ATR + "closed back in
+the zone" let a tiny green candle after a long red one, 16 points above the zone, count as a tweezer), checked live in the app on the zone that counts now AND on the expert zone; **אות כניסה** = a
 weekly pattern on the level ending in the last 2 completed weeks with no weekly close (or current price) under its low
 since. Daily patterns are a secondary confirmation only. App: card line, stock page section "תבניות אישור על הרמה"
 (+ jump chip "אישור"), green outline + label on the weekly / daily chart, filters "תבנית אישור על האזור ב-X שבועות" and

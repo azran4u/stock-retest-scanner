@@ -5,7 +5,8 @@ strength and an entry signal), never a PASS gate: they do not change PASS, the f
 Patterns (textbook definitions; the multi-bar TA-Lib ones are a line-by-line port of TA-Lib 0.6 with its default candle
 settings, cross-checked against TA-Lib in tests/test_confirm_patterns.py):
   engulf   בליעה שורית          TA-Lib CDLENGULFING (bullish): candle 1 black, candle 2 white and its real body engulfs
-                                 candle 1's body (close2 >= open1 and open2 < close1, or close2 > open1 and open2 <= close1)
+                                 candle 1's body (close2 >= open1 and open2 < close1, or close2 > open1 and open2 <= close1);
+                                 + Nison: the white body is not short (> BodyShort average)
   mstar    כוכב בוקר            TA-Lib CDLMORNINGSTAR (penetration 0.3): 1 long black body, 2 short body whose body gaps
                                  down from 1's body, 3 white body longer than 'short' closing above close1 + 30% of body1
   mdoji    כוכב בוקר דוג'י       TA-Lib CDLMORNINGDOJISTAR (penetration 0.3): as mstar, the middle candle is a doji
@@ -15,10 +16,10 @@ settings, cross-checked against TA-Lib in tests/test_confirm_patterns.py):
                                  3 white closing above open1
   hammerc  פטיש + נר אישור       the scanner's textbook hammer (expert_zone.hammer_shape 'H': lower shadow >= 2x body,
                                  >= 2/3 of the range = body in the top third, upper shadow <= 15% of the range), followed by
-                                 a white candle closing above the hammer's close (Investopedia: confirmation = the next
-                                 candle closes above the hammer's close)
+                                 a white candle closing above the hammer's HIGH (StockCharts / Bulkowski confirmation)
   tweezer  תחתית פינצטה          Nison / Investopedia tweezer bottom: candle 1 black, candle 2 white, matching lows
-                                 (|low2 - low1| <= TA-Lib 'Equal' = 5% of the average range of the 5 bars before)
+                                 (|low2 - low1| <= TA-Lib 'Equal' = 5% of the average range of the 5 bars before); the white
+                                 candle shows real buying: body > BodyShort average and close above the black body's midpoint
 TA-Lib default candle settings used (CandleAverage = factor x average of the setting's range over `period` bars BEFORE the
 bar; RealBody = |c - o|, HighLow = h - l, Shadows = (upper + lower) / 2):
   BodyLong RealBody 10 x1.0 · BodyShort RealBody 10 x1.0 · BodyDoji HighLow 10 x0.1 · Equal HighLow 5 x0.05
@@ -27,9 +28,9 @@ Context gates (TA-Lib leaves the trend to the user; Nison / Bulkowski: a reversa
 reverse). Constants in CONFIRM:
   pullback : the pattern's low is the lowest low of the `prior_bars` (5) bars before it and is at least `decline_atr`
              (1.0) ATR(14) under their highest high (price came DOWN into the pattern)
-  on level : the pattern's low touches the zone: low <= top + tol x ATR and (low >= bottom - tol x ATR or the pattern's
-             last close >= bottom), tol = `zone_tol_atr` 0.5 ATR(14) of the same timeframe (the scanner's touch gate,
-             expert_zone.touches / app revAtZone)
+  on level : the pattern's low actually touches the zone: bottom - tol <= low <= top + tol,
+             tol = min(`zone_tol_atr` 0.1 ATR(14) of the same timeframe, `zone_tol_pct` 1% of the zone top) (v2; v1 used
+             0.5 ATR and also accepted a low under the zone when the pattern closed back in it)
   entry    : 'אות כניסה' = a WEEKLY pattern on the level whose last candle is one of the last `entry_weeks` (2) completed
              weeks, and price has not since closed under the pattern's low (daily patterns = a secondary confirmation)
 Bars: completed weekly Mon-Fri bars and completed daily bars from the app's candle files (app/data/candles/<T>.json).
@@ -49,11 +50,12 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from srs_app import expert_zone as E
 
-RULE_VERSION = "confirm-v1-2026-11-16"
+RULE_VERSION = "confirm-v2-2026-11-16"
 CONFIRM = {
     "prior_bars": 5,        # pullback: the pattern low is the lowest low of the 5 bars before it ...
     "decline_atr": 1.0,     # ... and >= 1 ATR(14) under their highest high
-    "zone_tol_atr": 0.5,    # on the level: low within the zone +/- 0.5 ATR of the same timeframe (or closes back in it)
+    "zone_tol_atr": 0.1,    # on the level: the pattern low inside [bottom - tol, top + tol], tol = min(0.1 ATR, 1% of the top)
+    "zone_tol_pct": 0.01,   # (v2, Eyal 2026-11-16 NTRA: 0.5 ATR + 'closed back in the zone' let lows 16 points above the zone in)
     "entry_weeks": 2,       # entry signal: weekly pattern ending in the last 2 completed weeks, not broken since
     "keep_weeks": 8,        # weekly patterns stored (last candle within the last 8 completed weeks)
     "keep_days": 20,        # daily patterns stored (last candle within the last 20 completed sessions)
@@ -120,10 +122,11 @@ def _gt(x, y) -> bool:
 
 # ---------------- patterns (i = index of the LAST candle of the pattern) ----------------
 def engulf(B, i: int) -> bool:
+    """TA-Lib CDLENGULFING (bullish) + Nison: the engulfing white body is a real one (> TA-Lib BodyShort average)."""
     if i < 1:
         return False
     p, c = B[i - 1], B[i]
-    return _col(c) == 1 and _col(p) == -1 and (
+    return _col(c) == 1 and _col(p) == -1 and _gt(_rb(c), _avg(B, "BodyShort", i)) and (
         (c["close"] >= p["open"] and c["open"] < p["close"]) or (c["close"] > p["open"] and c["open"] <= p["close"]))
 
 
@@ -164,19 +167,25 @@ def inside3(B, i: int) -> bool:
 
 
 def hammerc(B, i: int) -> bool:
+    """Hammer ('H') confirmed by a white candle closing above the hammer's HIGH (StockCharts / Bulkowski confirmation;
+    v1 used the hammer's close, Investopedia's looser wording)."""
     if i < 1:
         return False
     h, c = B[i - 1], B[i]
     return (E.hammer_shape(h["open"], h["high"], h["low"], h["close"]) == "H" and _col(c) == 1
-            and c["close"] > c["open"] and c["close"] > h["close"])
+            and c["close"] > c["open"] and c["close"] > h["high"])
 
 
 def tweezer(B, i: int) -> bool:
+    """Tweezer bottom: black then white with matching lows, and the white candle shows real buying (v2, Eyal 2026-11-16
+    NTRA: a tiny white candle after a long black one is not a reversal): its body is not short (> TA-Lib BodyShort
+    average) and it closes above the midpoint of the black body."""
     if i < 1:
         return False
     p, c = B[i - 1], B[i]
     return (_col(p) == -1 and p["close"] < p["open"] and _col(c) == 1 and c["close"] > c["open"]
-            and _le(abs(c["low"] - p["low"]), _avg(B, "Equal", i - 1)))
+            and _le(abs(c["low"] - p["low"]), _avg(B, "Equal", i - 1))
+            and _gt(_rb(c), _avg(B, "BodyShort", i)) and c["close"] > (p["open"] + p["close"]) / 2)
 
 
 PATTERNS = {"engulf": engulf, "mstar": mstar, "mdoji": mdoji, "pierce": pierce, "inside3": inside3,
@@ -231,11 +240,15 @@ def detect(B: Sequence[Dict[str, Any]], keep: int) -> List[Dict[str, Any]]:
     return out
 
 
+def zone_tol(p: Dict[str, Any], top: float) -> float:
+    return min(CONFIRM["zone_tol_atr"] * p["a"], CONFIRM["zone_tol_pct"] * abs(top))
+
+
 def on_zone(p: Dict[str, Any], top: float, bot: float) -> bool:
-    """The pattern sits on the level (module doc 'on level')."""
+    """The pattern's low actually touches the zone: bottom - tol <= low <= top + tol (module doc 'on level')."""
     top, bot = max(top, bot), min(top, bot)
-    t = CONFIRM["zone_tol_atr"] * p["a"]
-    return p["lo"] <= top + t and (p["lo"] >= bot - t or p["c"] >= bot)
+    t = zone_tol(p, top)
+    return bot - t <= p["lo"] <= top + t
 
 
 def is_entry(p: Dict[str, Any], weekly: bool, closes_after: Sequence[float]) -> bool:

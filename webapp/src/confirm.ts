@@ -15,25 +15,26 @@ export const CONF_HE: Record<ConfCode, string> = { engulf: 'בליעה שורי�
   inside3: 'שלושה מבפנים למעלה', hammerc: 'פטיש + נר אישור', tweezer: 'תחתית פינצטה' };
 /** short chart labels */
 export const CONF_SHORT: Record<ConfCode, string> = { engulf: 'בליעה', mstar: 'כוכב', mdoji: 'כוכב דוג׳י', pierce: 'חודר', inside3: '3 בפנים', hammerc: 'פטיש+', tweezer: 'פינצטה' };
-export const CONF_DEF = { zone_tol_atr: 0.5, entry_weeks: 2 };
+export const CONF_DEF = { zone_tol_atr: 0.1, zone_tol_pct: 0.01, entry_weeks: 2 };
 
-/** the pattern's low touches the zone: low <= top + tol*ATR and (low >= bottom - tol*ATR or last close >= bottom) */
-export function onZone(p: ConfPat, z: { top: number; bottom: number }, tol = CONF_DEF.zone_tol_atr): boolean {
-  const top = Math.max(z.top, z.bottom), bot = Math.min(z.top, z.bottom), t = tol * p.a;
-  return p.lo <= top + t && (p.lo >= bot - t || p.c >= bot);
+/** the pattern's low actually touches the zone: bottom - tol <= low <= top + tol, tol = min(0.1 ATR, 1% of the top)
+ *  (v2, Eyal 2026-11-16 NTRA) */
+export function onZone(p: ConfPat, z: { top: number; bottom: number }, tol = CONF_DEF.zone_tol_atr, pct = CONF_DEF.zone_tol_pct): boolean {
+  const top = Math.max(z.top, z.bottom), bot = Math.min(z.top, z.bottom), t = Math.min(tol * p.a, pct * Math.abs(top));
+  return p.lo >= bot - t && p.lo <= top + t;
 }
 /** patterns of one ticker on a zone; weekly ones ending in the last entry_weeks completed weeks, never closed under
  *  their low since (completed weekly closes + the live / last price), are an entry signal */
 export function confOnLevel(c: ConfTicker | null | undefined, z: { top: number; bottom: number } | null | undefined, px: number | null,
   consts: Record<string, number> = CONF_DEF): ConfLevel {
   if (!c || !z) return { w: [], d: [], entry: false };
-  const tol = consts.zone_tol_atr ?? CONF_DEF.zone_tol_atr, ew = consts.entry_weeks ?? CONF_DEF.entry_weeks;
+  const tol = consts.zone_tol_atr ?? CONF_DEF.zone_tol_atr, pct = consts.zone_tol_pct ?? CONF_DEF.zone_tol_pct, ew = consts.entry_weeks ?? CONF_DEF.entry_weeks;
   const wc = c.wc || [];
-  const w = (c.w || []).filter((p) => onZone(p, z, tol)).map((p) => {
+  const w = (c.w || []).filter((p) => onZone(p, z, tol, pct)).map((p) => {
     const after = [...(p.k ? wc.slice(wc.length - p.k) : []), ...(px != null ? [px] : c.px != null ? [c.px] : [])];
     return { ...p, tf: 'W' as const, entry: p.k < ew && after.every((x) => x >= p.lo) };
   });
-  const d = (c.d || []).filter((p) => onZone(p, z, tol)).map((p) => ({ ...p, tf: 'D' as const, entry: false }));
+  const d = (c.d || []).filter((p) => onZone(p, z, tol, pct)).map((p) => ({ ...p, tf: 'D' as const, entry: false }));
   return { w, d, entry: w.some((p) => p.entry) };
 }
 /** within X weeks: weekly k < X, daily k < 5X sessions */

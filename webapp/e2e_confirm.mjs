@@ -1,4 +1,4 @@
-// Confirmation candlestick patterns on the level (Eyal 2026-11-16): card line, stock page section, chart marks (weekly +
+// Confirmation candlestick patterns on the level (Eyal 2026-11-16, v2 after NTRA): card line, stock page section, chart marks (weekly +
 // daily), filters 'תבנית אישור על האזור ב-X' / 'אות כניסה', sort 'תבנית אישור'. iPhone 390 + laptop 1366 (mobile = desktop).
 // Usage: node e2e_confirm.mjs [baseURL] [outDir]
 import { chromium } from 'playwright';
@@ -24,7 +24,7 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   ok((await fe.textContent()).includes('אות כניסה'), `${name}: entry filter listed`);
   await fe.locator('input[type=checkbox]').click(); await page.waitForTimeout(300);
   let w = await want('!!c && c.entry'), got = await shown();
-  ok(w.length > 0 && JSON.stringify(got) === JSON.stringify(w), `${name}: entry signal -> ${w.length}: ${w.join(' ')}`);
+  ok(JSON.stringify(got) === JSON.stringify(w), `${name}: entry signal -> ${w.length}: ${w.join(' ')}`);
   await fe.locator('input[type=checkbox]').click();
   const fc = page.locator('.fi[data-f="confirm"]');
   ok(await fc.locator('.fx').inputValue() === '2', `${name}: confirm filter default X=2`);
@@ -38,30 +38,29 @@ for (const [name, vp, mobile] of [['iphone_390', { width: 390, height: 844 }, tr
   if (mobile) ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: list has no horizontal overflow`);
   await page.screenshot({ path: `${OUT}/${name}_list_confirm_filter.png` });
   await page.locator('#sort').selectOption('confirm'); await page.waitForTimeout(300);
-  const firsts = await page.$$eval('.row', (els) => els.slice(0, 3).map((e) => e.querySelector('.conf')?.classList.contains('entry')));
-  ok(firsts[0] === true, `${name}: sort 'תבנית אישור' puts an entry signal first`);
+  const nEntry = (await want('!!c && c.entry')).length;
+  const first = await page.$eval('.row', (e) => ({ conf: !!e.querySelector('.conf'), entry: !!e.querySelector('.conf.entry') }));
+  ok(first.conf && (nEntry === 0 || first.entry), `${name}: sort 'תבנית אישור' puts ${nEntry ? 'an entry signal' : 'a pattern'} first`);
   await page.screenshot({ path: `${OUT}/${name}_list_confirm_sort.png` });
-  // stock page DAR: weekly bullish engulfing on the level (week of 09/11) = entry signal; daily engulfing too
-  const t = 'DAR';
-  const l = await page.evaluate((t) => window.__srs.confOf(t, window.__srs.S.byT.get(t)), t);
-  ok(!!l && l.entry && l.w.some((p) => p.p === 'engulf' && p.e === '2026-11-09'), `${t}: weekly engulfing 09/11 = entry signal`);
-  await page.goto(BASE + `?demo=1#/t/${t}`); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(600);
-  await page.locator('[data-tf="W"]').click(); await page.waitForTimeout(600);
-  const mw = await page.evaluate(() => [...document.querySelectorAll('#chart g.confpat > g')].map((x) => x.dataset.conf));
-  ok(mw.includes('W:engulf:2026-11-09'), `${name} ${t}: weekly chart marks ${mw.join(' ')}`);
-  await page.screenshot({ path: `${OUT}/${name}_${t}_weekly.png` });
-  const items = await page.$$eval('#secConfirm li', (els) => els.map((e) => e.dataset.cp));
-  ok(items.includes('W:engulf:2026-11-09') && items.includes('D:engulf:2026-11-09'), `${name} ${t}: stock page lists ${items.join(' ')}`);
-  ok((await page.locator('#secConfirm h3').textContent()).includes('אות כניסה'), `${name} ${t}: section labelled entry signal`);
-  await page.locator('[data-jump="secConfirm"]').click(); await page.waitForTimeout(600);
-  if (mobile) ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: stock page has no horizontal overflow`);
-  await page.screenshot({ path: `${OUT}/${name}_${t}_panel.png` });
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.locator('[data-tf="D"]').click(); await page.waitForTimeout(700);
-  const md = await page.evaluate(() => [...document.querySelectorAll('#chart g.confpat > g')].map((x) => x.dataset.conf));
-  ok(md.includes('D:engulf:2026-11-09') && !md.some((x) => x.startsWith('W:')), `${name} ${t}: daily chart marks ${md.join(' ')}`);
-  await page.screenshot({ path: `${OUT}/${name}_${t}_daily.png` });
-  await page.locator('[data-tf="W"]').click(); await page.waitForTimeout(200);
+  // stock page VTWO: weekly three inside up on the level (week of 26/10, low 109.02 on 106.91-108.83), evidence only
+  for (const [t, tf, key, other] of [['VTWO', 'W', 'W:inside3:2026-10-26', 'D:'], ['GL', 'D', 'D:mdoji:2026-11-09', 'W:']]) {
+    const l = await page.evaluate((t) => window.__srs.confOf(t, window.__srs.S.byT.get(t)), t);
+    ok(!!l && [...l.w, ...l.d].some((p) => `${p.tf}:${p.p}:${p.e}` === key), `${t}: ${key} on the level`);
+    await page.goto(BASE + `?demo=1#/t/${t}`); await page.waitForSelector('#chart canvas'); await page.waitForTimeout(600);
+    await page.locator(`[data-tf="${tf}"]`).click(); await page.waitForTimeout(700);
+    const m = await page.evaluate(() => [...document.querySelectorAll('#chart g.confpat > g')].map((x) => x.dataset.conf));
+    ok(m.includes(key) && !m.some((x) => x.startsWith(other)), `${name} ${t}: ${tf} chart marks ${m.join(' ')}`);
+    await page.screenshot({ path: `${OUT}/${name}_${t}_${tf === 'W' ? 'weekly' : 'daily'}.png` });
+    const items = await page.$$eval('#secConfirm li', (els) => els.map((e) => e.dataset.cp));
+    ok(items.includes(key), `${name} ${t}: stock page lists ${items.join(' ')}`);
+    await page.locator('[data-jump="secConfirm"]').click(); await page.waitForTimeout(600);
+    if (mobile) ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name} ${t}: stock page has no horizontal overflow`);
+    await page.screenshot({ path: `${OUT}/${name}_${t}_panel.png` });
+    await page.locator('[data-tf="W"]').click(); await page.waitForTimeout(200);
+  }
+  // NTRA (Eyal 2026-11-16): the v1 'tweezer' of 09/11 is gone
+  const nt = await page.evaluate(() => window.__srs.confOf('NTRA', window.__srs.S.byT.get('NTRA')));
+  ok(!nt || !nt.w.some((p) => p.p === 'tweezer'), `${name}: NTRA has no weekly tweezer on the level`);
   await ctx.close();
 }
 ok(!errors.length, 'no page errors ' + errors.slice(0, 3).join(' | '));
