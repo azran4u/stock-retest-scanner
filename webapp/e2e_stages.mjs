@@ -33,6 +33,9 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   const nbs = await page.locator('li[data-st]').count();
   const cbs = +(await page.locator('[data-tab="bs"] .cnt').innerText());
   ok(nbs === Math.min(cbs, 80), `${name}: Buy-Stop tab lists ${nbs} (count ${cbs})`);
+  ok((await page.locator('details.secs summary').nth(1).innerText()).includes('ענפים'), `${name}: industries panel`);
+  const miniAtr = await page.locator('.stchartwrap .atrw b').first().innerText();
+  ok(/\d/.test(miniAtr), `${name}: mini chart weekly ATR (${miniAtr})`);
   await page.screenshot({ path: `${OUT}/${name}_bs.png` });
   // fundamental overview of the Buy-Stop candidates (Eyal 2026-11-14): one line on the card, full on the stock page
   const bsT = SD.buy_stop_candidates.map((c) => c.t).find((t) => RS.some((x) => x.ticker === t));
@@ -63,6 +66,8 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   ok(page.url().includes('#/stages/' + first), `${name}: row opens #/stages/${first}`);
   ok(await page.locator('.stpanel .cks li').count() >= 8, `${name}: plan + checks shown`);
   if (!mobile) ok(await page.locator('#stSide li[data-st].sel').count() === 1, `${name}: list stays on the right with the row selected`);
+  const bigAtr = await page.locator('#stbig .atrw').innerText();
+  ok(bigAtr.includes('ATR(W)') && /\d/.test(bigAtr), `${name}: large chart weekly ATR (${bigAtr.replace(/\n/g, ' ')})`);
   await page.screenshot({ path: `${OUT}/${name}_detail.png` });
   // select the computed zone (tag) and drag its top handle up -> saved as his level
   const tag = page.locator('#stbig svg.overlay g.tag').first();
@@ -133,7 +138,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await chip.click(); await page.waitForFunction((e) => location.hash === '#/stages/' + e, chipEtf); await page.waitForTimeout(500);
   ok((await page.locator('#stback').getAttribute('href')) === '#/stages/' + chipT, `${name}: card chip opens ${chipEtf}, back -> ${chipT}`);
   if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
-  await page.locator('details.secs summary').click(); await page.waitForTimeout(200);
+  await page.locator('details.secs summary').first().click(); await page.waitForTimeout(200);
   await page.locator('details.secs a.etfl[data-etf="XLU"]').click(); await page.waitForFunction(() => location.hash === '#/stages/XLU'); await page.waitForTimeout(800);
   ok((await page.locator('#secrule').innerText()).includes('סוף שלב 1 – התעוררות'), `${name}: XLU = late stage 1 / awakening`);
   ok(await page.locator('#idxkv .skv').count() >= 8 && /מבנה/.test(await page.locator('#idxkv').innerText()), `${name}: XLU page shows the 4 parameters (position / slope / structure / meaning)`);
@@ -145,13 +150,35 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
     ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (${T})`);
     await page.screenshot({ path: `${OUT}/${name}_etf_${T}.png`, fullPage: true });
   }
+  await page.evaluate(() => { location.hash = '#/stages/CIBR'; });
+  await page.waitForFunction(() => location.hash === '#/stages/CIBR' && document.querySelector('#idxkv') && document.querySelector('#stbig canvas')); await page.waitForTimeout(700);
+  const cibr = await page.locator('#idxkv').innerText();
+  ok(/שלב \d/.test(cibr) && /שיפוע/.test(cibr), `${name}: CIBR industry ETF page + 4 parameters`);
+  ok((await page.locator('#stbig .atrw').innerText()).includes('ATR(W)'), `${name}: CIBR chart weekly ATR`);
+  await page.screenshot({ path: `${OUT}/${name}_etf_CIBR.png`, fullPage: true });
   await page.evaluate(() => { location.hash = '#/stages/XLU'; }); await page.waitForTimeout(600);
   ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${name}: no horizontal overflow (ETF)`);
   await page.screenshot({ path: `${OUT}/${name}_etf_XLU.png` });
   if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); if (/#\/stages\//.test(page.url())) { await page.click('#stback'); } await page.waitForSelector('li[data-st]'); }
   await page.click('#strulesBtn'); await page.waitForTimeout(200);
-  ok((await page.locator('.strulesheet').innerText()).includes('שמיים פתוחים'), `${name}: rules shown`);
+  const rules = await page.locator('.strulesheet').innerText();
+  ok(rules.includes('שמיים פתוחים') && rules.includes('$50M'), `${name}: rules shown (incl. $50M $vol)`);
   await page.click('#strulesClose');
+  // star on the stages page (Eyal 2026-11-16): same watchlist as the retest page
+  if (mobile && /#\/stages\//.test(page.url())) { await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
+  const starT = await page.$eval('li[data-st]', (e) => e.dataset.st);
+  ok(await page.locator(`li[data-st="${starT}"] .star`).count() === 1, `${name}: star on the card`);
+  await page.locator(`li[data-st="${starT}"] .star`).click(); await page.waitForTimeout(300);
+  ok(await page.locator(`li[data-st="${starT}"] .star.on`).count() === 1, `${name}: starring ${starT} lights the star`);
+  await page.click('[data-tg="starred"]'); await page.waitForTimeout(300);
+  const starredN = await page.locator('li[data-st]').count();
+  ok(starredN >= 1 && starredN === await page.locator('li[data-st] .star.on').count(), `${name}: starred-only filter (${starredN})`);
+  await page.click(`li[data-st="${starT}"]`); await page.waitForSelector('#ststar'); await page.waitForTimeout(200);
+  ok(await page.locator('#ststar.on').count() === 1, `${name}: stock page star is on`);
+  await page.locator('#ststar').click(); await page.waitForTimeout(300);
+  ok(await page.locator('#ststar.on').count() === 0, `${name}: unstar from the stock page`);
+  if (mobile) { await page.click('#stback'); await page.waitForSelector('li[data-st], #stHome'); }
+  await page.click('[data-tg="starred"]'); await page.waitForTimeout(200);
   await page.click('#stHome'); await page.waitForTimeout(500);
   ok(!page.url().includes('#/stages'), `${name}: back leaves the page`);
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);

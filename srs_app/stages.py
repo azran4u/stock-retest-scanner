@@ -52,10 +52,52 @@ SECTOR_ETF = {
     "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP", "Utilities": "XLU", "Basic Materials": "XLB",
     "Real Estate": "XLRE", "Communication Services": "XLC",
 }
-INDUSTRY_ETF = {"Semiconductors": "SMH", "Semiconductor Equipment & Materials": "SMH"}
+# Industry ETFs (Eyal 2026-11-16): classified with the same index/sector rules. A stock is GATED on its industry ETF
+# when FinViz industry maps cleanly; otherwise on the broad SPDR sector. Thematic names with no clean industry map
+# (CIBR / SKYY / BOTZ / LIT) are classified and shown on the industries panel + chart pages, but do not gate stocks.
+# ARKK skipped (active thematic fund, not an industry group). XAR / IBB are shown too; stocks map to ITA / XBI.
+INDUSTRY_WATCH = [
+    "CIBR", "ITA", "XAR", "KRE", "KBE", "XBI", "IBB", "IGV", "SMH",
+    "XHB", "ITB", "XRT", "XOP", "OIH", "GDX", "XME", "COPX", "TAN",
+    "JETS", "IYT", "PAVE", "URA", "KIE", "IHI", "XPH", "SKYY", "BOTZ", "LIT",
+]
+INDUSTRY_ETF = {
+    "Semiconductors": "SMH", "Semiconductor Equipment & Materials": "SMH",
+    "Software - Application": "IGV", "Software - Infrastructure": "IGV",
+    "Banks - Regional": "KRE", "Banks - Diversified": "KBE",
+    "Biotechnology": "XBI",
+    "Drug Manufacturers - General": "XPH", "Drug Manufacturers - Specialty & Generic": "XPH",
+    "Medical Devices": "IHI", "Medical Instruments & Supplies": "IHI",
+    "Aerospace & Defense": "ITA",
+    "Residential Construction": "ITB",
+    "Building Products & Equipment": "XHB", "Building Materials": "XHB", "Lumber & Wood Production": "XHB",
+    "Specialty Retail": "XRT", "Apparel Retail": "XRT", "Internet Retail": "XRT", "Department Stores": "XRT",
+    "Discount Stores": "XRT", "Home Improvement Retail": "XRT", "Grocery Stores": "XRT",
+    "Oil & Gas E&P": "XOP",
+    "Oil & Gas Equipment & Services": "OIH", "Oil & Gas Drilling": "OIH",
+    "Gold": "GDX", "Silver": "GDX", "Other Precious Metals & Mining": "GDX",
+    "Copper": "COPX",
+    "Steel": "XME", "Other Industrial Metals & Mining": "XME", "Aluminum": "XME",
+    "Coking Coal": "XME", "Thermal Coal": "XME",
+    "Uranium": "URA",
+    "Solar": "TAN",
+    "Airlines": "JETS",
+    "Trucking": "IYT", "Railroads": "IYT", "Integrated Freight & Logistics": "IYT",
+    "Marine Shipping": "IYT", "Airports & Air Services": "IYT",
+    "Engineering & Construction": "PAVE",
+    "Insurance - Property & Casualty": "KIE", "Insurance - Life": "KIE", "Insurance - Specialty": "KIE",
+    "Insurance - Diversified": "KIE", "Insurance Brokers": "KIE", "Insurance - Reinsurance": "KIE",
+}
 ETF_NAMES = {"SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000", "XLK": "טכנולוגיה", "XLF": "פיננסים",
              "XLV": "בריאות", "XLE": "אנרגיה", "XLI": "תעשייה", "XLY": "צריכה מחזורית", "XLP": "צריכה בסיסית",
-             "XLU": "תשתיות", "XLB": "חומרי גלם", "XLRE": "נדל\"ן", "XLC": "תקשורת", "SMH": "שבבים"}
+             "XLU": "תשתיות", "XLB": "חומרי גלם", "XLRE": "נדל\"ן", "XLC": "תקשורת",
+             "SMH": "שבבים", "IGV": "תוכנה", "CIBR": "סייבר", "SKYY": "מחשוב ענן", "BOTZ": "רובוטיקה",
+             "ITA": "תעופה וביטחון", "XAR": "תעופה וביטחון (S&P)", "KRE": "בנקים אזוריים", "KBE": "בנקים",
+             "XBI": "ביוטק", "IBB": "ביוטק (Nasdaq)", "XPH": "תרופות", "IHI": "מכשור רפואי",
+             "ITB": "בנייה למגורים", "XHB": "בונים ודיור", "XRT": "קמעונאות",
+             "XOP": "נפט וגז (E&P)", "OIH": "שירותי נפט", "GDX": "כריית זהב", "XME": "מתכות וכרייה",
+             "COPX": "נחושת", "URA": "אורניום", "TAN": "סולארי", "LIT": "ליתיום",
+             "JETS": "חברות תעופה", "IYT": "תחבורה", "PAVE": "תשתיות", "KIE": "ביטוח"}
 
 RULES: Dict[str, Any] = {
     "ma_weeks": 30,              # 30-week SMA of weekly closes
@@ -104,7 +146,9 @@ RULES: Dict[str, Any] = {
     "gap_vol_mult": 2.0,         # ... on >= 2x the 20-day average volume -> don't chase, wait for a hold / mini-base
     "gap_vol_avg_d": 20,
     "mini_base_d": 3,            # ... candidate again after >= 3 sessions after the gap day all closing above the level
-    "min_price": 15.0, "hard_min_price": 10.0, "min_dollar_vol_m": 30.0, "min_week_vol": 500_000,
+    "min_price": 15.0, "hard_min_price": 10.0,
+    "min_dollar_vol_m": 50.0, "dollar_vol_days": 50, "dollar_vol_weeks": 10,  # Eyal 2026-11-16 (VBNK): avg daily $vol >= $50M, dropped BEFORE classification (indexes / sector ETFs exempt)
+    "min_week_vol": 500_000,  # FinViz screen only (avg daily share volume > 100K)
     "inst_lo": 25.0, "inst_hi": 85.0, "min_weeks": 156, "biotech_cap_b": 2.0,  # min_weeks: >= 3 years of weekly bars (Eyal 2026-11-15, IEAG), dropped BEFORE classification
     "risk_usd": 55.0, "account_usd": 5000.0, "position_cap_pct": 15.0,
     "spark_weeks": 104, "candle_weeks": 160,
@@ -576,6 +620,27 @@ def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
     return {"ok": False, "case": "no", "he": f"לא עומד: {why}"}
 
 
+def etf_gate(industry: Optional[str], sector: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """(industry ETF or None, SPDR sector ETF or None, the ETF that GATES the stock).
+    Eyal 2026-11-16: industry ETF when the FinViz industry maps, else the broad sector."""
+    ind = INDUSTRY_ETF.get(industry or "")
+    sec = SECTOR_ETF.get(sector or "")
+    return ind, sec, ind or sec
+
+
+def weekly_atr(w: pd.DataFrame, n: int = 14) -> Optional[float]:
+    """Wilder ATR(14) of weekly bars — same formula as webapp/src/data.ts atr()."""
+    if w is None or len(w) < n + 1 or not {"High", "Low", "Close"} <= set(w.columns):
+        return None
+    h, l, c = (w[k].astype(float) for k in ("High", "Low", "Close"))
+    prev = c.shift(1)
+    tr = pd.concat([h - l, (h - prev).abs(), (l - prev).abs()], axis=1).max(axis=1).iloc[1:]
+    a = float(tr.iloc[:n].mean())
+    for x in tr.iloc[n:]:
+        a = (a * (n - 1) + float(x)) / n
+    return a
+
+
 def entry_pass(entry: List[Dict[str, Any]], pre: List[Dict[str, Any]]) -> bool:
     """All entry gates True (an 'info' check, e.g. a wide SL, never disqualifies) and no pre-filter failure."""
     return bool(entry) and all(x["ok"] is True for x in entry if not x.get("info")) and all(x["ok"] is not False for x in pre)
@@ -1025,14 +1090,35 @@ def history_ok(w: pd.DataFrame, R=RULES) -> bool:
     return len(w) >= R["min_weeks"]
 
 
+def avg_dollar_vol_m(d: Optional[pd.DataFrame] = None, w: Optional[pd.DataFrame] = None, R=RULES) -> Optional[float]:
+    """Average daily dollar volume in millions (Eyal 2026-11-16, VBNK).
+    Prefer the 50-day mean of close×volume from daily bars; if no daily data, weekly $vol / 5 averaged over ~10 weeks."""
+    days = int(R.get("dollar_vol_days", 50))
+    if d is not None and len(d) and "Close" in d.columns and "Volume" in d.columns:
+        s = (pd.to_numeric(d["Close"], errors="coerce") * pd.to_numeric(d["Volume"], errors="coerce")).dropna()
+        if len(s):
+            return float(s.iloc[-min(days, len(s)):].mean() / 1e6)
+    weeks = int(R.get("dollar_vol_weeks", 10))
+    if w is not None and len(w) and "Close" in w.columns and "Volume" in w.columns:
+        s = (pd.to_numeric(w["Close"], errors="coerce") * pd.to_numeric(w["Volume"], errors="coerce")).dropna()
+        if len(s):
+            return float((s.iloc[-min(weeks, len(s)):].mean() / 5.0) / 1e6)
+    return None
+
+
+def liquidity_ok(dv_m: Optional[float], R=RULES) -> bool:
+    """Avg daily $vol >= $50M (Eyal 2026-11-16, VBNK). Checked BEFORE classification, like history_ok.
+    Indexes and sector ETFs are not run through this gate."""
+    return (dv_m or 0) >= R["min_dollar_vol_m"]
+
+
 def prefilter(u: Dict[str, Any], weeks: int, close: float, dollar_vol_m: Optional[float], R=RULES) -> List[Dict[str, Any]]:
     inst = u.get("inst_own")
     small_bio = (u.get("industry") == "Biotechnology") and (u.get("mcap") or 0) < R["biotech_cap_b"] * 1e9
-    wk_vol = (u.get("avg_vol") or 0) * 5
     return [
         {"k": "price", "ok": close >= R["min_price"], "he": f"מחיר ≥ ${R['min_price']:.0f} (מינימום קשיח $10 בסריקה)"},
-        {"k": "liq", "ok": bool((dollar_vol_m or 0) >= R["min_dollar_vol_m"] or wk_vol >= R["min_week_vol"]),
-         "he": "נזילות: מחזור יומי > $30M או > 500K מניות בשבוע"},
+        {"k": "liq", "ok": bool((dollar_vol_m or 0) >= R["min_dollar_vol_m"]),
+         "he": f"נזילות: מחזור יומי ממוצע ≥ ${R['min_dollar_vol_m']:.0f}M (ממוצע {int(R.get('dollar_vol_days', 50))} ימים של מחיר×כמות)"},
         {"k": "inst", "ok": None if inst is None else bool(R["inst_lo"] <= inst <= R["inst_hi"]), "he": "החזקה מוסדית 25%–85%"},
         {"k": "bio", "ok": not small_bio, "he": "לא ביוטק קטן (ביוטכנולוגיה מתחת ל-$2B שווי)"},
         {"k": "hist", "ok": weeks >= R["min_weeks"], "he": f"לפחות 3 שנות מסחר ({R['min_weeks']} נרות שבועיים)"},
@@ -1048,7 +1134,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         uni = fetch_universe()
     U = uni["rows"]
     tickers = sorted(U)
-    etfs = sorted(set(MARKET) | set(SECTOR_ETF.values()) | set(INDUSTRY_ETF.values()) | {BENCH})
+    etfs = sorted(set(MARKET) | set(SECTOR_ETF.values()) | set(INDUSTRY_ETF.values()) | set(INDUSTRY_WATCH) | {BENCH})
     hm = load_history(tickers + etfs, offline)
     last = ss.last_us_session_date()
     bw = weekly(hm[BENCH], last)["Close"] if BENCH in hm else None
@@ -1062,7 +1148,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "slope_cls", "pct_ma", "rs", "rs_up", "week", "checks", "hh", "hl", "idx")}}
             ss_ = sector_status(etf_out[e], R)
             etf_out[e].update(sec_ok=ss_["ok"], sec_case=ss_["case"], sec_he=ss_["he"], range=r.get("range"),
-                              base=None, bo=None, weeks=r.get("weeks"))
+                              base=None, bo=None, weeks=r.get("weeks"), atr_w=_f(weekly_atr(weekly(hm[e], last)), 2))
     for e in etf_out:  # rule 3 (top-down) label per sector / market
         tk, the = top_down(etf_out.get("SPY"), etf_out[e], R) if e not in MARKET else (etf_out[e]["idx"]["td"], etf_out[e]["idx"]["td_he"])
         etf_out[e].update(td=tk, td_he=the)
@@ -1070,7 +1156,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                     key=lambda e: -(etf_out[e]["rs"] or 0))[:3]
     mg = market_gate(etf_out.get("SPY"), R)
 
-    rows, sparks, skipped, short_t = [], {}, {"no_history": 0, "short_history": 0}, []
+    rows, sparks, skipped, short_t, thin_t = [], {}, {"no_history": 0, "short_history": 0, "low_volume": 0}, [], []
     OUT_CANDLES.mkdir(parents=True, exist_ok=True)
     for t in tickers:
         u = U[t]
@@ -1083,13 +1169,17 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             skipped["short_history"] += 1
             short_t.append(t)
             continue
+        d = df.copy(); d.index = pd.to_datetime(d.index)
+        dv = avg_dollar_vol_m(d, w, R)
+        if not liquidity_ok(dv, R):  # Eyal 2026-11-16 (VBNK): < $50M avg daily $vol -> not classified / listed
+            skipped["low_volume"] += 1
+            thin_t.append(t)
+            continue
         r = classify(w, bw, R)
         if r is None:
             skipped["short_history"] += 1
             continue
-        d = df.copy(); d.index = pd.to_datetime(d.index)
-        dv = float((d["Close"] * d["Volume"]).iloc[-30:].mean() / 1e6) if len(d) else None
-        etf = INDUSTRY_ETF.get(u.get("industry")) or SECTOR_ETF.get(u.get("sector"))
+        ind_etf, sec_etf, etf = etf_gate(u.get("industry"), u.get("sector"))
         fv_earn = parse_earn(u.get("earn_raw", ""), today)
         state, cd = ss.earn_cache_lookup(t, today)  # the retest scanner's earnings cache, when it has a future date
         ei = earnings_info(fv_earn, earn_timing(u.get("earn_raw", "")), cd.isoformat() if cd else None, today, R)
@@ -1107,8 +1197,9 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             entry = [
                 {"k": "mkt", "ok": mg["ok"], "he": mg["he"]},
                 {"k": "sector", "ok": None if not e else e["sec_ok"],
-                 "he": f"סקטור {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל 30W SMA שהפסיק לרדת)"
-                       + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}, מבנה {e['idx']['struct']}; RS {e['rs']} מידע בלבד) · {e.get('td_he', '')}" if e else "")},
+                 "he": (f"{'ענף' if ind_etf else 'סקטור'} {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל 30W SMA שהפסיק לרדת)"
+                       + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}, מבנה {e['idx']['struct']}; RS {e['rs']} מידע בלבד) · {e.get('td_he', '')}" if e else "")
+                       + (f" · סקטור {sec_etf} שלב {etf_out[sec_etf]['stage']} (מידע)" if ind_etf and sec_etf and sec_etf in etf_out else ""))},
                 {"k": "rs", "ok": rs_ok, "he": "Mansfield RS > 0 ועולה"},
                 {"k": "chase", "ok": not p["chase"],
                  "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
@@ -1151,8 +1242,10 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             "t": t, "n": u.get("company"), "ex": u.get("exchange"), "sec": u.get("sector"), "ind": u.get("industry"),
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,
             "etf_td": e.get("td") if e else None, "etf_td_he": e.get("td_he") if e else None,
+            "ind_etf": ind_etf, "sec_etf": sec_etf,
+            "sec_etf_stage": etf_out[sec_etf]["stage"] if sec_etf and sec_etf in etf_out else None,
             "mcap_b": _f((u.get("mcap") or 0) / 1e9, 1) if u.get("mcap") else None, "inst": u.get("inst_own"),
-            "dv_m": _f(dv, 1), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
+            "dv_m": _f(dv, 1), "atr_w": _f(weekly_atr(w), 2), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
             "earn_eff": ei["eff"], "earn_timing": timing, "earn_live_week": in_live, "earn_est": ei["est"],
             "earn_last": ei["last"], "earn_last_ago": ei["last_ago"],
             "earn_block": bool(earn and td is not None and td <= R["earn_td"]),
@@ -1175,9 +1268,14 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         "version": 1, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "week": max((x["week"] for x in rows), default=None), "rules": R, "screens": SCREENS,
         "finviz_totals": uni.get("totals"), "finviz_fetched_at": uni.get("fetched_at"), "skipped": skipped,
-        "short_history_tickers": short_t,
+        "short_history_tickers": short_t, "low_volume_tickers": thin_t,
         "market": {k: etf_out[k] for k in MARKET if k in etf_out}, "market_gate": mg,
-        "sectors": {k: etf_out[k] for k in etf_out if k not in MARKET}, "strong_sectors": strong,
+        "sectors": {k: etf_out[k] for k in etf_out if k in set(SECTOR_ETF.values())},
+        "industries": {k: etf_out[k] for k in etf_out if k not in MARKET and k not in set(SECTOR_ETF.values())},
+        "strong_sectors": strong,
+        "strong_industries": sorted([e for e in set(INDUSTRY_ETF.values()) | set(INDUSTRY_WATCH)
+                                     if e in etf_out and etf_out[e]["stage"] == 2 and (etf_out[e]["rs"] or -99) > 0],
+                                    key=lambda e: -(etf_out[e]["rs"] or 0))[:5],
         "pre_he": {x["k"]: x["he"] for x in prefilter({}, 0, 0.0, None, R)},  # row 'pre' = [{k, ok}] (text once here)
         "counts": counts, "rows": rows,
         "buy_stop_candidates": [candidate(x) for x in cands],

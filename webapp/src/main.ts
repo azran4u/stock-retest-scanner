@@ -259,6 +259,7 @@ function bindUnfit(root: ParentNode, t: string) {
   const off = $('#niOff', root); if (off) off.onclick = () => setNi(t, null, false);
 }
 function refreshViews() {
+  if (location.hash.startsWith('#/stages')) { stSyncWatch(); return; }
   if (cv && S.ticker) { renderHeader(); syncChart(); renderPanel(); }
   if ($('.list')) updateListBody();
 }
@@ -834,7 +835,7 @@ async function renderStages() {
       stShell = 'split'; stRenderList(d);
     }
     if (!t) {
-      const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d));
+      const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
       const pick = ui.lastT && rows.some((r) => r.t === ui.lastT) ? ui.lastT : rows[0]?.t;
       if (pick) { location.replace('#/stages/' + encodeURIComponent(pick)); return; }
       if (stCv) { stCv.destroy(); stCv = null; stCvT = null; }
@@ -888,15 +889,27 @@ function stDrawSpark(c: HTMLCanvasElement, sp: Record<string, StSpark>, r: Stage
   const ed = stEdits.get(r.t);
   drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
 }
+function stBindStar(el: HTMLElement) {
+  el.querySelectorAll<HTMLButtonElement>('.star[data-star]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleWatch(b.dataset.star!); }));
+}
+function stSyncWatch() {
+  if (!stDoc || !location.hash.startsWith('#/stages')) return;
+  if (stUi().starred && $('#stSide')) stRenderList(stDoc);
+  document.querySelectorAll<HTMLButtonElement>('#stSide .star[data-star], #ststar').forEach((b) => {
+    const raw = b.dataset.star || (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1];
+    const on = !!(raw && isWatched(decodeURIComponent(raw).toUpperCase()));
+    b.classList.toggle('on', on); b.textContent = on ? '★' : '☆';
+  });
+}
 function stRenderList(d: StagesDoc) {
   const host = $('#stSide'); if (!host) return;
   const ui = stUi();
-  const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d));
+  const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
   const selT = (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1] || null;
-  host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT ? decodeURIComponent(selT).toUpperCase() : null);
+  host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT ? decodeURIComponent(selT).toUpperCase() : null, S.watch);
   const redo = () => { stSaveUi(ui); stRenderList(d); };
   host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => { ui.tab = b.dataset.tab as StUi['tab']; stLimit = 80; stSaveUi(ui); stRenderList(d); if (stShell === 'split') { location.replace('#/stages'); } }));
-  host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near'; ui[k] = !ui[k]; redo(); }));
+  host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near' | 'starred'; (ui as any)[k] = !ui[k]; redo(); }));
   host.querySelectorAll<HTMLElement>('[data-conf]').forEach((b) => (b.onclick = () => { const c = b.dataset.conf as 'med' | 'high'; ui.conf = ui.conf === c ? 'all' : c; redo(); }));
   const q = $<HTMLInputElement>('#stq', host)!;
   let qt = 0;
@@ -910,6 +923,7 @@ function stRenderList(d: StagesDoc) {
     const u = stUi(); u.lastT = li.dataset.st; stSaveUi(u);
     location.hash = '#/stages/' + encodeURIComponent(li.dataset.st!);
   }));
+  stBindStar(host);
   stObserveSparks(host, d);
 }
 function stRulesSheet(d: StagesDoc) {
@@ -938,7 +952,7 @@ function stDrawingsOf(r: StageRow): Drawing[] {
   return out;
 }
 function stNeighbor(d: StagesDoc, t: string, dir: 1 | -1): string | null {
-  const l = filterRows(d.rows, stUi(), stEdits, maxRiskUsd(), stMaxStop(d)).map((r) => r.t), i = l.indexOf(t);
+  const l = filterRows(d.rows, stUi(), stEdits, maxRiskUsd(), stMaxStop(d), S.watch).map((r) => r.t), i = l.indexOf(t);
   return i < 0 ? l[0] ?? null : l[i + dir] ?? null;
 }
 /** big weekly chart of a sector / market ETF (read-only): candles + 30W SMA + base ceiling (blue) when relevant */
@@ -959,6 +973,7 @@ async function stRenderEtf(d: StagesDoc, t: string, e: StagesDoc['sectors'][stri
     const bars: Bar[] = j.w.map(([time, open, high, low, close, volume]) => ({ time: weekStart(time), open, high, low, close, volume }));
     cv.centerClose = false; (window as any).__stCv = cv;
     cv.setBars(bars, 110, true);
+    cv.setAtr(atr(bars));
     const ma: { time: string; value: number }[] = [];
     let sum = 0;
     for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
@@ -975,7 +990,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
   const host = $('#stMain'); if (!host) return;
   const r = d.rows.find((x) => x.t === t);
   if (!r) {
-    const etf = d.market[t] || d.sectors[t];
+    const etf = d.market[t] || d.sectors[t] || d.industries?.[t];
     if (etf) { stRenderEtf(d, t, etf); return; }
     if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return;
   }
@@ -983,7 +998,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
   if (stCv && stCvT === t) { stRefreshDetail(d, r); return; }
   if (stCv) { stCv.destroy(); stCv = null; }
   const ed = stEdits.get(t);
-  host.innerHTML = stDetailHtml(d, r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed, maxRiskUsd(), stSelLine(r));
+  host.innerHTML = stDetailHtml(d, r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed, maxRiskUsd(), stSelLine(r), isWatched(r.t));
   stBindDetail(d, r);
   stCvT = t;
   stCv = new ChartView($('#stbig', host)!, {
@@ -1000,6 +1015,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
     const bars: Bar[] = j.w.map(([time, open, high, low, close, volume]) => ({ time: weekStart(time), open, high, low, close, volume }));
     stCv.centerClose = false; (window as any).__stCv = stCv; // fit candles + levels only (no axis stretched below 0)
     stCv.setBars(bars, 110, true);
+    stCv.setAtr(atr(bars));
     const ma: { time: string; value: number }[] = [];
     let sum = 0;
     for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
@@ -1015,6 +1031,8 @@ function stBindDetail(d: StagesDoc, r: StageRow) {
   const go = (dir: 1 | -1) => { const n = stNeighbor(d, r.t, dir); if (n) location.replace('#/stages/' + encodeURIComponent(n)); else toast(dir > 0 ? 'סוף הרשימה' : 'תחילת הרשימה'); };
   $('#stprev', host)!.onclick = () => go(-1);
   $('#stnext', host)!.onclick = () => go(1);
+  const star = $('#ststar', host) as HTMLButtonElement | null;
+  if (star) star.onclick = (e) => { e.stopPropagation(); toggleWatch(r.t); };
   const rs = $('#streset', host); if (rs) rs.onclick = () => stReset(d, r);
   const aln = $('#staddline', host); if (aln) aln.onclick = () => { stLineTap = !stLineTap; stTap = null; toast(stLineTap ? 'הקש על הגרף במחיר של הקו (מעל המחיר = התנגדות, מתחת = תמיכה)' : 'בוטל'); };
   const dl = $('#stdelline', host); if (dl) dl.onclick = () => stDelLine(d, r);
@@ -1025,15 +1043,18 @@ function stRefreshDetail(d: StagesDoc, r: StageRow) {
   const host = $('#stMain'); if (!host) return;
   const ed = stEdits.get(r.t), e = effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules);
   const tmp = document.createElement('div');
-  tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd(), stSelLine(r));
+  tmp.innerHTML = stDetailHtml(d, r, e, ed, maxRiskUsd(), stSelLine(r), isWatched(r.t));
   for (const sel of ['.sttags.pad', '.tools', '.stpanel']) { const a = $(sel, host), b2 = $(sel, tmp); if (a && b2) a.replaceWith(b2); }
+  const hd = $('#ststar', host) as HTMLButtonElement | null, hd2 = $('#ststar', tmp) as HTMLButtonElement | null;
+  if (hd && hd2) { hd.className = hd2.className; hd.textContent = hd2.textContent; }
   stBindDetail(d, r);
   stCv?.setDrawings(stDrawingsOf(r), stSelDraw); stCv?.fitLevels();
   const li = document.querySelector<HTMLElement>(`#stSide li[data-st="${CSS.escape(r.t)}"]`);
   if (li) {
-    const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone || !!ed?.lines?.length);
+    const t2 = document.createElement('div'); t2.innerHTML = stRowHtml(r, e, true, !!ed?.zone || !!ed?.lines?.length, isWatched(r.t));
     const nli = t2.firstElementChild as HTMLElement; li.replaceWith(nli);
     nli.onclick = () => { location.hash = '#/stages/' + encodeURIComponent(r.t); };
+    stBindStar(nli);
     stSpP!.then((sp) => { const c = $<HTMLCanvasElement>('canvas.stchart', nli); if (c) stDrawSpark(c, sp, r, d); });
   }
 }
@@ -1154,6 +1175,7 @@ async function renderCalibrate() {
   });
 }
 function updateListBody() {
+  if (location.hash.startsWith('#/stages') || !$('.sortrow')) return;
   const rows = filtered();
   $('.list')!.innerHTML = listInner(rows);
   $('.sortrow .small')!.textContent = `${rows.length} מניות`;

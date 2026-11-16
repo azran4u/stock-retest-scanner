@@ -374,9 +374,63 @@ def test_three_year_history_required():
     assert history_ok(_ohlc(np.linspace(20, 40, 156)))
 
 
+def test_avg_dollar_vol_prefers_50day_daily():
+    """Eyal 2026-11-16 (VBNK): 50-day mean of close×volume; daily wins over a weekly fallback."""
+    from srs_app.stages import avg_dollar_vol_m
+    d = _daily([100.0] * 60, vols=[400_000] * 10 + [600_000] * 50)  # last 50 days = $60M; earlier days $40M
+    w = d.resample("W-FRI").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+    assert abs(avg_dollar_vol_m(d, w) - 60.0) < 0.01
+    thin = _daily([20.0] * 50, vols=[100_000] * 50)                 # $2M/day
+    assert abs(avg_dollar_vol_m(thin) - 2.0) < 0.01
+
+
+def test_avg_dollar_vol_weekly_fallback():
+    """No daily bars -> weekly $vol / 5, averaged over ~10 weeks."""
+    from srs_app.stages import avg_dollar_vol_m
+    # 10 weeks, close $20, weekly volume 12.5M shares -> weekly $vol $250M -> $50M/day
+    w = bars([20.0] * 12, vols=np.full(12, 12_500_000), rng=0.0)
+    assert abs(avg_dollar_vol_m(None, w) - 50.0) < 0.01
+    assert avg_dollar_vol_m(None, None) is None
+
+
+def test_liquidity_ok_50m_hard_gate():
+    """$50M is a hard universe pre-filter; the old 500K-shares-per-week loophole is gone."""
+    from srs_app.stages import RULES, liquidity_ok, prefilter
+    assert RULES["min_dollar_vol_m"] == 50.0 and RULES["dollar_vol_days"] == 50
+    assert liquidity_ok(50.0) and liquidity_ok(77.7) and not liquidity_ok(49.9) and not liquidity_ok(2.3) and not liquidity_ok(None)
+    fat_shares = {"avg_vol": 5_000_000, "inst_own": 40.0, "industry": "Banks", "mcap": 5e9}  # would have passed the old OR
+    pre = prefilter(fat_shares, 200, 24.0, 2.3)
+    liq = next(x for x in pre if x["k"] == "liq")
+    assert liq["ok"] is False and "$50M" in liq["he"]
+    assert next(x for x in prefilter(fat_shares, 200, 24.0, 50.0) if x["k"] == "liq")["ok"] is True
+
+
 def test_split_long_telegram_message():
     from srs_app.stages import split_message
     text = "\n\n".join(f"T{i} " + "x" * 300 for i in range(20))
     parts = split_message(text)
     assert len(parts) > 1 and all(len(p) <= 3900 for p in parts) and "\n\n".join(parts) == text
     assert split_message("short") == ["short"]
+
+
+
+def test_etf_gate_prefers_industry():
+    """Eyal 2026-11-16: industry ETF gates when mapped; else the broad SPDR sector."""
+    from srs_app.stages import etf_gate, INDUSTRY_ETF, INDUSTRY_WATCH
+    assert etf_gate("Banks - Regional", "Financial") == ("KRE", "XLF", "KRE")
+    assert etf_gate("Biotechnology", "Healthcare") == ("XBI", "XLV", "XBI")
+    assert etf_gate("Aerospace & Defense", "Industrials") == ("ITA", "XLI", "ITA")
+    assert etf_gate("Packaged Foods", "Consumer Defensive") == (None, "XLP", "XLP")  # no industry ETF
+    assert etf_gate("Software - Application", "Technology") == ("IGV", "XLK", "IGV")
+    assert "CIBR" in INDUSTRY_WATCH and "SMH" in INDUSTRY_ETF.values() and "ARKK" not in INDUSTRY_WATCH
+
+
+def test_weekly_atr_wilder():
+    """Weekly ATR(14) matches the retest chart (Wilder, first 14 TRs averaged)."""
+    from srs_app.stages import weekly_atr
+    w = bars(np.linspace(20, 40, 40), rng=0.05)
+    a = weekly_atr(w)
+    assert a is not None and a > 0
+    # TR of a 5% range bar around price 40 is about 2; ATR should be in a plausible band
+    assert 0.5 < a < 5
+    assert weekly_atr(w.iloc[:10]) is None
