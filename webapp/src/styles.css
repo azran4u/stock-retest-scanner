@@ -529,3 +529,10 @@ a.badge.etfl { text-decoration: none; }
 #idxkv .skv b { white-space: normal; text-align: end; overflow-wrap: anywhere; }
 @media (max-width: 600px) { #idxkv { grid-template-columns: minmax(0, 1fr); } }
 .stetf .sttags .badge { white-space: normal; max-width: 100%; text-align: start; }
+/* confirmation candlestick patterns on the level (Eyal 2026-11-16) */
+.row .conf { color: #a5d6a7; margin-top: 2px; }
+.row .conf.entry { color: #69f0ae; }
+.confbox { border: 1px solid rgba(102,187,106,.45); border-radius: 8px; padding: 8px 10px; margin: 10px 0; }
+.confbox h3 { margin: 0 0 4px; }
+.confbox .conflist { margin: 4px 0; padding-inline-start: 18px; }
+.confbox .conflist li { margin: 2px 0; overflow-wrap: anywhere; }

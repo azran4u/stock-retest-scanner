@@ -348,6 +348,14 @@ export class ChartView {
     this.lastKey = '';
   }
 
+  /** Confirmation candlestick patterns on the level (Eyal 2026-11-16): a green outline around the pattern's candles
+   *  plus a short label under them; weekly patterns on the weekly chart, daily ones on the daily chart. Read-only. */
+  confirm: { tf: 'W' | 'D'; s: string; e: string; lo: number; hi: number; label: string; entry: boolean }[] = [];
+  setConfirm(c: ChartView['confirm']) {
+    this.confirm = c;
+    this.lastKey = '';
+  }
+
   setDrawings(ds: Drawing[], selected: string | null) {
     if (this.dragging) return; // keep the drag copy until pointerup
     this.drawings = ds.map((d) => ({ ...d }));
@@ -492,7 +500,7 @@ export class ChartView {
     const lr = this.chart.timeScale().getVisibleLogicalRange();
     const key = [lr?.from, lr?.to, this.Y(this.bars[this.bars.length - 1].close), this.Y((this.bars[this.bars.length - 1].close) * 1.1),
       this.paneW(), this.paneH(), this.selected, JSON.stringify(this.drawings), this.dragging?.key, this.atrVal,
-      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag, this.earnings.length, this.earnings[0]?.d, this.earnTipIdx, this.weekly, JSON.stringify(this.expert)].join('|');
+      this.chart.priceScale('right').width(), JSON.stringify(this.fibEdit), this.fibDrag, this.earnings.length, this.earnings[0]?.d, this.earnTipIdx, this.weekly, JSON.stringify(this.expert), JSON.stringify(this.confirm)].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.render();
@@ -542,6 +550,29 @@ export class ChartView {
         : `<g class="h" data-id="${id}" data-key="${key}"><circle cx="${x}" cy="${yy}" r="22" fill="transparent"/><circle cx="${x}" cy="${yy}" r="8" fill="${color}" stroke="#fff" stroke-width="2"/></g>`);
     };
 
+    // confirmation patterns (green outline around the candles + label under the low), current timeframe only
+    if (this.confirm.length && this.bars.length) {
+      const SH: Record<string, string> = { engulf: 'בליעה', mstar: 'כוכב', mdoji: 'כוכב דוג׳י', pierce: 'חודר', inside3: '3 בפנים', hammerc: 'פטיש+', tweezer: 'פינצטה' };
+      const tf = this.weekly ? 'W' : 'D';
+      const ts = this.chart.timeScale();
+      let cs = '';
+      for (const c of this.confirm) {
+        if (c.tf !== tf) continue;
+        const ls = this.logicalOf(c.s), le = this.logicalOf(c.e);
+        if (ls == null || le == null) continue;
+        const ca = ts.logicalToCoordinate(ls as any), cb = ts.logicalToCoordinate(le as any), cp = ts.logicalToCoordinate((le - 1) as any);
+        if (ca == null || cb == null) continue;
+        const half = Math.max(2, 0.45 * (cp != null ? Math.abs(cb - cp) : 6));
+        const xa = ca - half, xb = cb + half;
+        const yh = this.Y(c.hi), yl = this.Y(c.lo);
+        if (xa == null || xb == null || yh == null || yl == null || xb < 0 || xa > W) continue;
+        const col = c.entry ? '#00e676' : '#66bb6a';
+        const txt = (c.entry ? '✓ ' : '') + (SH[c.label] || c.label);
+        cs += `<g data-conf="${c.tf}:${c.label}:${c.e}"><rect x="${xa}" y="${yh - 3}" width="${Math.max(3, xb - xa)}" height="${Math.max(3, yl - yh + 6)}" rx="3" fill="rgba(102,187,106,.10)" stroke="${col}" stroke-width="${c.entry ? 2 : 1.3}"/>` +
+          `<text x="${(xa + xb) / 2}" y="${yl + 30}" text-anchor="middle" style="fill:${col};font-size:11px;font-weight:700">${esc(txt)}</text></g>`;
+      }
+      if (cs) s += `<g class="confpat" pointer-events="none">${cs}</g>`;
+    }
     // expert zone first (under his / the bot's drawings): dashed purple outline, light fill, no pointer events
     if (this.expert) {
       const e = this.expert, ya = this.Y(e.top), yb = this.Y(e.bottom);

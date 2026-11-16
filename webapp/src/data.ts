@@ -145,3 +145,10 @@ export function loadExpert(): Promise<ExpertDoc | null> {
   }).catch(() => null);
   return expertP;
 }
+/** Confirmation candlestick patterns after a pullback (Eyal 2026-11-16, srs_app/confirm_patterns.py -> confirm.json);
+ *  zone gate applied live in confirm.ts. Evidence only. */
+let confP: Promise<import('./confirm').ConfDoc | null> | null = null;
+export function loadConfirm(): Promise<import('./confirm').ConfDoc | null> {
+  confP ??= fetcher('confirm.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return confP;
+}

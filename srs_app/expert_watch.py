@@ -22,6 +22,11 @@ else 'ממתינה לאישור' - a daily reversal alone ranks higher inside th
   hammerW  : a weekly hammer (H textbook +3 / h near-hammer +2) touching the zone in the last READY_WEEKS weeks
   revW     : a weekly reversal candle (export revc: hammer / engulfing / strong close / rejection) touching it   +2
   revD     : a daily reversal candle touching it in the last READY_DAYS sessions                                 +1
+  confW    : a weekly confirmation pattern (srs_app/confirm_patterns.py: bullish engulfing, morning star, piercing,
+             three inside up, hammer + confirmation, tweezer bottom; after a pullback) on the zone in the last
+             READY_WEEKS weeks = entry signal (Eyal 2026-11-16, evidence only)                                    +2
+  confD    : a daily confirmation pattern on the zone in the last READY_DAYS sessions (secondary: a daily
+             signal alone never reaches READY_MIN_PTS)                                                          +0.5
   touch = low <= top + 0.5 ATR and (low >= bottom - 0.5 ATR or close >= bottom) (same gate as the app filters)
 Rank: composite = 10 x readiness + 0.5 x score + 5 x min(R:R, 5) - 10 x distance (ATR), ready tier first.
 """
@@ -108,8 +113,10 @@ def earn_block(em: Dict[str, Any], row: Dict[str, Any], asof: date, last_week: O
     return None
 
 
-def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Readiness signals of one ticker (module doc). weeks = completed weekly bars (oldest first)."""
+def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[str, Any]],
+            cf: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Readiness signals of one ticker (module doc). weeks = completed weekly bars (oldest first); cf = the ticker's
+    confirm.json entry (confirmation patterns, no zone gate yet)."""
     top, bot, A = z["top"], z["bottom"], z["atr_w"]
     out: List[Dict[str, Any]] = []
     recent = weeks[-READY_WEEKS:]
@@ -134,6 +141,17 @@ def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[st
                 out.append({"k": "revD", "pts": 1, "he": "נר היפוך יומי על האזור (" + ", ".join(REV_HE[x] for x in _kinds(mask)) + ")",
                                 "short": "נר היפוך יומי על האזור"})
                 break
+    if cf:
+        from srs_app import confirm_patterns as CP
+        lv = CP.on_level(cf, top, bot)
+        w = [p for p in lv["w"] if p["k"] < READY_WEEKS and p.get("entry")]
+        if w:
+            out.append({"k": "confW", "pts": 2, "w": w[0]["s"], "p": w[0]["p"],
+                        "he": f"תבנית אישור שבועית על האזור ({CP.NAMES_HE[w[0]['p']]}) — אות כניסה", "short": "אות כניסה: " + CP.NAMES_HE[w[0]["p"]]})
+        d = [p for p in lv["d"] if p["k"] < READY_DAYS]
+        if d:
+            out.append({"k": "confD", "pts": 0.5, "w": d[0]["e"], "p": d[0]["p"],
+                        "he": f"תבנית אישור יומית על האזור ({CP.NAMES_HE[d[0]['p']]})", "short": "תבנית אישור יומית: " + CP.NAMES_HE[d[0]["p"]]})
     return out
 
 
@@ -143,6 +161,10 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
         earn = json.loads((out / "earnings.json").read_text())
     except Exception:
         earn = {}
+    try:
+        conf = json.loads((out / "confirm.json").read_text()).get("tickers", {})
+    except Exception:
+        conf = {}
     by = {r["ticker"]: r for r in rows}
     ad = date.fromisoformat(asof) if asof else date.today()
     items = []
@@ -183,7 +205,7 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
             W = E.weekly(daily) if daily else []
             if W and not E.week_complete(W[-1]["last"], asof):
                 W = W[:-1]
-            sg = signals(z, W, revc.get(t))
+            sg = signals(z, W, revc.get(t), conf.get(t))
             ready = sum(s["pts"] for s in sg)
             comp = 10 * ready + 0.5 * (z.get("score") or 0) + 5 * min(tr["rr"], 5) - 10 * dist
             where = "בתוך האזור" if dist == 0 else f"{dist:.1f} ATR מעל"

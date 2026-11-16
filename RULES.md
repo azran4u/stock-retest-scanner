@@ -531,3 +531,29 @@ Default target = TP of the user's TradingView drawing (tv_drawings.json) at entr
 - **One drawing store everywhere (nightly guard):** `stock_screen.drawing_store()` = `app_drawings.json` when present (else `tv_drawings.json`; `SRS_DRAWING_STORE=tv` forces it) is the default for the screen's R:R gate, `report_filters.py --report` recomputes and `tv_drawings.py merge` — like `export_daily_report.py`. A recompute with the TV store gave PASS 16 instead of 77 (2026-10-26).
 - **Broken drawings are redrawn (Eyal 2026-10-27: "כדאי לשרטט מחדש - דיברנו שאתה משרטט"):** in the nightly bot step (`srs_app.bot_drawings.plan`, `REDRAW_BROKEN_USER`) a live drawing of his (user / tv) on an eligible ticker whose SL broke (any low since it was drawn < SL, same test as bot drawings) is replaced by a v5 bot drawing: his rows → `status='obsolete'` + `meta.superseded = {why: broken, by, at}` (restorable: set them `active` and the bot rows `obsolete`), a local backup `/workspace/backups/user_drawings_broken_<date>.json`, the bot rows carry `meta.replaced_user_drawing` and the note "(replaced your broken drawing)". When the bot finds no valid level his drawing stays (flagged broken). A valid drawing of his is never touched. First run 2026-10-27: FIX, IESC, JBL, MLI, VMI, WDC.
 - **Max risk $55 per trade** (account $5000 × 1.1%): position sizing, tradable = weekly ATR < $55.
+
+## 19. Confirmation candlestick patterns on the level (Eyal 2026-11-16) — evidence / entry signal, NOT a PASS gate
+
+`srs_app/confirm_patterns.py` → `app/data/confirm.json` (nightly, inside `export_data.export()` after the expert zones; no
+separate routine step). Standard bullish reversal patterns, multi-bar ones ported 1:1 from TA-Lib 0.6 with its default
+candle settings (BodyLong / BodyShort = average real body of the 10 bars before, BodyDoji = 10% of the average range,
+Equal = 5% of the average range of 5 bars) and cross-checked against TA-Lib in `tests/test_confirm_patterns.py`:
+
+| code | Hebrew | definition |
+|---|---|---|
+| engulf | בליעה שורית | CDLENGULFING: black candle, then a white one whose real body engulfs it |
+| mstar | כוכב בוקר | CDLMORNINGSTAR (penetration 0.3): long black, short body gapping down (body gap), white closing > close1 + 30% of body1 |
+| mdoji | כוכב בוקר דוג'י | CDLMORNINGDOJISTAR: as mstar with a doji in the middle |
+| pierce | קו חודר | CDLPIERCING: long black, long white opening under its low and closing above its body midpoint (under its open) |
+| inside3 | שלושה מבפנים למעלה | CDL3INSIDE: long black, short body inside it (harami), white closing above open1 |
+| hammerc | פטיש + נר אישור | the scanner's textbook hammer (`hammer_shape` 'H', unchanged) + next candle white and closing above the hammer's close |
+| tweezer | תחתית פינצטה | black then white candle with matching lows (|Δlow| <= TA-Lib Equal) |
+
+Gates (constants `CONFIRM`): **pullback** = the pattern low is the lowest low of the 5 bars before it and ≥ 1 ATR(14)
+under their highest high; **on the level** = low ≤ top + 0.5 ATR and (low ≥ bottom − 0.5 ATR or the last close ≥ bottom),
+ATR of the same timeframe, checked live in the app on the zone that counts now AND on the expert zone; **אות כניסה** = a
+weekly pattern on the level ending in the last 2 completed weeks with no weekly close (or current price) under its low
+since. Daily patterns are a secondary confirmation only. App: card line, stock page section "תבניות אישור על הרמה"
+(+ jump chip "אישור"), green outline + label on the weekly / daily chart, filters "תבנית אישור על האזור ב-X שבועות" and
+"אות כניסה", sort "תבנית אישור". Expert watchlist: `confW` +2 (weekly entry signal), `confD` +0.5 (a daily pattern alone
+never makes a stock "מוכנה"). PASS, the falling-knife rule and the earnings-week rule are unchanged.

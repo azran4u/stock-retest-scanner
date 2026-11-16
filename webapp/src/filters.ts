@@ -32,6 +32,8 @@ export interface Facts {
   expertDist?: number | null;
   expertWatch?: { tier: string; rank: number } | null; // in the nightly expert watchlist (expert_watch.json)               // weekly ATRs from the expert zone (0 inside); null = no expert level
   expertScore?: number | null;              // expert-zone score 0-100 (expert_zones.json); null = no expert level / not loaded
+  /** confirmation patterns on the zone that counts now (confirm.ts confOnLevel): weekly / daily k (bars back), entry signal */
+  conf?: { w: number[]; d: number[]; entry: boolean } | null;
   today: string;                            // YYYY-MM-DD (Israel) for "within X weeks"
 }
 
@@ -89,6 +91,10 @@ export const FILTERS: FilterDef[] = [
   { id: 'earn', label: 'ימים עד דוחות ≥', group: 'main', param: { def: 14, min: 0, max: 120, step: 1 }, test: (f, s) => !!f.earnNone || (f.daysToEarn != null && f.daysToEarn >= (s.x ?? 14)) },
   { id: 'unfit', label: 'לא מתאימות לשיטה', group: 'main', tri: true,
     test: (f, s) => ((s.mode ?? 'hide') === 'all' ? true : (s.mode ?? 'hide') === 'only' ? f.unfit : !f.unfit) },
+  // confirmation candlestick pattern on the level (Eyal 2026-11-16): evidence / entry signal, never a PASS gate
+  { id: 'confirm', label: 'תבנית אישור על האזור ב-', group: 'main', param: { def: 2, min: 1, max: 8, step: 1, unit: 'שבועות אחרונים (שבועי או יומי)' },
+    test: (f, s) => { const x = s.x ?? 2; return !!f.conf && (f.conf.w.some((k) => k < x) || f.conf.d.some((k) => k < 5 * x)); } },
+  { id: 'confirmEntry', label: 'אות כניסה: תבנית אישור שבועית על האזור', group: 'main', test: (f) => !!f.conf?.entry },
   // ---- status / app ----
   { id: 'st_pass', label: 'PASS', group: 'status', test: (f) => f.status === 'PASS' },
   { id: 'st_review', label: 'לבדיקה', group: 'status', test: (f) => f.review },

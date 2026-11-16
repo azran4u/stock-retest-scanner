@@ -2,7 +2,7 @@ import './styles.css';
 import { calcPosition, fetchQuotes, quoteLabel, totals, type Position, type Quote } from './positions';
 import { makeApi, OWNER_EMAIL, type Table, type AlertStatus } from './api';
 import { ChartView, LONG_W_BARS, type ChartView2 } from './chart';
-import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, weekStart, type Spark, type ExpertDoc, type ExpertZone } from './data';
+import { atr, decodeSpark, fetchData, setDataFetcher, loadDaily, loadEarnings, loadIndex, loadRevc, loadSpark, loadTv, loadExpert, loadExpertWatch, loadConfirm, type ExpertWatchDoc, type ExpertWatchItem, rr, toWeekly, weekStart, type Spark, type ExpertDoc, type ExpertZone } from './data';
 import { botLongFromZone } from './botlong';
 import { maxRiskUsd, sizeLong } from './sizing';
 import { FIB_KEY, SMA_COLORS, SMA_PERIODS, fibAnchor, fibConfluence, fibPrice, smaDaily, smaWeekly, type Fib } from './indicators';
@@ -12,6 +12,7 @@ import { BY_ID, DEF_KINDS, FILTERS, REV_HE, REV_KINDS, activeCount, isActive, ma
 import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
+import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
 import { UI_DEF, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
@@ -360,6 +361,10 @@ function filtered(): Row[] {
   else if (s === 'expert') {   // expert-zone score, highest first; no expert level -> last (Eyal 2026-11-01)
     rows = [...rows].sort((a, b) => num(expertScoreOf(b.ticker)) - num(expertScoreOf(a.ticker)) || a.ticker.localeCompare(b.ticker));
   }
+  else if (s === 'confirm') {   // confirmation pattern on the level: entry signal first, then weekly, then daily (Eyal 2026-11-16)
+    const ck = new Map(rows.map((r) => { const l = confOf(r.ticker, r); return [r.ticker, l ? confRank(l) : 9] as const; }));
+    rows = [...rows].sort((a, b) => ck.get(a.ticker)! - ck.get(b.ticker)! || num(liveRR(b)) - num(liveRR(a)) || a.ticker.localeCompare(b.ticker));
+  }
   else if (s === 'hammer') {
     // only gated hammers (badge from export_data.hammer_ok) rank by hammer score
     const hs = (r: Row) => num(r.badges.includes('hammer') ? r.hammer_score : null);
@@ -421,6 +426,7 @@ function factsOf(r: Row): Facts {
     expertWatch: (() => { const w = watchOf(r.ticker); return w ? { tier: w.tier, rank: w.rank } : null; })(),
     expertHam: (() => { const e = expertOf(r.ticker); return e?.ok ? (e.hammers || []).map((h) => ({ k: h.k, s: h.s })) : null; })(),
     expertBelowK: expertOf(r.ticker)?.closes_below_k ?? null,
+    conf: (() => { const l = confOf(r.ticker, r); return l ? { w: l.w.map((p) => p.k), d: l.d.map((p) => p.k), entry: l.entry } : null; })(),
     today: td,
   };
 }
@@ -721,7 +727,7 @@ function renderList(root?: HTMLElement) {
     </div>
     <div class="sortrow"><span class="muted small">${rows.length} מניות</span><button id="copyList" class="ghost small cpyall" title="העתק את הרשימה המסוננת כסימולים של TradingView">📋 העתק ל-TV</button>
       <label class="sortlab"><span>מיון:</span><select id="sort" aria-label="מיון">
-        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['expert', 'ציון מומחים (גבוה תחילה)'], ['expertnear', 'קרוב לאזור המומחים'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
+        ${[['default', 'עדיפות'], ['zone', 'קרבה לאזור'], ['rr', 'R:R'], ['hammer', 'ציון פטיש'], ['expert', 'ציון מומחים (גבוה תחילה)'], ['expertnear', 'קרוב לאזור המומחים'], ['confirm', 'תבנית אישור'], ['ticker', 'א-ב']].map(([v, t]) => `<option value="${v}" ${S.ui.sort === v ? 'selected' : ''}>${t}</option>`).join('')}
       </select></label></div>
   </div>
   <ul class="list">${listInner(rows)}</ul>`;
@@ -1293,6 +1299,7 @@ function rowHtml(r: Row) {
     ${secHtml(r)}
     ${sizingHtml(r)}
     ${watchLineHtml(r.ticker)}
+    ${confLineHtml(r)}
     ${zoneDistHtml(r)}
     ${fibRowHtml(r)}
     <div class="r3 muted small" dir="ltr">${[r.badges.includes('hammer') ? `hammer R:R ${fmt(r.hammer_rr)}` : '', earnShort(r)].filter(Boolean).join(' · ')}</div>
@@ -1403,7 +1410,7 @@ function shell() {
 }
 
 // ---------------- stock page section jumps (Eyal 2026-10-27, mobile: the overview / bot box were below the fold) ----------------
-const JUMPS: [string, string][] = [['research', 'סקירה'], ['secDraw', 'שרטוטים'], ['secCmd', '💬 פקודה לבוט'], ['secExpert', 'מומחים'], ['secFib', 'פיבונאצי'], ['secUnfit', 'לא מתאימה'], ['secNote', 'הערה'], ['secData', 'נתונים']];
+const JUMPS: [string, string][] = [['research', 'סקירה'], ['secDraw', 'שרטוטים'], ['secCmd', '💬 פקודה לבוט'], ['secConfirm', 'אישור'], ['secExpert', 'מומחים'], ['secFib', 'פיבונאצי'], ['secUnfit', 'לא מתאימה'], ['secNote', 'הערה'], ['secData', 'נתונים']];
 function jumpTo(id: string) {
   const el = document.getElementById(id); if (!el) return;
   if (el instanceof HTMLDetailsElement) el.open = true;
@@ -1905,6 +1912,7 @@ function renderPanel() {
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
     ${researchHtml(S.research.get(t), S.ui.researchOpen !== false)}
+    ${confPanelHtml(t)}
     ${expertPanelHtml(t)}
     ${fibPanelHtml(r)}
     <section class="unfitsec" id="secUnfit">
@@ -2075,8 +2083,66 @@ function watchHeadHtml(): string {
     <div class="muted">תנאים: אזור מומחים תקף (רמת התנגדות שנפרצה, ממוצע 30 שבועות לא יורד); המחיר בתוך האזור או עד ${c.max_dist_atr ?? 1} ATR שבועי מעליו; R:R מומחים ≥ ${c.min_rr ?? 2}; אין דוחות ב-${c.earn_days ?? 14} הימים הקרובים והשבוע האחרון לא שבוע דוחות; סיכון למניה ≤ $${c.max_risk_usd ?? 55} וסיכון ≤ ${c.max_risk_pct ?? 10}%.
     <b>מוכנה</b> = סגירה שבועית מעל האזור אחרי נגיעה בו, או פטיש / נר היפוך שבועי על האזור ב-${c.ready_weeks ?? 2} השבועות האחרונים. <b>ממתינה לאישור</b> = קרובה לאזור בלי סימן כזה (נר היפוך יומי לבד מעלה בדירוג), או שהנר השבועי האחרון אדום ובריא במחזור גבוה (סכין נופלת — ממתינים לסגירת השבוע הבא). דירוג: מוכנות, ציון, R:R, מרחק. מידע בלבד, לא PASS ולא פקודה.</div></li>`;
 }
+// ---------------- confirmation candlestick patterns on the level (Eyal 2026-11-16): evidence / entry signal, never PASS ----------------
+let confDoc: ConfDoc | null = null;
+async function loadConfirmDoc() {
+  confDoc = await loadConfirm();
+  if (!confDoc) return;
+  if ($('.list')) updateListBody();
+  if (cv && S.ticker) { applyExpert(); renderPanel(); }
+}
+/** the zones the patterns are checked on: the zone that counts now (his drawing / the expert drawing) AND the expert
+ *  zone (a pattern on either counts; usually they are the same) */
+function confZonesOf(t: string, r?: Row): { top: number; bottom: number; src: 'live' | 'expert' }[] {
+  const out: { top: number; bottom: number; src: 'live' | 'expert' }[] = [];
+  const z = liveZoneOf(t, r); if (z) out.push({ ...z, src: 'live' });
+  const e = expertOf(t);
+  if (e?.ok && e.top != null && e.bottom != null && !(z && Math.abs(z.top - e.top) < 1e-6 && Math.abs(z.bottom - e.bottom) < 1e-6)) out.push({ top: e.top, bottom: e.bottom, src: 'expert' });
+  return out;
+}
+function confOf(t: string, r?: Row): ConfLevel | null {
+  const c = confDoc?.tickers?.[t]; if (!c) return null;
+  const zs = confZonesOf(t, r); if (!zs.length) return null;
+  const px = S.quotes?.get(t)?.price ?? numOrNull(r?.current_price);
+  const res: ConfLevel = { w: [], d: [], entry: false };
+  const seen = new Set<string>();
+  for (const z of zs) {
+    const l = confOnLevel(c, z, px, confDoc!.consts);
+    for (const tf of ['w', 'd'] as const) for (const p of l[tf]) { const k = p.tf + p.p + p.e; if (!seen.has(k)) { seen.add(k); res[tf].push({ ...p, zsrc: z.src } as ConfHit); } }
+  }
+  res.w.sort((a, b) => a.k - b.k); res.d.sort((a, b) => a.k - b.k);
+  res.entry = res.w.some((p) => p.entry);
+  return res.w.length || res.d.length ? res : null;
+}
+const confDateOf = (p: ConfHit) => (p.tf === 'W' ? `שבוע ${ddmm(p.e)}` : ddmm(p.e));
+/** list card line: the strongest recent pattern (entry signal > weekly > daily) within the last 2 weeks */
+function confLineHtml(r: Row): string {
+  const l = confOf(r.ticker, r); if (!l) return '';
+  const rec = confWithin(l, 2); if (!rec.length) return '';
+  const best = rec.find((p) => p.entry) || rec.find((p) => p.tf === 'W') || rec[0];
+  const more = rec.length - 1;
+  return `<div class="rc small conf ${best.entry ? 'entry' : ''}" data-conf="${rec.map((p) => p.tf + ':' + p.p + ':' + p.e).join(',')}">${best.entry ? '<b>✅ אות כניסה</b>' : '<b>תבנית אישור</b>'}: ${esc(CONF_HE[best.p])} · ${best.tf === 'W' ? 'שבועי' : 'יומי'} · <bdi dir="ltr">${confDateOf(best)}</bdi>${more > 0 ? ` <span class="muted">(+${more})</span>` : ''}</div>`;
+}
+function confPanelHtml(t: string): string {
+  if (!confDoc) return '';
+  const r = S.byT.get(t), zs = confZonesOf(t, r), l = confOf(t, r);
+  const cs = confDoc.consts || {};
+  const all = l ? [...l.w, ...l.d] : [];
+  const zl = (src: string) => (src === 'live' ? 'האזור הנוכחי' : 'אזור המומחים');
+  const items = all.map((p) => `<li data-cp="${p.tf}:${p.p}:${p.e}">${p.entry ? '<b class="ok">✅ אות כניסה</b> · ' : ''}<b>${esc(CONF_HE[p.p])}</b> · ${p.tf === 'W' ? 'שבועי' : 'יומי'} · <bdi dir="ltr">${p.s === p.e ? confDateOf(p) : `${ddmm(p.s)}–${ddmm(p.e)}`}</bdi> · שפל <bdi dir="ltr">${p.lo.toFixed(2)}</bdi>${zs.length > 1 ? ` · על ${zl(p.zsrc || 'live')}` : ''} <span class="muted small" dir="ltr">${esc(confDoc!.sources?.[p.p] || '')}</span></li>`).join('');
+  return `<section class="confbox" id="secConfirm"><h3>תבניות אישור על הרמה ${l?.entry ? '<span class="badge b-pass">אות כניסה</span>' : ''}</h3>
+    ${zs.length ? `<div class="small muted">נבדק על ${zs.map((z) => `${zl(z.src)} <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>`).join(' ועל ')} · נרות שבועיים (${cs.keep_weeks ?? 8} שבועות אחרונים) ויומיים (${cs.keep_days ?? 20} ימי מסחר)</div>` : '<div class="small muted">אין אזור לבדיקה</div>'}
+    ${items ? `<ul class="conflist small">${items}</ul>` : `<div class="small">${zs.length ? 'אין תבנית אישור על האזור' : ''}</div>`}
+    <div class="muted small">תבניות היפוך שוריות סטנדרטיות (TA-Lib / Nison): בליעה שורית, כוכב בוקר (ודוג'י), קו חודר, שלושה מבפנים למעלה, פטיש + נר אישור (נר ירוק שנסגר מעל סגירת הפטיש), תחתית פינצטה. נספרות רק אחרי ירידה אל התבנית (השפל שלה הנמוך ב-${cs.prior_bars ?? 5} הנרות שלפניה ולפחות ${cs.decline_atr ?? 1} ATR מתחת לשיא שלהם) וכשהשפל נוגע באזור (עד ${cs.zone_tol_atr ?? 0.5} ATR). <b>אות כניסה</b> = תבנית שבועית שהסתיימה ב-${cs.entry_weeks ?? 2} השבועות האחרונים והמחיר לא נסגר מאז מתחת לשפל שלה; תבנית יומית = אישור משני. ראיה חיובית בלבד: לא משנה PASS, סכין נופלת או שבוע דוחות.</div></section>`;
+}
+function applyConfirm() {
+  if (!cv) return;
+  const l = S.ticker ? confOf(S.ticker, S.byT.get(S.ticker)) : null;
+  cv.setConfirm(l ? [...l.w, ...l.d].map((p) => ({ tf: p.tf, s: p.s, e: p.e, lo: p.lo, hi: p.hi, label: p.p, entry: p.entry })) : []);
+}
 async function loadExpertZones() {
   loadExpertWatchList();
+  loadConfirmDoc();
   loadAlertStat();
   expertDoc = await loadExpert();
   if (!expertDoc) return;
@@ -2106,6 +2172,7 @@ function applyExpert() {
         hammers: (e.hammers || []).map((h) => ({ w: h.w, s: h.s })),
         // the expert pair is now the real drawing -> no second dashed copy of it (Eyal 2026-11-02 23:13)
         noBox: (() => { const z = countedOf(S.ticker!, 'zone'); return !!z && isExpertRow(z); })() } : null);
+  applyConfirm();
 }
 function expertBadgeHtml(t: string): string {
   const e = expertOf(t); if (!e?.ok) return '';   // badge only where there is an expert zone
@@ -2236,7 +2303,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
 }
 // expose for tests / debugging
-(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get alertStat() { return alertStat; }, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; } };
+(window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get alertStat() { return alertStat; }, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; }, confOf, get confDoc() { return confDoc; } };
 
 // ---------------- new build available (2026-10-24): an open tab / home-screen app picks up a new deploy ----------------
 // index.html is cached up to 10 min by GitHub Pages and a tab can stay open for days: compare the bundle name in a fresh

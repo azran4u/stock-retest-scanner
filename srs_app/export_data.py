@@ -5,6 +5,7 @@ Writes, relative to the repo root:
   app/data/tv_drawings.json    read-only TradingView drawings (source 'tv') from /workspace/stock-screener/tv_drawings.json
   app/data/candles/<T>.json    daily OHLCV, 5 years, from the scanner's history cache (/workspace/hist_cache.pkl)
   app/data/earnings.json       past + next earnings report dates per ticker (chart 'E' markers, srs_app/earnings_marks.py)
+  app/data/confirm.json        confirmation candlestick patterns after a pullback (srs_app/confirm_patterns.py; zone gate live)
   app/data/spark.json          list mini charts: last SPARK_WEEKS weekly (W-FRI) OHLC candles per exported ticker, 1 byte/value
 
 Candidates = PASS ∪ needs_drawing ∪ bot review ∪ obsolete (tv_stale) ∪ last-week hammer (gated, see hammer_ok)
@@ -659,6 +660,12 @@ def export(repo: Path, report: Path | None = None, include_all: bool = False, re
               f"({_t.time() - _t0:.1f}s, separate overlay)")
     except Exception as e:  # never block the export
         print(f"  [app data] expert zones skipped: {e}")
+    try:  # confirmation candlestick patterns (Eyal 2026-11-16): evidence on the level, never a PASS gate; app/data/confirm.json
+        from srs_app.confirm_patterns import write as _cf_write
+        _cf = json.loads(_cf_write(out, report_date).read_text())["tickers"]
+        print(f"  [app data] confirmation patterns (after a pullback, zone gate applied live in the app): {len(_cf)} tickers")
+    except Exception as e:  # never block the export
+        print(f"  [app data] confirmation patterns skipped: {e}")
     try:
         print(f"  [app data] earnings week (wait for the following weekly close): {attach_earnings_week(rows, report_date)} rows")
     except Exception as e:  # never block the export
