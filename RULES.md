@@ -549,12 +549,19 @@ Equal = 5% of the average range of 5 bars) and cross-checked against TA-Lib in `
 | hammerc | פטיש + נר אישור | the scanner's textbook hammer (`hammer_shape` 'H', unchanged) + next candle white and closing above the hammer's HIGH (StockCharts / Bulkowski) |
 | tweezer | תחתית פינצטה | black then white candle with matching lows (|Δlow| <= TA-Lib Equal); the white candle shows real buying: body > BodyShort average AND close above the black body's midpoint |
 
-Gates (constants `CONFIRM`): **pullback** = the pattern low is the lowest low of the 5 bars before it and ≥ 1 ATR(14)
-under their highest high; **on the level** = the pattern low actually touches the zone: bottom − tol ≤ low ≤ top + tol,
+Gates (constants `CONFIRM`): **prior downtrend** (v4, Eyal 2026-11-16 GL: a daily morning doji star inside a
+sideways 158-164 chop is not a reversal; Nison / Bulkowski: the trend must be down leading into the pattern), on the
+pattern's own timeframe, j = the bar before its first candle: close[j] < SMA(`trend_sma` 10 closes)[j], the SMA is
+falling (SMA[j] < SMA[j − `trend_slope_bars` 3]) and the pattern low ≤ the lowest low of the `low_lookback` 10 bars
+before it (v1-v3 "lowest low of 5 bars and ≥ 1 ATR under their high" let a chop pass); **on the level** = the pattern low actually touches the zone: bottom − tol ≤ low ≤ top + tol,
 tol = min(0.1 ATR of the same timeframe, 1% of the zone top) (v2, Eyal 2026-11-16 NTRA: v1's 0.5 ATR + "closed back in
 the zone" let a tiny green candle after a long red one, 16 points above the zone, count as a tweezer), checked live in the app on the zone that counts now AND on the expert zone; **אות כניסה** = a
-weekly pattern on the level ending in the last 2 completed weeks with no weekly close (or current price) under its low
-since. Daily patterns are a secondary confirmation only. App: card line, stock page section "תבניות אישור על הרמה"
+pattern on the level, not broken since (no close of its timeframe, nor the current price, under its low), that is either
+weekly and ended in the last `entry_weeks` 2 completed weeks, or (v3, Eyal 2026-11-16) **daily** after a daily downtrend,
+with its low on the WEEKLY zone (tolerance min(0.1 DAILY ATR, 1%)) and ended in the last `entry_days` 5 completed
+sessions. Older daily patterns (up to 20 sessions) are confirmation only. Labels show the timeframe ("אות כניסה (שבועי)" /
+"אות כניסה (יומי)"). App: card line, stock page section "תבניות אישור על הרמה"
 (+ jump chip "אישור"), green outline + label on the weekly / daily chart, filters "תבנית אישור על האזור ב-X שבועות" and
-"אות כניסה", sort "תבנית אישור". Expert watchlist: `confW` +2 (weekly entry signal), `confD` +0.5 (a daily pattern alone
-never makes a stock "מוכנה"). PASS, the falling-knife rule and the earnings-week rule are unchanged.
+"אות כניסה", sort "תבנית אישור". Expert watchlist: `confW` +2 (weekly entry signal), `confD` +2 for a daily entry signal
+(same weight: both are completed patterns on the same weekly level; the daily one is the earlier trigger with a stricter
+location test) and +0.5 for an older daily pattern (alone never makes a stock "מוכנה"). PASS, the falling-knife rule and the earnings-week rule are unchanged.

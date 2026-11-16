@@ -94,7 +94,7 @@ export const FILTERS: FilterDef[] = [
   // confirmation candlestick pattern on the level (Eyal 2026-11-16): evidence / entry signal, never a PASS gate
   { id: 'confirm', label: 'תבנית אישור על האזור ב-', group: 'main', param: { def: 2, min: 1, max: 8, step: 1, unit: 'שבועות אחרונים (שבועי או יומי)' },
     test: (f, s) => { const x = s.x ?? 2; return !!f.conf && (f.conf.w.some((k) => k < x) || f.conf.d.some((k) => k < 5 * x)); } },
-  { id: 'confirmEntry', label: 'אות כניסה: תבנית אישור שבועית על האזור', group: 'main', test: (f) => !!f.conf?.entry },
+  { id: 'confirmEntry', label: 'אות כניסה: תבנית אישור על האזור (שבועי או יומי)', group: 'main', test: (f) => !!f.conf?.entry },
   // ---- status / app ----
   { id: 'st_pass', label: 'PASS', group: 'status', test: (f) => f.status === 'PASS' },
   { id: 'st_review', label: 'לבדיקה', group: 'status', test: (f) => f.review },

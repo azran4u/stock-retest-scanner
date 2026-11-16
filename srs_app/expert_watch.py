@@ -25,8 +25,11 @@ else 'ממתינה לאישור' - a daily reversal alone ranks higher inside th
   confW    : a weekly confirmation pattern (srs_app/confirm_patterns.py: bullish engulfing, morning star, piercing,
              three inside up, hammer + confirmation, tweezer bottom; after a pullback) on the zone in the last
              READY_WEEKS weeks = entry signal (Eyal 2026-11-16, evidence only)                                    +2
-  confD    : a daily confirmation pattern on the zone in the last READY_DAYS sessions (secondary: a daily
-             signal alone never reaches READY_MIN_PTS)                                                          +0.5
+  confD    : a daily confirmation pattern on the zone = entry signal (v3, Eyal 2026-11-16: last 5 completed sessions,
+             daily pullback, low on the weekly zone with the daily-ATR tolerance, not broken since)              +2
+             (same as a weekly entry: both are completed patterns on the same weekly level; the daily one is the
+             earlier trigger, and the weekly zone + daily-ATR tolerance is the stricter location test)
+             an older daily pattern on the zone (in the last READY_DAYS sessions, not an entry)                 +0.5
   touch = low <= top + 0.5 ATR and (low >= bottom - 0.5 ATR or close >= bottom) (same gate as the app filters)
 Rank: composite = 10 x readiness + 0.5 x score + 5 x min(R:R, 5) - 10 x distance (ATR), ready tier first.
 """
@@ -146,10 +149,15 @@ def signals(z: Dict[str, Any], weeks: List[Dict[str, Any]], rv: Optional[Dict[st
         lv = CP.on_level(cf, top, bot)
         w = [p for p in lv["w"] if p["k"] < READY_WEEKS and p.get("entry")]
         if w:
-            out.append({"k": "confW", "pts": 2, "w": w[0]["s"], "p": w[0]["p"],
-                        "he": f"תבנית אישור שבועית על האזור ({CP.NAMES_HE[w[0]['p']]}) — אות כניסה", "short": "אות כניסה: " + CP.NAMES_HE[w[0]["p"]]})
+            out.append({"k": "confW", "pts": 2, "w": w[0]["s"], "p": w[0]["p"], "entry": True,
+                        "he": f"תבנית אישור שבועית על האזור ({CP.NAMES_HE[w[0]['p']]}) — אות כניסה", "short": "אות כניסה (שבועי): " + CP.NAMES_HE[w[0]["p"]]})
+        de = [p for p in lv["d"] if p.get("entry")]
         d = [p for p in lv["d"] if p["k"] < READY_DAYS]
-        if d:
+        if de:
+            out.append({"k": "confD", "pts": 2, "w": de[0]["e"], "p": de[0]["p"], "entry": True,
+                        "he": f"תבנית אישור יומית על האזור השבועי ({CP.NAMES_HE[de[0]['p']]}) — אות כניסה",
+                        "short": "אות כניסה (יומי): " + CP.NAMES_HE[de[0]["p"]]})
+        elif d:
             out.append({"k": "confD", "pts": 0.5, "w": d[0]["e"], "p": d[0]["p"],
                         "he": f"תבנית אישור יומית על האזור ({CP.NAMES_HE[d[0]['p']]})", "short": "תבנית אישור יומית: " + CP.NAMES_HE[d[0]["p"]]})
     return out

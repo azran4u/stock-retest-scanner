@@ -2111,7 +2111,7 @@ function confOf(t: string, r?: Row): ConfLevel | null {
     for (const tf of ['w', 'd'] as const) for (const p of l[tf]) { const k = p.tf + p.p + p.e; if (!seen.has(k)) { seen.add(k); res[tf].push({ ...p, zsrc: z.src } as ConfHit); } }
   }
   res.w.sort((a, b) => a.k - b.k); res.d.sort((a, b) => a.k - b.k);
-  res.entry = res.w.some((p) => p.entry);
+  res.entry = res.w.some((p) => p.entry) || res.d.some((p) => p.entry);
   return res.w.length || res.d.length ? res : null;
 }
 const confDateOf = (p: ConfHit) => (p.tf === 'W' ? `שבוע ${ddmm(p.e)}` : ddmm(p.e));
@@ -2121,7 +2121,7 @@ function confLineHtml(r: Row): string {
   const rec = confWithin(l, 2); if (!rec.length) return '';
   const best = rec.find((p) => p.entry) || rec.find((p) => p.tf === 'W') || rec[0];
   const more = rec.length - 1;
-  return `<div class="rc small conf ${best.entry ? 'entry' : ''}" data-conf="${rec.map((p) => p.tf + ':' + p.p + ':' + p.e).join(',')}">${best.entry ? '<b>✅ אות כניסה</b>' : '<b>תבנית אישור</b>'}: ${esc(CONF_HE[best.p])} · ${best.tf === 'W' ? 'שבועי' : 'יומי'} · <bdi dir="ltr">${confDateOf(best)}</bdi>${more > 0 ? ` <span class="muted">(+${more})</span>` : ''}</div>`;
+  return `<div class="rc small conf ${best.entry ? 'entry' : ''}" data-conf="${rec.map((p) => p.tf + ':' + p.p + ':' + p.e).join(',')}">${best.entry ? `<b>✅ אות כניסה (${best.tf === 'W' ? 'שבועי' : 'יומי'})</b>` : `<b>תבנית אישור (${best.tf === 'W' ? 'שבועי' : 'יומי'})</b>`}: ${esc(CONF_HE[best.p])} · <bdi dir="ltr">${confDateOf(best)}</bdi>${more > 0 ? ` <span class="muted">(+${more})</span>` : ''}</div>`;
 }
 function confPanelHtml(t: string): string {
   if (!confDoc) return '';
@@ -2129,11 +2129,11 @@ function confPanelHtml(t: string): string {
   const cs = confDoc.consts || {};
   const all = l ? [...l.w, ...l.d] : [];
   const zl = (src: string) => (src === 'live' ? 'האזור הנוכחי' : 'אזור המומחים');
-  const items = all.map((p) => `<li data-cp="${p.tf}:${p.p}:${p.e}">${p.entry ? '<b class="ok">✅ אות כניסה</b> · ' : ''}<b>${esc(CONF_HE[p.p])}</b> · ${p.tf === 'W' ? 'שבועי' : 'יומי'} · <bdi dir="ltr">${p.s === p.e ? confDateOf(p) : `${ddmm(p.s)}–${ddmm(p.e)}`}</bdi> · שפל <bdi dir="ltr">${p.lo.toFixed(2)}</bdi>${zs.length > 1 ? ` · על ${zl(p.zsrc || 'live')}` : ''} <span class="muted small" dir="ltr">${esc(confDoc!.sources?.[p.p] || '')}</span></li>`).join('');
+  const items = all.map((p) => `<li data-cp="${p.tf}:${p.p}:${p.e}">${p.entry ? `<b class="ok">✅ אות כניסה (${p.tf === 'W' ? 'שבועי' : 'יומי'})</b> · ` : ''}<b>${esc(CONF_HE[p.p])}</b> · ${p.tf === 'W' ? 'שבועי' : 'יומי'} · <bdi dir="ltr">${p.s === p.e ? confDateOf(p) : `${ddmm(p.s)}–${ddmm(p.e)}`}</bdi> · שפל <bdi dir="ltr">${p.lo.toFixed(2)}</bdi>${zs.length > 1 ? ` · על ${zl(p.zsrc || 'live')}` : ''} <span class="muted small" dir="ltr">${esc(confDoc!.sources?.[p.p] || '')}</span></li>`).join('');
   return `<section class="confbox" id="secConfirm"><h3>תבניות אישור על הרמה ${l?.entry ? '<span class="badge b-pass">אות כניסה</span>' : ''}</h3>
     ${zs.length ? `<div class="small muted">נבדק על ${zs.map((z) => `${zl(z.src)} <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>`).join(' ועל ')} · נרות שבועיים (${cs.keep_weeks ?? 8} שבועות אחרונים) ויומיים (${cs.keep_days ?? 20} ימי מסחר)</div>` : '<div class="small muted">אין אזור לבדיקה</div>'}
     ${items ? `<ul class="conflist small">${items}</ul>` : `<div class="small">${zs.length ? 'אין תבנית אישור על האזור' : ''}</div>`}
-    <div class="muted small">תבניות היפוך שוריות סטנדרטיות (TA-Lib / Nison): בליעה שורית, כוכב בוקר (ודוג'י), קו חודר, שלושה מבפנים למעלה, פטיש + נר אישור (נר ירוק שנסגר מעל השיא של הפטיש), תחתית פינצטה (הנר הירוק עם גוף אמיתי שנסגר מעל אמצע הנר האדום). נספרות רק אחרי ירידה אל התבנית (השפל שלה הנמוך ב-${cs.prior_bars ?? 5} הנרות שלפניה ולפחות ${cs.decline_atr ?? 1} ATR מתחת לשיא שלהם) וכשהשפל נוגע באזור עצמו (סטייה של עד ${cs.zone_tol_atr ?? 0.1} ATR או ${(100 * (cs.zone_tol_pct ?? 0.01)).toFixed(0)}%, הקטן מביניהם). <b>אות כניסה</b> = תבנית שבועית שהסתיימה ב-${cs.entry_weeks ?? 2} השבועות האחרונים והמחיר לא נסגר מאז מתחת לשפל שלה; תבנית יומית = אישור משני. ראיה חיובית בלבד: לא משנה PASS, סכין נופלת או שבוע דוחות.</div></section>`;
+    <div class="muted small">תבניות היפוך שוריות סטנדרטיות (TA-Lib / Nison): בליעה שורית, כוכב בוקר (ודוג'י), קו חודר, שלושה מבפנים למעלה, פטיש + נר אישור (נר ירוק שנסגר מעל השיא של הפטיש), תחתית פינצטה (הנר הירוק עם גוף אמיתי שנסגר מעל אמצע הנר האדום). נספרות רק אחרי מגמת ירידה אל התבנית (באותו טווח זמן: הסגירה של הנר שלפניה מתחת לממוצע נע ${cs.trend_sma ?? 10} נרות שיורד ביחס ל-${cs.trend_slope_bars ?? 3} נרות קודם, והשפל שלה הנמוך ב-${cs.low_lookback ?? 10} הנרות שלפניה; דשדוש צדדי לא נחשב) וכשהשפל נוגע באזור עצמו (סטייה של עד ${cs.zone_tol_atr ?? 0.1} ATR או ${(100 * (cs.zone_tol_pct ?? 0.01)).toFixed(0)}%, הקטן מביניהם). <b>אות כניסה</b> = תבנית שבועית שהסתיימה ב-${cs.entry_weeks ?? 2} השבועות האחרונים, או תבנית יומית אחרי ירידה יומית שהשפל שלה על האזור השבועי (הסטייה לפי ATR יומי) והסתיימה ב-${cs.entry_days ?? 5} ימי המסחר האחרונים; בשני המקרים המחיר לא נסגר מאז מתחת לשפל התבנית. תבנית יומית ישנה יותר = אישור בלבד. ראיה חיובית בלבד: לא משנה PASS, סכין נופלת או שבוע דוחות.</div></section>`;
 }
 function applyConfirm() {
   if (!cv) return;

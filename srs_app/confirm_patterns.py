@@ -26,13 +26,21 @@ bar; RealBody = |c - o|, HighLow = h - l, Shadows = (upper + lower) / 2):
 
 Context gates (TA-Lib leaves the trend to the user; Nison / Bulkowski: a reversal pattern needs a prior decline to
 reverse). Constants in CONFIRM:
-  pullback : the pattern's low is the lowest low of the `prior_bars` (5) bars before it and is at least `decline_atr`
-             (1.0) ATR(14) under their highest high (price came DOWN into the pattern)
+  downtrend: (v4, Eyal 2026-11-16 GL: a daily morning doji star inside a sideways 158-164 chop is not a reversal; Nison /
+             Bulkowski: the trend must be down leading into the pattern), on the pattern's own timeframe, j = the bar
+             before its first candle: close[j] < SMA(`trend_sma` 10 closes)[j], the SMA is falling (SMA[j] < SMA[j -
+             `trend_slope_bars` 3]), and the pattern low <= the lowest low of the `low_lookback` (10) bars before it.
+             (v1-v3: lowest low of 5 bars + >= 1 ATR under their high, which a sideways chop could pass)
   on level : the pattern's low actually touches the zone: bottom - tol <= low <= top + tol,
              tol = min(`zone_tol_atr` 0.1 ATR(14) of the same timeframe, `zone_tol_pct` 1% of the zone top) (v2; v1 used
              0.5 ATR and also accepted a low under the zone when the pattern closed back in it)
-  entry    : 'אות כניסה' = a WEEKLY pattern on the level whose last candle is one of the last `entry_weeks` (2) completed
-             weeks, and price has not since closed under the pattern's low (daily patterns = a secondary confirmation)
+  entry    : 'אות כניסה' = a pattern on the level, not broken since (no close of its timeframe, nor the current price,
+             under the pattern's low), whose last candle is
+               weekly: one of the last `entry_weeks` (2) completed weeks, or
+               daily (v3, Eyal 2026-11-16: "a daily reversal pattern counts when it coincides with the weekly level"):
+               one of the last `entry_days` (5) completed sessions, after a DAILY downtrend, low on the WEEKLY zone with
+               the tolerance from the DAILY ATR (min(0.1 daily ATR, 1%))
+             Daily patterns older than that (up to keep_days) are shown as confirmation only.
 Bars: completed weekly Mon-Fri bars and completed daily bars from the app's candle files (app/data/candles/<T>.json).
 The zone gate is NOT applied in the file (app/data/confirm.json): the app applies it live with the zone that counts now
 (his drawing, else the expert zone), like revc.json. `on_zone` is the Python twin, used for the expert watchlist and stats.
@@ -50,13 +58,19 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from srs_app import expert_zone as E
 
-RULE_VERSION = "confirm-v2-2026-11-16"
+RULE_VERSION = "confirm-v4-2026-11-16"
 CONFIRM = {
-    "prior_bars": 5,        # pullback: the pattern low is the lowest low of the 5 bars before it ...
-    "decline_atr": 1.0,     # ... and >= 1 ATR(14) under their highest high
+    # prior downtrend (v4, Eyal 2026-11-16 GL: a morning doji star inside a 158-164 chop is not a reversal), Nison /
+    # Bulkowski "the trend must be down leading into the pattern", on the pattern's own timeframe:
+    "trend_sma": 10,        # the close of the bar before the pattern's first candle is under the 10-bar SMA of closes
+                            # (10 sessions on the daily, 10 weeks on the weekly) ...
+    "trend_slope_bars": 3,  # ... and that SMA is falling: lower than it was 3 bars earlier ...
+    "low_lookback": 10,     # ... and the pattern low is <= the lowest low of the 10 bars before its first candle
     "zone_tol_atr": 0.1,    # on the level: the pattern low inside [bottom - tol, top + tol], tol = min(0.1 ATR, 1% of the top)
     "zone_tol_pct": 0.01,   # (v2, Eyal 2026-11-16 NTRA: 0.5 ATR + 'closed back in the zone' let lows 16 points above the zone in)
     "entry_weeks": 2,       # entry signal: weekly pattern ending in the last 2 completed weeks, not broken since
+    "entry_days": 5,        # entry signal (v3, Eyal 2026-11-16): daily pattern on the WEEKLY zone ending in the last 5
+                            # completed sessions, no daily close (or current price) under its low since
     "keep_weeks": 8,        # weekly patterns stored (last candle within the last 8 completed weeks)
     "keep_days": 20,        # daily patterns stored (last candle within the last 20 completed sessions)
     "penetration": 0.3,     # TA-Lib default for the morning stars
@@ -71,7 +85,7 @@ SRC = {"engulf": "TA-Lib CDLENGULFING; Nison", "mstar": "TA-Lib CDLMORNINGSTAR (
        "mdoji": "TA-Lib CDLMORNINGDOJISTAR (penetration 0.3); Nison", "pierce": "TA-Lib CDLPIERCING; Nison",
        "inside3": "TA-Lib CDL3INSIDE; Nison", "hammerc": "Investopedia: hammer confirmed by the next candle closing above the hammer's close",
        "tweezer": "Nison / Investopedia: tweezer bottom (matching lows, TA-Lib 'Equal' tolerance)",
-       "pullback": "Nison / Bulkowski: a reversal pattern needs a prior decline (TA-Lib leaves the trend to the user)"}
+       "pullback": "Nison / Bulkowski: the trend must be down leading into a reversal pattern (close under a falling 10-bar SMA, pattern low = lowest of 10 bars; TA-Lib leaves the trend to the user)"}
 
 
 # ---------------- TA-Lib candle primitives ----------------
@@ -206,14 +220,20 @@ def _atr_series(B) -> List[Optional[float]]:
     return out
 
 
-def pullback(B, first: int, low: float, atr: Optional[float]) -> bool:
-    """Prior decline into the pattern: its low is the lowest low of the `prior_bars` bars before its first candle and
-    >= decline_atr x ATR under their highest high."""
-    P = CONFIRM["prior_bars"]
-    if first - P < 0 or not atr:
+def _sma(B, j: int, n: int) -> Optional[float]:
+    return sum(b["close"] for b in B[j - n + 1:j + 1]) / n if j - n + 1 >= 0 else None
+
+
+def pullback(B, first: int, low: float, atr: Optional[float] = None) -> bool:
+    """Prior downtrend into the pattern (v4): with j = the bar before its first candle, close[j] < SMA10[j],
+    SMA10[j] < SMA10[j - 3] (falling) and the pattern low <= the lowest low of the 10 bars before the pattern.
+    `atr` is unused (kept for the call signature)."""
+    N, S, L = CONFIRM["trend_sma"], CONFIRM["trend_slope_bars"], CONFIRM["low_lookback"]
+    j = first - 1
+    if first - L < 0 or j - S - N + 1 < 0:
         return False
-    prev = B[first - P:first]
-    return low <= min(b["low"] for b in prev) and max(b["high"] for b in prev) - low >= CONFIRM["decline_atr"] * atr
+    s0, s1 = _sma(B, j, N), _sma(B, j - S, N)
+    return B[j]["close"] < s0 and s0 < s1 and low <= min(b["low"] for b in B[first - L:first])
 
 
 def detect(B: Sequence[Dict[str, Any]], keep: int) -> List[Dict[str, Any]]:
@@ -252,8 +272,10 @@ def on_zone(p: Dict[str, Any], top: float, bot: float) -> bool:
 
 
 def is_entry(p: Dict[str, Any], weekly: bool, closes_after: Sequence[float]) -> bool:
-    """Entry signal: a weekly pattern ending in the last entry_weeks completed weeks, no close under its low since."""
-    return weekly and p["k"] < CONFIRM["entry_weeks"] and all(c >= p["lo"] for c in closes_after)
+    """Entry signal: a weekly pattern ending in the last entry_weeks completed weeks, or a daily one in the last
+    entry_days completed sessions; no close (of that timeframe, or the current price) under its low since."""
+    lim = CONFIRM["entry_weeks"] if weekly else CONFIRM["entry_days"]
+    return p["k"] < lim and all(c >= p["lo"] for c in closes_after)
 
 
 # ---------------- bars from the app candle files ----------------
@@ -290,7 +312,8 @@ def of_rows(rows: Sequence[Sequence[Any]], asof: Optional[str] = None, now_ny: O
             "lw": W[-1]["time"] if W else None, "ld": D[-1]["time"] if D else None,
             "px": float(rows[-1][4]) if rows else None,
             # closes after each weekly pattern (entry check) = completed weekly closes + the running price
-            "wc": [round(w["close"], 4) for w in W[-CONFIRM["keep_weeks"]:]]}
+            "wc": [round(w["close"], 4) for w in W[-CONFIRM["keep_weeks"]:]],
+            "dc": [round(b["close"], 4) for b in D[-CONFIRM["keep_days"]:]]}
 
 
 def on_level(c: Dict[str, Any], top: float, bot: float) -> Dict[str, Any]:
@@ -301,8 +324,13 @@ def on_level(c: Dict[str, Any], top: float, bot: float) -> Dict[str, Any]:
         if on_zone(p, top, bot):
             after = wc[len(wc) - p["k"]:] if p["k"] else []
             ws.append(dict(p, entry=is_entry(p, True, after + ([px] if px is not None else []))))
-    ds = [p for p in c.get("d") or [] if on_zone(p, top, bot)]
-    return {"w": ws, "d": ds, "entry": any(p["entry"] for p in ws)}
+    dc = c.get("dc") or []
+    ds = []
+    for p in c.get("d") or []:
+        if on_zone(p, top, bot):
+            after = dc[len(dc) - p["k"]:] if p["k"] else []
+            ds.append(dict(p, entry=is_entry(p, False, after + ([px] if px is not None else []))))
+    return {"w": ws, "d": ds, "entry": any(p["entry"] for p in ws + ds)}
 
 
 def build(data_dir: Path, asof: Optional[str] = None, tickers: Optional[Sequence[str]] = None) -> Dict[str, Any]:

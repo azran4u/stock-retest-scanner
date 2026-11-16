@@ -22,21 +22,19 @@ def _level(t):
     return c, C.on_level(c, top, bot)
 
 
-@pytest.mark.parametrize("t,tf,code,end,k", [
-    ("vtwo", "w", "inside3", "2026-10-26", 2),   # weekly three inside up, low 109.02 on 106.91-108.83 (tol min(0.1 ATR, 1%))
-    ("hto", "w", "engulf", "2026-10-19", 3),     # weekly bullish engulfing, low 55.15 on 54.23-55.03
-    ("gl", "d", "mdoji", "2026-11-09", 4),       # daily morning doji star, low 156.82 inside 155.61-157.63
-    ("rbc", "d", "inside3", "2026-11-03", 8),    # daily three inside up, low 457.90 inside 457.40-465.80
+@pytest.mark.parametrize("t,tf,code,end,k,entry", [
+    ("vtwo", "w", "inside3", "2026-10-26", 2, False),  # weekly three inside up, low 109.02 on 106.91-108.83; 2 weeks old
+    ("hto", "w", "engulf", "2026-10-19", 3, False),    # weekly bullish engulfing, low 55.15 on 54.23-55.03; 3 weeks old
+    ("vsh", "d", "inside3", "2026-11-09", 4, True),    # daily three inside up after a daily downtrend (close 25.84 on 11/04
+                                                       # under a falling SMA10), low 21.42 on the weekly zone 19.94-21.77,
+                                                       # 4 sessions back (< 5), no daily close under 21.42 since -> entry (v3)
 ])
-def test_real_patterns_on_level(t, tf, code, end, k):
+def test_real_patterns_on_level(t, tf, code, end, k, entry):
     c, lv = _level(t)
     hits = [p for p in lv[tf] if p["p"] == code and p["e"] == end]
     assert hits, (t, lv)
-    assert hits[0]["k"] == k
-    if tf == "w":
-        assert hits[0]["entry"] is False                     # older than the last 2 completed weeks -> evidence, no entry
-    else:
-        assert "entry" not in hits[0]                        # daily = secondary confirmation, never the entry signal
+    assert hits[0]["k"] == k and hits[0]["entry"] is entry
+    assert lv["entry"] is (entry or any(p["entry"] for p in lv["w"] + lv["d"]))
 
 
 def test_ntra_tiny_green_after_long_red_is_not_a_tweezer():
@@ -130,7 +128,10 @@ def test_entry_signal_needs_recent_and_unbroken():
     assert C.is_entry(p, True, [52.0, 51.0])
     assert not C.is_entry(p, True, [49.9, 51.0])            # a later close under the pattern low cancels it
     assert not C.is_entry(dict(p, k=2), True, [52.0])       # older than the last 2 completed weeks
-    assert not C.is_entry(dict(p, k=0), False, [])          # daily patterns are never the entry signal
+    # daily (v3): last entry_days (5) completed sessions, no daily close under the low since
+    assert C.CONFIRM["entry_days"] == 5
+    assert C.is_entry(dict(p, k=4), False, [51, 52, 53, 50.5, 52]) and not C.is_entry(dict(p, k=5), False, [52])
+    assert not C.is_entry(dict(p, k=2), False, [51, 49.99, 52])
 
 
 def test_hammer_confirmation_closes_above_the_hammer_high():
@@ -144,14 +145,21 @@ def test_hammer_confirmation_closes_above_the_hammer_high():
     assert not C.hammerc(B, len(B) - 1)
 
 
-def test_daily_only_never_makes_ready():
+def test_daily_entry_scores_like_weekly_older_daily_does_not():
     z = {"top": 52.88, "bottom": 51.6, "atr_w": 3.0, "hammers": []}
-    cf = {"w": [], "d": [{"p": "engulf", "k": 1, "s": "d", "e": "d", "lo": 51.7, "hi": 53, "c": 52.5, "a": 1.0}], "wc": [], "px": 52.5}
-    sg = X.signals(z, [], None, cf)
+    dp = {"p": "engulf", "k": 7, "s": "d", "e": "d", "lo": 51.7, "hi": 53, "c": 52.5, "a": 1.0}
+    cf = {"w": [], "d": [dp], "wc": [], "dc": [52.0] * 20, "px": 52.5}
+    sg = X.signals(z, [], None, cf)                           # 7 sessions old: confirmation only
     assert [s["k"] for s in sg] == ["confD"] and sum(s["pts"] for s in sg) < X.READY_MIN_PTS
-    cf["w"] = [dict(cf["d"][0], k=0, a=3.0)]
+    cf["d"] = [dict(dp, k=1)]                                 # 1 session old, not broken: daily entry signal
     sg = X.signals(z, [], None, cf)
-    assert "confW" in [s["k"] for s in sg] and sum(s["pts"] for s in sg) >= X.READY_MIN_PTS
+    assert sg[0]["k"] == "confD" and sg[0].get("entry") and sg[0]["pts"] == 2 >= X.READY_MIN_PTS
+    cf["dc"] = [52.0] * 19 + [51.6]                           # the last daily close went under the pattern low
+    assert X.signals(z, [], None, cf)[0]["pts"] == 0.5
+    cf["d"], cf["dc"] = [], []
+    cf["w"], cf["wc"] = [dict(dp, k=0, a=3.0)], [52.0]                # weekly entry: same +2
+    sg = X.signals(z, [], None, cf)
+    assert [(s["k"], s["pts"]) for s in sg] == [("confW", 2)]
 
 
 def test_matches_talib():
@@ -176,3 +184,26 @@ def test_matches_talib():
                         assert mine == (ref[i] > 0), (f.name, k, B[i]["time"])
                     n += 1
     assert n > 1000
+
+
+@pytest.mark.parametrize("t,code,end", [
+    ("gl", "mdoji", "2026-11-09"),     # Eyal 2026-11-16: a valid morning doji star (low 156.82 on 155.61-157.63) formed in a
+                                       # sideways 158-164 chop after the earnings drop: close 161.72 on 11/04 ABOVE its SMA10
+                                       # 159.46 and the low is not the lowest of the 10 sessions before -> no downtrend
+    ("rbc", "inside3", "2026-11-03"),  # close 495.74 before it is above its SMA10 489.39: no downtrend into the pattern
+])
+def test_daily_pattern_without_prior_downtrend_rejected(t, code, end):
+    rows, (bot, top) = _fx(t)
+    D = C.completed_daily(rows, None)
+    ts = [b["time"] for b in D]
+    i = ts.index(end)
+    assert getattr(C, code)(D, i)                           # the shape itself is valid
+    f = i - C.NBARS[code] + 1
+    assert not C.pullback(D, f, min(b["low"] for b in D[f:i + 1]))
+    c, lv = _level(t)
+    assert not any(p["p"] == code and p["e"] == end for p in c["d"]) and lv["d"] == [] and lv["entry"] is False
+
+
+def test_downtrend_gate_constants():
+    assert (C.CONFIRM["trend_sma"], C.CONFIRM["trend_slope_bars"], C.CONFIRM["low_lookback"]) == (10, 3, 10)
+    assert "prior_bars" not in C.CONFIRM and "decline_atr" not in C.CONFIRM
