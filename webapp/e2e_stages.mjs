@@ -101,7 +101,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
     if (hb) { const x = hb.x + hb.width / 2, y = hb.y + hb.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + dy, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(700); }
   };
   const bs0 = await kvTxt('Buy-Stop'), sl0 = await kvTxt('SL');
-  await drag('c-sup', -12);
+  await drag('c-sup', 30)  // down = under the SMA too (2026-11-16: no SMA floor);
   const sl1 = await kvTxt('SL');
   ok(sl1 !== sl0 && await page.locator('.sttags.pad .badge.b-his').count() === 1, `${name}: dragging the red line moves the SL ${sl0} -> ${sl1}`);
   await drag('c-res', -160);

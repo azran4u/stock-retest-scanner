@@ -209,16 +209,40 @@ def test_post_earnings_back_under_resistance():
     assert post_earn_check({"last": day, "last_eff": day, "last_ago": 9}, pg, 49.2, 50.0) is None
 
 
-def test_stop_never_below_sma():
-    """Eyal 2026-11-14 (final): default = 0.7% under the 30W SMA; a valid low ABOVE the SMA -> 0.7% under it; never under."""
+def test_stop_lower_of_sma_and_base_low():
+    """Eyal 2026-11-16: anchors A = 30W SMA, B = the base's last unbroken low; stop 0.75% under the LOWER one."""
+    from srs_app.stages import stop_anchors, stop_below
     c = np.r_[np.full(30, 100.0), [104, 106, 103, 100, 104, 108, 110, 112, 111, 113]]
     w = bars(c, rng=0.01)
     w.iloc[33, w.columns.get_loc("Low")] = 98.0
-    sw = 98.0                                   # the pullback low (pivot, never broken afterwards)
-    p = trade_levels(w, 95.0, 115.0, 114.0, None)          # SMA 95 < low 98 -> use the low
-    assert p["stop_basis"] == "low" and abs(p["stop"] - round(sw * 0.993, 2)) < 0.02 and p["swing_low"] == round(sw, 2)
-    p2 = trade_levels(w, 101.0, 115.0, 114.0, None)        # low 98 under the SMA 101 -> SMA stop, the low is ignored
-    assert p2["stop_basis"] == "ma" and abs(p2["stop"] - round(101 * 0.993, 2)) < 0.01 and p2["swing_low"] is None
+    p = trade_levels(w, 95.0, 115.0, 114.0, 98.0)          # base low 98 ABOVE the SMA 95 -> stop under the SMA
+    assert p["stop_basis"] == "ma" and abs(p["stop"] - round(95 * 0.9925, 2)) < 0.01 and p["anchor_b"] == 98.0
+    p2 = trade_levels(w, 101.0, 115.0, 114.0, 98.0)        # base low 98 BELOW the SMA 101 -> stop under the low (no SMA floor)
+    assert p2["stop_basis"] == "low" and p2["stop"] < 98.0 and abs(p2["stop"] - round(stop_below(98.0), 2)) < 0.01
+    p3 = trade_levels(w, 101.0, 115.0, 114.0, None)        # no base low -> the SMA
+    assert p3["stop_basis"] == "ma"
+
+
+def test_stop_round_number_and_margin():
+    from srs_app.stages import stop_below
+    assert abs(stop_below(50.45) - 49.95) < 1e-9          # 0.75% would sit at 50.07 (above $50) -> just under $50
+    assert abs(stop_below(98.0) - 98.0 * 0.9925) < 1e-9   # no round number inside the 1% band -> 0.75%
+    for a in (12.3, 50.45, 98.0, 133.2, 1234.0):
+        assert a * 0.99 - 1e-9 <= stop_below(a) <= a * 0.995 + 1e-9
+
+
+def test_stop_too_far_uses_higher_low_when_sma_rising():
+    """B below the SMA but > 10% away and the SMA rising -> the most recent unbroken higher low under the SMA."""
+    from srs_app.stages import stop_anchors
+    c = np.r_[np.linspace(60, 100, 60), [96, 92, 88, 90, 95, 99, 97, 94, 96, 100, 104, 106]]
+    w = bars(c, rng=0.01)
+    lows = w["Low"].values
+    b = float(lows[60:].min())                           # base floor (the lower low, ~87)
+    ma = float(w["Close"].rolling(30).mean().values[-1])
+    sa = stop_anchors(w, ma, 110.0, b)
+    assert b < ma and sa["hl"] is not None and b < sa["hl"] < ma and sa["basis"] == "hl"
+    sa2 = stop_anchors(w, ma, 96.0, b)                     # entry close enough -> B itself (not 'too far')
+    assert sa2["basis"] == "low" and sa2["anchor"] == b
 
 
 def test_sector_status():

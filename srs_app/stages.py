@@ -77,7 +77,10 @@ RULES: Dict[str, Any] = {
     "max_pct_above_ma": 25.0,    # ... AND <= 30W SMA + 25% (Eyal 2026-11-14, XERS example); else 'רחוקה מדי / אל תרדוף'
     "range_max_w": 52,           # stage 1 / 3 trading range = high / low since the stage began (10-52 weeks)
     "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the 30W SMA (partial exit zone)
-    "stop_buffer_pct": 0.7,      # stop = 0.7% under the 30W SMA, or under a valid (never broken) swing low ABOVE it; never under the SMA
+    "stop_buffer_pct": 0.7,      # (old 2026-11-14 rule, kept for reference only; replaced by stop_margin_pct 2026-11-16)
+    "stop_margin_pct": 0.75,     # Eyal 2026-11-16: stop 0.75% under the LOWER of (30W SMA, base's last unbroken low) ...
+    "stop_margin_max_pct": 1.0,  # ... or just under a round number when that stays within 1% of the anchor
+    "stop_round_tick": 0.05,     # 'just under' the round number = $0.05 below it
     "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' flag (info only, never disqualifies)
     "buy_stop_buf_pct": 0.5,     # Buy-Stop = base resistance + 0.5% (min $0.05) -- 'slightly above the ceiling'
     "buy_stop_min_buf": 0.05,
@@ -311,7 +314,7 @@ def find_breakout(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Optional[Dict[str
         rng = h[b] - w["Low"].values[b]
         lo_base = w["Low"].values[b - min(base, R["base_window_w"]):b].min()
         return {"week": w.index[b].strftime("%Y-%m-%d"), "idx": b, "weeks_ago": n - 1 - b, "level": float(res),
-                "base_weeks": base, "base_low": float(lo_base), "res_week": w.index[top_i].strftime("%Y-%m-%d"),
+                "base_weeks": base, "base_low": float(lo_base), "stop_low": float(w["Low"].values[top_i:b].min()), "res_week": w.index[top_i].strftime("%Y-%m-%d"),
                 "vol_ratio": float(v[b] / av) if av and av > 0 else None,
                 "close_pos": float((c[b] - w["Low"].values[b]) / rng) if rng > 0 else None}
     return None
@@ -329,7 +332,8 @@ def base_now(w: pd.DataFrame, R=RULES) -> Optional[Dict[str, Any]]:
     top = float(seg.max())
     cnt = _base_count(c, n - 1, top)
     blo = float(l[n - min(max(cnt, 1), R["base_window_w"]):].min())
-    return {"top": top, "low": blo, "weeks": cnt, "top_week": w.index[top_i].strftime("%Y-%m-%d"),
+    # stop_low (Eyal 2026-11-16, anchor B): the floor of the CURRENT base = lowest low since the base's ceiling week
+    return {"top": top, "low": blo, "stop_low": float(l[top_i:].min()), "weeks": cnt, "top_week": w.index[top_i].strftime("%Y-%m-%d"),
             "since_top_w": n - 1 - top_i, "mature": bool(cnt >= R["min_base_w"] and (n - 1 - top_i) >= R["min_base_w"])}
 
 
@@ -361,20 +365,66 @@ def overhead_scan(w: pd.DataFrame, entry: float, R=RULES) -> Dict[str, Any]:
             "ath": bool(h.max() <= thr), "cong": cong, "hi2y": float(h[lo_i:].max())}
 
 
-def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optional[float], base_low: Optional[float],
-                 R=RULES) -> Dict[str, Any]:
-    """Stop just under the 30W SMA, or just under a valid (never broken) swing low above it (never under the SMA); first target = nearest overhead resistance of the last 2 years
-    (significant weekly swing high); none = open sky -> target = entry + min_rr x risk (R:R exactly 2.5, Eyal 2026-11-14)."""
+def round_step(price: float) -> float:
+    """'Round number' grid for the stop snap: < $10 -> $0.50, < $100 -> $1, < $1000 -> $5, else $10."""
+    return 0.5 if price < 10 else 1.0 if price < 100 else 5.0 if price < 1000 else 10.0
+
+
+def stop_below(anchor: float, R=RULES) -> float:
+    """Stop under an anchor (Eyal 2026-11-16): anchor x (1 - stop_margin_pct) (0.75%, inside the 0.5%-1% band); when a
+    round number sits just under the anchor and 'round number - stop_round_tick' is still within stop_margin_max_pct of
+    the anchor, the stop goes just under that round number instead (whichever is lower)."""
+    stop = anchor * (1 - R["stop_margin_pct"] / 100)
+    st = round_step(anchor)
+    rn = math.floor(anchor / st) * st
+    if rn >= anchor:  # anchor exactly on the grid -> the round number IS the anchor level
+        rn = anchor
+    alt = rn - R["stop_round_tick"]
+    if anchor * (1 - R["stop_margin_max_pct"] / 100) <= alt < stop:
+        stop = alt
+    return stop
+
+
+def stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_low: Optional[float], R=RULES) -> Dict[str, Any]:
+    """Initial stop (Eyal 2026-11-16, replaces the 'never under the SMA' rule). Anchor A = the 30W SMA; anchor B = the
+    last significant low of the current base that has not been broken = the floor of the current base (lowest low since
+    the base's ceiling week; stage-1 range = the box floor; when a later week undercut it, that newer lower low). Stop under the LOWER of the two (stop_below):
+      B above the SMA -> under the SMA ('ma');  B below the SMA -> under B ('low').
+    'Too far': B below the SMA, that stop > max_stop_pct (10%) under the entry and the SMA rising -> under the most recent
+    unbroken HIGHER low (weekly pivot, pivot_w bars each side) formed after B, below the SMA and the entry ('hl'), if any."""
     l = w["Low"].values
     n = len(w)
-    # Eyal 2026-11-14 (final): default stop = just under the 30W SMA; a clear VALID swing low (weekly pivot low of the
-    # last 26 weeks, never broken afterwards) ABOVE the SMA and below the entry -> just under that low (smaller SL).
-    # Never under the SMA: stop = max(SMA, valid low above it) x (1 - 0.7%). A broken low is never used.
-    valid = [i for i in pivots(l, R["pivot_w"], False)
-             if i >= n - 26 and ma_now < l[i] < entry and (i == n - 1 or l[i] < l[i + 1:].min())]
-    swing_low = float(l[valid[-1]]) if valid else None
-    basis = "low" if swing_low is not None else "ma"
-    stop = max(ma_now, swing_low or 0.0) * (1 - R["stop_buffer_pct"] / 100)
+    b, bi = None, None
+    if base_low is not None and base_low < entry:
+        lo_i = max(0, n - 105)
+        hits = [i for i in range(lo_i, n) if abs(l[i] - base_low) <= max(0.005, base_low * 1e-5)]
+        bi = hits[-1] if hits else None
+        b = float(base_low)
+        if bi is not None and bi < n - 1 and l[bi + 1:].min() < b:  # broken later -> the newer lower low is the anchor
+            bi = bi + 1 + int(np.argmin(l[bi + 1:])); b = float(l[bi])
+    if b is None or b >= ma_now:
+        return {"stop": stop_below(ma_now, R), "basis": "ma", "anchor": ma_now, "b": b, "hl": None}
+    stop = stop_below(b, R)
+    out = {"stop": stop, "basis": "low", "anchor": b, "b": b, "hl": None}
+    ma = w["Close"].rolling(R["ma_weeks"]).mean().values
+    sc, _ = slope_class(ma, n - 1, R)
+    if (entry - stop) / entry * 100 > R["max_stop_pct"] and sc == "up" and bi is not None:
+        hls = [i for i in pivots(l, R["pivot_w"], False)
+               if i > bi and b < l[i] < min(ma_now, entry) and (i == n - 1 or l[i] <= l[i + 1:].min())]  # an equal low = held
+        if hls:
+            hv = float(l[hls[-1]])
+            out.update(stop=stop_below(hv, R), basis="hl", anchor=hv, hl=hv)
+    return out
+
+
+def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optional[float], base_low: Optional[float],
+                 R=RULES) -> Dict[str, Any]:
+    """Stop (Eyal 2026-11-16) = under the lower of the 30W SMA and the base's last unbroken low (stop_anchors); first
+    target = nearest overhead resistance of the last 2 years (significant weekly swing high); none = open sky -> target =
+    entry + min_rr x risk (R:R exactly 2.5, Eyal 2026-11-14)."""
+    sa = stop_anchors(w, ma_now, entry, base_low, R)
+    stop, basis = sa["stop"], sa["basis"]
+    swing_low = sa["anchor"] if basis != "ma" else sa["b"]  # the red line = anchor B (the higher low when used)
     ov = overhead_scan(w, entry, R)
     risk = entry - stop
     target, tsrc = (ov["overhead"], "overhead") if ov["overhead"] else (None, None)
@@ -383,7 +433,8 @@ def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optio
     rr = (target - entry) / risk if (target and risk > 0 and target > entry) else None
     shares = int(R["risk_usd"] // risk) if risk > 0 else None
     stop_pct = risk / entry * 100 if entry else None
-    return {"entry": _f(entry), "stop": _f(stop), "stop_basis": basis, "swing_low": _f(swing_low), "target": _f(target), "target_src": tsrc,
+    return {"entry": _f(entry), "stop": _f(stop), "stop_basis": basis, "swing_low": _f(swing_low), "anchor_b": _f(sa["b"]),
+            "stop_anchor": _f(sa["anchor"]), "target": _f(target), "target_src": tsrc,
             "risk_pct": _f(stop_pct, 1), "stop_wide": bool(stop_pct is not None and stop_pct > R["max_stop_pct"]),
             "rr": _f(rr), "shares": shares, "pos_usd": _f(shares * entry, 0) if shares else None,
             "overhead": _f(ov["overhead"]), "overhead_pct": _f(ov["overhead_pct"], 1), "open_sky": ov["open_sky"],
@@ -709,7 +760,7 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
     # waits above the ceiling. R:R from that Buy-Stop entry to the nearest overhead resistance (2 years).
     out["pct_above_ma_lim"] = bool((c[i] / ma[i] - 1) * 100 > R["max_pct_above_ma"])
     if bo_ok:
-        p = trade_levels(w, ma[i], buy_stop_price(bo["level"], R), bo["level"], bo["base_low"], R)
+        p = trade_levels(w, ma[i], buy_stop_price(bo["level"], R), bo["level"], bo.get("stop_low", bo["base_low"]), R)
         p["kind"] = "breakout"
         out["plan"] = p
     else:
@@ -724,7 +775,7 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         if bn:
             out["base"] = {"top": _f(bn["top"]), "low": _f(bn["low"]), "weeks": bn["weeks"], "since_top_w": bn["since_top_w"],
                            "top_week": bn["top_week"], "mature": bn["mature"], "dist_pct": _f((bn["top"] / c[i] - 1) * 100, 1)}
-            p = trade_levels(w, ma[i], buy_stop_price(bn["top"], R), bn["top"], bn["low"], R)
+            p = trade_levels(w, ma[i], buy_stop_price(bn["top"], R), bn["top"], bn.get("stop_low", bn["low"]), R)
             p["kind"] = "trigger" if stage == 1 else "continuation"
             av = float(v[-R["vol_avg_w"]:].mean())
             p["vol_need"] = _f(av * R["vol_mult"], 0)
@@ -1063,7 +1114,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                  "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
                        f"(סגירה {p['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Buy-Stop {p['entry_vs_ma']:+}% מהממוצע)"
                        + (" — רחוקה מדי / אל תרדוף" if p["chase"] else "")},
-                {"k": "stop", "ok": not p["stop_wide"], "info": True, "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, לפי {'שפל תקף' if p['stop_basis'] == 'low' else '30W SMA'})"
+                {"k": "stop", "ok": not p["stop_wide"], "info": True, "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, מתחת ל{ {'low': 'שפל הבסיס', 'hl': 'שפל עולה (שפל הבסיס רחוק מדי)'}.get(p['stop_basis'], '30W SMA') })"
                  + (" — SL רחב מדי (מעט מניות)" if p["stop_wide"] else "")},
                 {"k": "air", "ok": True if p["open_sky"] else None, "he": ov_he},
                 {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"],

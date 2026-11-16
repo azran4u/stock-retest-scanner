@@ -6,7 +6,7 @@ import { researchHtml, isoLtr, type Research } from './research';
 
 export interface Check { k: string; ok: boolean | null; he: string; info?: boolean }
 export interface Plan {
-  kind: 'breakout' | 'trigger' | 'continuation'; entry: number; stop: number; stop_basis: 'low' | 'ma'; swing_low: number | null; target: number | null;
+  kind: 'breakout' | 'trigger' | 'continuation'; entry: number; stop: number; stop_basis: 'low' | 'ma' | 'hl'; swing_low: number | null; anchor_b?: number | null; stop_anchor?: number | null; target: number | null;
   target_src: 'overhead' | 'open_sky' | null; risk_pct: number | null; stop_wide: boolean; rr: number | null; shares: number | null;
   overhead: number | null; overhead_pct: number | null; open_sky: boolean; ath: boolean; cong: number | null; hi2y: number | null;
   level: number; close_vs_level: number | null; entry_vs_ma: number | null; chase: boolean; vol_need?: number | null; ov_levels?: number[];
@@ -71,8 +71,9 @@ export function levelsOf(r: StageRow, ed?: StEd): StLevel[] {
   const p = r.plan, comp: StLevel[] = [];
   const ov = p?.ov_levels?.length ? p.ov_levels : p?.overhead != null ? [p.overhead] : [];
   ov.forEach((v, i) => comp.push({ id: 'c-ov' + i, price: v, role: 'res', label: i === 0 ? 'התנגדות תקורה (יעד)' : 'התנגדות תקורה', his: false }));
-  // the stop-basis support (Eyal 2026-11-14: one red line): the valid low above the 30W SMA, else the SMA itself
-  comp.push({ id: 'c-sup', price: p?.swing_low ?? r.ma30, role: 'sup', label: p?.swing_low != null ? 'תמיכה – שפל' : 'תמיכה – 30W SMA', his: false });
+  // the stop anchor B (Eyal 2026-11-16): the base's last unbroken low (or the higher low when it was too far), else the SMA
+  // Eyal 2026-11-16: the red line = anchor B (the base's last unbroken low; the higher low when that one was too far)
+  comp.push({ id: 'c-sup', price: p?.swing_low ?? r.ma30, role: 'sup', label: p?.swing_low != null ? 'תמיכה – שפל הבסיס' : 'תמיכה – 30W SMA', his: false });
   const mine = (ed?.lines || []).filter((x) => x.status !== 'deleted');
   const over = new Map(mine.filter((x) => x.meta?.ref).map((x) => [x.meta!.ref as string, x]));
   const out: StLevel[] = [];
@@ -106,20 +107,35 @@ export function effPlan(r: StageRow, ed: StEd | undefined, maxRisk: number, maxS
   const linesEd = (ed?.lines || []).some((x) => x.status !== 'deleted');
   if (!linesEd && !ed?.zone) {
     if (!p) return null;
-    return done(+p.entry, +p.stop, p.target == null ? null : +p.target, false, p.stop_basis === 'low' ? 'שפל' : 'ממוצע', p.open_sky);
+    return done(+p.entry, +p.stop, p.target == null ? null : +p.target, false, BASIS_HE[p.stop_basis] ?? 'ממוצע', p.open_sky);
   }
   let entry = p?.entry != null ? +p.entry : null;
   if (ed?.zone?.zone_top != null) { const z = +ed.zone.zone_top; entry = Math.round((z + Math.max(z * rv('buy_stop_buf_pct', 0.5) / 100, rv('buy_stop_min_buf', 0.05))) * 100) / 100; }
   if (entry == null) return null;
-  const lv = levelsOf(r, ed), buf = rv('stop_buffer_pct', 0.7) / 100;
-  // Eyal 2026-11-14 (final): never under the 30W SMA -- a support under the SMA doesn't move the stop (floor = SMA)
-  const sups = lv.filter((x) => x.role === 'sup' && x.price < entry! && x.price > r.ma30).sort((a, b) => b.price - a.price);
-  const stop = sups.length ? sups[0].price * (1 - buf) : r.ma30 * (1 - buf);
-  const basis = sups.length ? (sups[0].his ? 'תמיכה שלך' : 'שפל') : 'ממוצע';
+  const lv = levelsOf(r, ed);
+  // Eyal 2026-11-16: anchor A = 30W SMA, anchor B = the support (his line or the computed base low) under the entry;
+  // stop under the LOWER of the two (no SMA floor any more: his line under the SMA moves the stop down too)
+  const sups = lv.filter((x) => x.role === 'sup' && x.price < entry!).sort((a, b) => b.price - a.price);
+  const B = sups[0];
+  const low = B != null && B.price < r.ma30;
+  const stop = stopBelow(low ? B!.price : r.ma30, R);
+  const basis = low ? (B!.his ? 'תמיכה שלך' : 'שפל') : 'ממוצע';
   const res = lv.filter((x) => x.role === 'res' && x.price > entry! * (1 + rv('target_min_gap_pct', 2) / 100)).sort((a, b) => a.price - b.price);
   const risk = entry - stop;
   const target = res.length ? res[0].price : risk > 0 ? entry + rv('min_rr', 2.5) * risk : null;
   return done(entry, Math.round(stop * 100) / 100, target == null ? null : Math.round(target * 100) / 100, true, basis, !res.length, res[0]?.price ?? null);
+}
+export const BASIS_HE: Record<string, string> = { ma: 'ממוצע', low: 'שפל', hl: 'שפל עולה' };
+/** Stop under an anchor (Eyal 2026-11-16, mirror of srs_app.stages.stop_below): 0.75% under it, or just ($0.05) under a
+ *  round number sitting just under it when that stays within 1% of the anchor. */
+export function stopBelow(anchor: number, R: Record<string, number> = {}): number {
+  const rv = (k: string, d: number) => (R[k] != null ? +R[k] : d);
+  let stop = anchor * (1 - rv('stop_margin_pct', 0.75) / 100);
+  const st = anchor < 10 ? 0.5 : anchor < 100 ? 1 : anchor < 1000 ? 5 : 10;
+  let rn = Math.floor(anchor / st) * st; if (rn >= anchor) rn = anchor;
+  const alt = rn - rv('stop_round_tick', 0.05);
+  if (alt >= anchor * (1 - rv('stop_margin_max_pct', 1) / 100) && alt < stop) stop = alt;
+  return stop;
 }
 /** Computed base ceiling / floor shown as the editable zone: the broken base (2A), the current base, else the stage range. */
 export function zoneOf(r: StageRow): { top: number; bottom: number; start: string | null } | null {
@@ -316,7 +332,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל 30W SMA; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
    <li>פריצה (2A): סגירה מעל תקרת ${R.base_window_w} השבועות (שנקבעה לפני ≥${R.min_base_w} ש׳) וגם מעל תקרת טווח שלב 1, מחזור שבוע הפריצה ≥ ${R.vol_mult}x ממוצע ${R.vol_avg_w} שבועות (עליות בתוך הבסיס במחזור רגיל — לא נפסל). לפני פריצה: תנאי על הטריגר — שבוע הפריצה חייב מחזור ≥ ${R.vol_mult}x.</li>
    <li><b>לא רודפים:</b> עד ${R.buy_zone_pct}% מעל רמת הפריצה ועד ${R.max_pct_above_ma}% מעל 30W SMA (מחיר או Buy-Stop), אחרת "רחוקה מדי / אל תרדוף".</li>
-   <li><b>SL:</b> ברירת מחדל ${R.stop_buffer_pct}% מתחת ל-30W SMA ("ממוצע"). אם יש שפל סווינג תקף (שפל שבועי ב-26 ש׳ שמעולם לא נשבר) <b>מעל</b> הממוצע ומתחת לכניסה — ${R.stop_buffer_pct}% מתחתיו ("שפל", SL קטן יותר). לעולם לא מתחת לממוצע (גם קו תמיכה שלך מתחת לממוצע לא מוריד את ה-SL). SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" (מעט מניות) — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
+   <li><b>SL (16/11):</b> שני עוגנים בגרף השבועי — A = 30W SMA, B = השפל המשמעותי האחרון בבסיס הנוכחי שלא נשבר (רצפת הבסיס). ה-SL מתחת <b>לנמוך מבין השניים</b>, ${R.stop_margin_pct}% מתחתיו (בתוך 0.5%–${R.stop_margin_max_pct}%), או $${R.stop_round_tick} מתחת למספר עגול שנמצא ממש מתחת לעוגן אם זה עדיין בתוך ${R.stop_margin_max_pct}%. שפל מעל הממוצע → מתחת לממוצע ("ממוצע"); שפל מתחת לממוצע → מתחת לשפל ("שפל"). אם ה-SL מתחת לשפל רחוק מ-${R.max_stop_pct}% והממוצע כבר עולה — מתחת לשפל העולה האחרון שלא נשבר (מתחת לממוצע) אם יש ("שפל עולה"). קו תמיכה שלך = עוגן B (גם מתחת לממוצע). SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
    <li><b>התנגדות תקורה:</b> שיאי סווינג משמעותיים (${R.sig_pivot_w} נרות מכל צד) ב-${R.overhead_w} השבועות האחרונים מעל הכניסה (+${R.target_min_gap_pct}%). הקרובה = היעד. אין = "שמיים פתוחים": יעד = כניסה + ${R.min_rr}×סיכון (R:R ${R.min_rr} בדיוק). R:R ≥ ${R.min_rr}.</li>
    <li><b>דוחות — לפני כניסה:</b> לא מציבים Buy-Stop חדש כשהדוח בתוך ${R.earn_td} ימי המסחר הקרובים (שבוע הדוח והשבוע שלפניו; דוח אחרי הסגירה נספר ליום המסחר הבא) — "דוח בעוד X ימי מסחר – לא להציב Buy-Stop". כש-FinViz מציג רק דוח שעבר: הדוח הבא משוער = האחרון + 13 שבועות ("משוער"), וגם הוא חוסם בתוך החלון. תאריך לא ידוע = לא עובר עד שבודקים.</li>
    <li><b>אחרי דוח (${R.post_earn_td} ימי מסחר):</b> גאפ למעלה (פתיחה ≥ ${R.gap_min_pct}% מעל הסגירה, סגירה מעל ההתנגדות, מחזור ≥ ${R.gap_vol_mult}x ממוצע ${R.gap_vol_avg_d} ימים) = "גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן"; חוזרת להיות מועמדת אחרי ≥ ${R.mini_base_d} ימי מסחר שכולם נסגרו מעל רמת הפריצה (בסיס קטן; נרות יומיים, אחרת סגירה שבועית). הדוח עבר והמחיר עדיין צמוד מתחת להתנגדות = "דוח עבר – להחזיר Buy-Stop".</li>
@@ -324,7 +340,7 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
    <li><b>שוק (SPY) לא בשלב 3 או 4</b> (כלל Top-Down, 15/11; QQQ מוצג כמידע); <b>סקטור</b> (תעודת הסל הענפית) לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); RS הסקטור — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
    <li>התראת טלגרם בשבת אחרי הסגירה השבועית — רק כשיש מועמדות. אין פקודות אוטומטיות.</li></ul>
   <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מחזור יומי &gt; $${R.min_dollar_vol_m}M או &gt; 500K מניות בשבוע · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · <b>לפחות 3 שנות היסטוריה (≥ ${R.min_weeks} נרות שבועיים)</b> — מניה צעירה יותר לא מסווגת בכלל ולא מופיעה באף לשון.</li></ul>
-  <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (בסיס ה-SL: שפל תקף מעל הממוצע, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום את ה-SL (לא מתחת לממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
+  <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (עוגן B: שפל הבסיס האחרון שלא נשבר, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום מזיזה את עוגן B (ה-SL מתחת לנמוך מבין הקו והממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
 }
 
 /** Mini weekly chart: candles + 30W SMA (orange) + ceiling (blue dashed) + Buy-Stop (white) + SL (red) + target (green). */
