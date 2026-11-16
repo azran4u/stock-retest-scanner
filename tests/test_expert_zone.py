@@ -311,3 +311,22 @@ def test_armk_no_expert_level():
     2.4 ATR above it (no retest now) -> no expert level."""
     r = E.find(_fixture("armk_daily_20261030.json"), asof="2026-11-01")
     assert not r["ok"], r
+
+def test_crwd_v9_falls_back_to_the_lower_broken_resistance():
+    """CRWD (Eyal 2026-11-16): the 9/14 breakout cleared the 8/31 wick 233.88 but the run topped at 286.99, under
+    233.88 + 2 ATR (288.66) -> v8 gave up. The same breakout cleared the July swing high 217.50 (his TV zone
+    202.73-217.04), never closed > 1% above before 9/14, and price moved > 2 ATR above it -> v9 zone 210.65-217.50."""
+    r = E.find(_fixture("crwd_daily_20261113.json"), asof="2026-11-16")
+    assert r["ok"], r
+    assert (r["bottom"], r["top"]) == (210.65, 217.5), r
+    assert r["pivot_week"] == "2026-07-13" and r["breakout_week"] == "2026-09-14"
+    assert r["fallback"]["from_top"] == 233.88
+    assert 202.73 <= r["bottom"] and abs(r["top"] - 217.04) < 1.0          # overlaps his zone
+    assert r["trade"]["entry"] == 217.5 and r["trade"]["tp"] == 286.99
+
+
+def test_fallback_keeps_gpix_without_a_level():
+    """v9 fallback needs a DISTINCT lower resistance (> 0.5 ATR under the failed top): GPIX's 54.34 swing high sits
+    inside the failed 54.54 top's band -> still no expert level (never moved away)."""
+    r = E.find(_fixture("gpix_daily_20261030.json"), asof="2026-11-01")
+    assert not r["ok"] and r["reason"].startswith("never moved away"), r

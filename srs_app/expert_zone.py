@@ -37,6 +37,13 @@ RULE (deterministic, weekly Mon-Fri bars built from the app's daily candles, onl
   4. v7 (Eyal 2026-11-01): ONLY the breakout-retest scenario. The expert zone is always a broken resistance level
      (the base top above). Support-shelf detection (v4-v6) was removed: too complex and noisy. No valid broken
      resistance -> no expert level.
+  3b. v9 (Eyal 2026-11-16, CRWD): when a breakout fails ONLY the move-away test (price never got 2 A above the base
+     top R), the same breakout also cleared the lower resistances inside its base; try them newest first (_fallback):
+     a weekly swing high (2 weeks each side) inside the base, more than 0.5 A under R, >= 2 weeks before b, with no
+     weekly close more than 1% above it between its swing week and b (it was still resistance). Its zone: top = the
+     swing high, cluster = base weeks whose high is in [top - 0.5 A, top x 1.01], bottom = their highest body, same
+     width sanity. It must pass every rule of 3 with its own top / bottom (2 A move-away, not broken, near). The first
+     that passes is the zone (result 'fallback' = the failed top + why); none -> on to the older breakouts as before.
      The newest candidate that passes wins. None -> 'no expert level' with the reason of the newest candidate
      (no breakout in 3 years / broken / price too far above / never moved away / no pullback yet).
 
@@ -88,7 +95,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v8-2026-11-15"
+RULE_VERSION = "expert-v9-2026-11-16"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -100,6 +107,8 @@ BREAK_PCT = 0.03
 PULLBACK_ATR = 1.0
 NEAR_ATR = 2.0
 ATR_N = 14
+SWING_W = 2           # v9 fallback: a lower resistance = weekly swing high (2 weeks each side)
+FALLBACK_CLOSE_TOL = 0.01   # v9: a weekly close <= 1% above a level does not break it (Murphy 1% filter)
 
 SRC = {
     "level": "Weinstein; Bulkowski; IBD (pivot = last resistance before the breakout)",
@@ -226,13 +235,60 @@ def find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None) -> Dict[str
             reason = "no pullback yet (price within 1 ATR of the post-breakout high)"
         elif last > top + NEAR_ATR * A:
             reason = f"price {(last - top) / A:.1f} ATR above the base top"
+        if reason and reason.startswith("never moved away"):
+            fb = _fallback(W, Wall, b, z, A, last, post_hi, n)
+            if fb is not None:
+                z, reason = fb, None
         if reason:
             first_reason = first_reason or f"{reason}; latest breakout {W[b]['time']} over {top:.2f}"
             continue
         res = _result(Wall, W, b, z, A, last, post_hi, daily)
+        if z.get("fallback"):
+            res["fallback"] = z["fallback"]
         res.update(hammers(W, res["top"], res["bottom"], A))
         return res
     return {"ok": False, "reason": first_reason or "no breakout above a 26-week base in 3 years", "atr_w": round(A, 4)}
+
+
+def _fallback(W, Wall, b, z, A, last, post_hi, n) -> Optional[Dict[str, Any]]:
+    """v9 (Eyal 2026-11-16, CRWD): the breakout at week b cleared the base top R but price never moved 2 ATR above R.
+    The same breakout also cleared the LOWER resistances inside the base; try them, newest first, and return the zone
+    of the first one that satisfies every rule (same move-away / not-broken / pullback / near tests). A lower level =
+    a weekly swing high (SWING_W weeks each side, all inside the base, >= MIN_BASE_GAP weeks before b) more than
+    0.5 A under R (outside the failed level's own cluster band: a distinct, earlier resistance, not the same top) that
+    was still resistance when b broke out: no weekly close more than 1% above it between its swing week and b.
+    Zone: top = the swing high; cluster = base weeks whose high is within [top - 0.5 A, top x 1.01] (the bars that
+    made that level, not the higher wicks above it); bottom = their highest body top; same width sanity."""
+    lo, R = z["base_lo"], z["top"]
+    for p in range(b - MIN_BASE_GAP, lo - 1, -1):
+        L = W[p]["high"]
+        if L >= R - CLUSTER_ATR * A or p - SWING_W < lo or p + SWING_W > b - 1:
+            continue
+        if any(W[k]["high"] > L for k in range(p - SWING_W, p + SWING_W + 1) if k != p):
+            continue
+        if any(W[k]["close"] > L * (1 + FALLBACK_CLOSE_TOL) for k in range(p + 1, b)):
+            continue
+        if W[b]["close"] <= L:
+            continue
+        cluster = [k for k in range(lo, b) if L - CLUSTER_ATR * A <= W[k]["high"] <= L * (1 + FALLBACK_CLOSE_TOL)]
+        body = min(max(max(W[k]["open"], W[k]["close"]) for k in cluster), L)
+        note = None
+        if L - body < MIN_W_ATR * A:
+            body, note = L - MIN_W_ATR * A, "widened"
+        elif L - body > MAX_W_ATR * A:
+            body, note = L - MAX_W_ATR * A, "clamped"
+        if post_hi < L + MOVE_AWAY_ATR * A:
+            continue
+        if any(W[k]["close"] < body * (1 - BREAK_PCT) for k in range(b + 1, n)) or last < body * (1 - BREAK_PCT):
+            continue
+        if any(W[k]["close"] < body and W[k + 1]["close"] < body for k in range(b + 1, n - 1)):
+            continue
+        if last > L + NEAR_ATR * A:
+            continue
+        return {"top": L, "bottom": body, "pivot": p, "cluster": cluster, "base_lo": lo, "width_note": note,
+                "fallback": {"from_top": round(R, 2), "why": f"base top {R:.2f}: never moved 2 ATR above it; "
+                             f"lower broken resistance {L:.2f} ({W[p]['time']}) used"}}
+    return None
 
 
 HAMMER_WEEKS = 12   # weeks stored; the app filter looks at the last X <= 12 of them

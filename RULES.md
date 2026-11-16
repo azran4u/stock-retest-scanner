@@ -565,3 +565,29 @@ sessions. Older daily patterns (up to 20 sessions) are confirmation only. Labels
 "אות כניסה", sort "תבנית אישור". Expert watchlist: `confW` +2 (weekly entry signal), `confD` +2 for a daily entry signal
 (same weight: both are completed patterns on the same weekly level; the daily one is the earlier trigger with a stricter
 location test) and +0.5 for an older daily pattern (alone never makes a stock "מוכנה"). PASS, the falling-knife rule and the earnings-week rule are unchanged.
+
+## 20. Expert zone v9 — fallback to a lower broken resistance (Eyal 2026-11-16, CRWD)
+
+`srs_app/expert_zone.py` `RULE_VERSION = expert-v9-2026-11-16`. CRWD had no retest level: the 2026-09-14 breakout
+closed over the 08-31 wick 233.88 (the 26-week base top), but the run topped at 286.99, 1.67 short of 233.88 + 2 weekly
+ATR (288.66) → "never moved away", and v8 went straight to older breakouts (none valid). His TradingView zone was the
+July swing high ~217 (202.73–217.04), which the same breakout also cleared.
+
+- **When:** a breakout candidate fails ONLY the move-away test (high after the breakout < base top + 2 ATR). Too soon,
+  broken, no pullback yet and too far above are unchanged (a lower level cannot fix those, or it would mean a broken top).
+- **Lower levels:** weekly swing highs (2 weeks each side) inside the same 26-week base, ≥ 2 weeks before the breakout,
+  more than 0.5 ATR under the base top (a distinct earlier resistance, not part of the failed top's own cluster), still
+  resistance at the breakout: no weekly close more than 1% above it between its swing week and the breakout week
+  (Murphy 1% filter); the breakout week closed above it. Newest first.
+- **Zone:** top = the swing high; bottom = the highest body of the base weeks whose high is within [top − 0.5 ATR,
+  top × 1.01]; same 0.25–0.5 ATR width sanity.
+- **Every v8 rule still applies to the lower level:** 2 ATR move-away above ITS top, ≥ 4 weeks, not broken (3% / two
+  closes / current price), pulled back (≤ high − 1 ATR) and ≤ top + 2 ATR. The first that passes is the expert zone;
+  `fallback = {from_top, why}` in expert_zones.json. None passes → older breakouts as before.
+- Trade (entry = zone top, SL, TP = post-breakout high), the falling-knife gate, the earnings-week / 14-day rules and
+  "no 30W SMA in the retest scanner" are unchanged.
+- CRWD → zone 210.65–217.50 (pivot 2026-07-13, breakout 2026-09-14). Re-run on the 600 exported tickers (candles
+  2026-11-13): 8 tickers gained a zone (CRWD, DFAI, EQNR, SU, USO, VOT, WAB, XOP); no existing zone changed (GPIX
+  stays without a level: its lower swing high 54.34 is inside the failed 54.54 top's band). Tests:
+  `tests/test_expert_zone.py::test_crwd_v9_falls_back_to_the_lower_broken_resistance` (fixture
+  `tests/data/crwd_daily_20261113.json`).

@@ -2236,11 +2236,12 @@ function expertPanelHtml(t: string): string {
     <div class="small">אזור <bdi dir="ltr">${e.bottom!.toFixed(2)}–${e.top!.toFixed(2)}</bdi> · גג הבסיס שנפרץ בשבוע <bdi dir="ltr">${esc(e.breakout_week || '')}</bdi> (סגירה <bdi dir="ltr">${e.breakout_close}</bdi>) · מחיר <bdi dir="ltr">${e.price}</bdi></div>
     ${(() => { const d = expertDistOf(t); return d ? `<div class="small" data-expdist="${(d.side === 'below' ? -d.atr : d.atr).toFixed(4)}">מרחק מאזור המומחים: <b>${expertDistText(d)}</b></div>` : ''; })()}
     ${(() => { const hs = (e.hammers || []).filter((h) => h.k <= 12); return `<div class="small exham" data-ham="${hs.map((h) => h.w + ':' + h.s).join(',')}">פטישים על האזור ב-12 השבועות האחרונים: ${hs.length ? hs.map((h) => `<bdi dir="ltr">${ddmm(h.w)} ${h.s}</bdi>`).join(', ') + ' <span class="muted">(H = פטיש קלאסי, h = כמעט פטיש)</span>' : 'אין'}</div>`; })()}
+    ${e.fallback ? `<div class="small">גג הבסיס <bdi dir="ltr">${e.fallback.from_top.toFixed(2)}</bdi> לא עמד בכלל ההתרחקות (2 ATR), לכן האזור הוא ההתנגדות הנמוכה יותר שנפרצה (שיא <bdi dir="ltr">${esc(e.pivot_week || '')}</bdi>)</div>` : ''}
     ${(e.warnings || []).map((w) => `<div class="small expwarn">⚠ ${esc(w.he)}</div>`).join('')}
     ${z ? `<div class="small">האזור הנוכחי <bdi dir="ltr">${z.bottom.toFixed(2)}–${z.top.toFixed(2)}</bdi>: ${ov ? '<b class="ok">חופף</b>' : '<b class="warn">לא חופף</b>'}</div>` : ''}
     ${tradeHtml(e)}
     <div class="exptbl"><table class="small"><thead><tr><th>גורם</th><th>נק׳</th><th>נמדד</th><th>מקור</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם ממוצע 30 השבועות לא יורד, המחיר התרחק ≥2 ATR (ולפחות 4 שבועות) וחזר אליו מלמעלה (עד 2 ATR מעליו). נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות. רק רמת התנגדות שנפרצה נחשבת; אם אין כזו, אין רמת מומחים.</div>
+    <div class="muted small">הכלל: גג הבסיס (השיא הגבוה) שהמחיר נסגר מעליו בשבועי, מהזנב ועד הגוף הגבוה, רוחב 0.25–0.5 ATR; תקף אם המחיר התרחק ≥2 ATR (ולפחות 4 שבועות) וחזר אליו מלמעלה (עד 2 ATR מעליו). אם המחיר לא התרחק 2 ATR מגג הבסיס, נבדקת התנגדות נמוכה יותר באותו בסיס שאותה פריצה חצתה (שיא סווינג שבועי, יותר מ-0.5 ATR מתחת לגג), עם אותם כללים. נשבר בסגירה שבועית יותר מ-3% מתחת לאזור או בשתי סגירות שבועיות רצופות מתחתיו; סגירה בודדת מתחת = אזהרה ו-10 נקודות פחות. רק רמת התנגדות שנפרצה נחשבת; אם אין כזו, אין רמת מומחים.</div>
     ${foot}</section>`;
 }
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */
