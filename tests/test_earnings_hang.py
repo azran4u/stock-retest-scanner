@@ -158,7 +158,7 @@ def test_verify_loop_bounds_each_ticker(env, monkeypatch):
     res = [{"ticker": t, "status": "PASS", "reason": "", "detail": {}} for t in ("AAA", "BBB")]
     t0 = time.monotonic()
     out = ss._enrich_verify_earnings(res)
-    assert time.monotonic() - t0 < 2
+    assert time.monotonic() - t0 < 4  # 0.3 s bound + one end-of-pass retry each (2026-11-18)
     assert all(not v["earnings_known"] and "timed out" in v["earnings_error"] for v in out.values())
 
 

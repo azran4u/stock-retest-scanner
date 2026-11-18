@@ -55,6 +55,14 @@ EARN_MAX_AHEAD_DAYS = 190    # a source date further out than this is not a plau
 # now run under a wall-clock bound, funds skip Yahoo, and the negative answers are cached.
 YAHOO_CALL_TIMEOUT_S = 45     # one Yahoo/yfinance earnings lookup (all its HTTP calls) per ticker
 EARN_TICKER_TIMEOUT_S = 150   # one ticker's whole lookup (TradingView + Yahoo + Nasdaq)
+# 2026-11-18 stall: the nightly 11-17 sat 7+ h inside ONE ticker's lookup (STLD, earnings 750/913) although that
+# lookup was thread-bounded at 150 s - a thread bound cannot interrupt a call that never gives the GIL back, and the
+# main thread's join() then never returns. Every ticker's lookup now runs in a forked CHILD PROCESS that is killed at
+# the bound (_proc_bounded_call), and the whole earnings pass has a time budget + breaker; after that the remaining
+# tickers use the cached earn_{T}.json date (even stale) or are marked unknown (earnings_lookup_many).
+EARN_TOTAL_BUDGET_S = float(os.environ.get("SRS_EARN_BUDGET_S", 2400))  # whole earnings pass of one run
+EARN_BREAKER = int(os.environ.get("SRS_EARN_BREAKER", 6))   # consecutive timed-out tickers -> cache only
+EARN_RETRY_TIMEOUT_S = 60     # one retry (end of the pass, budget left) for a ticker that timed out
 FUND_MISS_TTL_DAYS = 30       # ETF / fund with no date anywhere: "no earnings" cached this long (not re-asked nightly)
 YAHOO_NOFUND_TTL_DAYS = 30    # Yahoo said "No fundamentals data found": Yahoo is not asked again for this long
 FUND_TYPES_TTL_DAYS = 30      # TradingView scanner type cache (cache/fund_types.json)
@@ -1043,6 +1051,120 @@ def _bounded_call(fn, timeout_s: float, *args, **kwargs):
     return box.get("r")
 
 
+def _proc_bounded_call(fn, timeout_s: float, *args, **kwargs):
+    """fn(*args, **kwargs) in a forked child process, KILLED after timeout_s (TimeoutError). Unlike _bounded_call it
+    also bounds a call that holds the GIL / blocks in C forever (2026-11-18 stall). The result must be picklable.
+    Falls back to _bounded_call where fork is unavailable."""
+    import multiprocessing as _mp
+    try:
+        ctx = _mp.get_context("fork")
+    except ValueError:
+        return _bounded_call(fn, timeout_s, *args, **kwargs)
+    recv, send = ctx.Pipe(duplex=False)
+
+    def child():
+        try:
+            send.send(("r", fn(*args, **kwargs)))
+        except BaseException as exc:  # noqa: BLE001
+            try:
+                send.send(("e", exc))
+            except Exception:
+                send.send(("e", RuntimeError(f"{type(exc).__name__}: {exc}")))
+        finally:
+            send.close()
+
+    pr = ctx.Process(target=child, daemon=True, name=f"pbounded-{getattr(fn, '__name__', 'call')}")
+    pr.start()
+    send.close()
+    try:
+        if not recv.poll(timeout_s):
+            raise TimeoutError(f"{getattr(fn, '__name__', 'call')} timed out after {timeout_s:.0f}s (killed)")
+        kind, val = recv.recv()
+    except EOFError:
+        raise RuntimeError(f"{getattr(fn, '__name__', 'call')}: child exited without an answer")
+    finally:
+        recv.close()
+        if pr.is_alive():
+            pr.kill()
+        pr.join(5)
+    if kind == "e":
+        raise val
+    return val
+
+
+def earnings_cached_info(ticker: str, today: date, error: str = "") -> Dict[str, Any]:
+    """No-network earnings answer from earn_{T}.json: a cached date >= today (fresh or stale), else unknown."""
+    data = _load_earn_cache(ticker) or {}
+    d0 = None
+    try:
+        d0 = date.fromisoformat(str(data.get("earnings_date"))[:10]) if data.get("earnings_date") else None
+    except Exception:
+        d0 = None
+    if d0 is not None and d0 >= today:
+        days = int((d0 - today).days)
+        return {"earnings_date": d0.isoformat(), "days_to_earnings": days, "earnings_known": True,
+                "earnings_blackout": 0 <= days < EARNINGS_BLACKOUT_DAYS,
+                "earnings_source": data.get("source") or "cache", "earnings_cache": "fallback",
+                "earnings_error": error or None}
+    return {"earnings_date": None, "days_to_earnings": None, "earnings_known": False, "earnings_blackout": False,
+            "earnings_source": "unknown", "earnings_cache": "fallback", "earnings_error": error or "no cached date"}
+
+
+def earnings_lookup_many(tickers: List[str], today: date, label: str = "earnings",
+                         budget_s: Optional[float] = None, per_ticker_s: Optional[float] = None,
+                         breaker: Optional[int] = None, log_every: int = 1) -> Dict[str, Dict[str, Any]]:
+    """get_next_earnings for many tickers that can never hang the run: each lookup in a killed-on-timeout child
+    process; a total time budget and a breaker (N consecutive timeouts) switch the rest to cache-only; tickers that
+    timed out get one shorter retry at the end while budget is left, else the cached date / unknown."""
+    budget = EARN_TOTAL_BUDGET_S if budget_s is None else budget_s
+    per = EARN_TICKER_TIMEOUT_S if per_ticker_s is None else per_ticker_s
+    brk = EARN_BREAKER if breaker is None else breaker
+    t0 = time.monotonic()
+    out: Dict[str, Dict[str, Any]] = {}
+    timed_out: List[str] = []
+    streak = 0
+    cache_only = ""
+    n = len(tickers)
+    for i, t in enumerate(tickers, start=1):
+        left = budget - (time.monotonic() - t0)
+        if not cache_only and left <= 0:
+            cache_only = f"earnings budget {budget:.0f}s used"
+        if not cache_only and streak >= brk:
+            cache_only = f"{streak} lookups in a row timed out"
+        if cache_only:
+            info = earnings_cached_info(t, today, f"skipped ({cache_only})")
+        else:
+            try:
+                info = _proc_bounded_call(get_next_earnings, max(1.0, min(per, left)), t, today=today)
+                streak = 0
+            except TimeoutError as exc:
+                streak += 1
+                timed_out.append(t)
+                info = earnings_cached_info(t, today, str(exc))
+            except Exception as exc:
+                streak = 0
+                info = earnings_cached_info(t, today, str(exc))
+        out[t] = info
+        if log_every and (i % log_every == 0):
+            print(f"[{label} {i}/{n}] {t}: "
+                  f"{info.get('days_to_earnings') if info.get('earnings_known') else 'unknown'}"
+                  f"{' (cache)' if info.get('earnings_cache') == 'fallback' else ''}", flush=True)
+    retried = 0
+    for t in timed_out:
+        left = budget - (time.monotonic() - t0)
+        if cache_only or left <= 5:
+            break
+        try:
+            out[t] = _proc_bounded_call(get_next_earnings, min(EARN_RETRY_TIMEOUT_S, per, left), t, today=today)
+            retried += 1
+        except Exception:
+            pass
+    fb = sum(1 for v in out.values() if v.get("earnings_cache") == "fallback")
+    print(f"[{label}] {n} tickers in {time.monotonic() - t0:.0f}s; timeouts {len(timed_out)} (retried ok {retried}); "
+          f"cache fallback {fb}{'; ' + cache_only if cache_only else ''}", flush=True)
+    return out
+
+
 class YahooEarningsGuard:
     """Run-level guard for the Yahoo earnings lookups of the export (report_filters.earnings_history and
     srs_app.earnings_marks), after the 2026-10-30 nightly stalled: Yahoo answered HTTP 429 on the crumb and then
@@ -1776,27 +1898,7 @@ def _enrich_verify_earnings(results: List[Dict[str, Any]]) -> Dict[str, Dict[str
         if is_pass or is_rr_fail:
             eligible.append(r["ticker"])
 
-    today = _local_today()
-    out: Dict[str, Dict[str, Any]] = {}
-    for i, ticker in enumerate(eligible, start=1):
-        try:
-            info = _bounded_call(get_next_earnings, EARN_TICKER_TIMEOUT_S, ticker, today=today)
-        except Exception as exc:
-            info = {
-                "earnings_date": None,
-                "days_to_earnings": None,
-                "earnings_known": False,
-                "earnings_blackout": False,
-                "earnings_source": "unknown",
-                "earnings_error": str(exc),
-            }
-        out[ticker] = info
-        print(
-            f"[earnings {i}/{len(eligible)}] {ticker}: "
-            f"{info.get('days_to_earnings') if info.get('earnings_known') else 'unknown'}",
-            flush=True,
-        )
-    return out
+    return earnings_lookup_many(eligible, _local_today())
 
 
 def write_verify_outputs(results: List[Dict[str, Any]], exchange_map: Optional[Dict[str, str]] = None) -> None:
@@ -2140,7 +2242,7 @@ def write_universe_data(tickers: List[str], eligible: Optional[set] = None) -> D
             out[t] = rec  # fails $vol / history anyway: skip the (slow) earnings lookup
             continue
         try:
-            e = _bounded_call(get_next_earnings, EARN_TICKER_TIMEOUT_S, t, today=today)
+            e = _proc_bounded_call(get_next_earnings, EARN_TICKER_TIMEOUT_S, t, today=today)
             rec["earnings_date"] = e.get("earnings_date")
             rec["earnings_source"] = e.get("earnings_source")
         except Exception as exc:
