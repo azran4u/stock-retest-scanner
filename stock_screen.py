@@ -1074,14 +1074,22 @@ def _proc_bounded_call(fn, timeout_s: float, *args, **kwargs):
             send.close()
 
     pr = ctx.Process(target=child, daemon=True, name=f"pbounded-{getattr(fn, '__name__', 'call')}")
-    pr.start()
+    try:
+        import gc as _gc
+        _gc.freeze()   # keep the (multi-GB) parent heap out of the child's GC: fewer copy-on-write pages
+        pr.start()
+    except OSError:    # fork refused (ENOMEM on a big parent, 2026-11-18 run): thread bound instead
+        send.close()
+        recv.close()
+        return _bounded_call(fn, timeout_s, *args, **kwargs)
     send.close()
     try:
         if not recv.poll(timeout_s):
             raise TimeoutError(f"{getattr(fn, '__name__', 'call')} timed out after {timeout_s:.0f}s (killed)")
         kind, val = recv.recv()
     except EOFError:
-        raise RuntimeError(f"{getattr(fn, '__name__', 'call')}: child exited without an answer")
+        pr.join(5)
+        raise RuntimeError(f"{getattr(fn, '__name__', 'call')}: child exited without an answer (exit {pr.exitcode})")
     finally:
         recv.close()
         if pr.is_alive():
@@ -1148,7 +1156,8 @@ def earnings_lookup_many(tickers: List[str], today: date, label: str = "earnings
         if log_every and (i % log_every == 0):
             print(f"[{label} {i}/{n}] {t}: "
                   f"{info.get('days_to_earnings') if info.get('earnings_known') else 'unknown'}"
-                  f"{' (cache)' if info.get('earnings_cache') == 'fallback' else ''}", flush=True)
+                  f"{' (cache: ' + str(info.get('earnings_error'))[:80] + ')' if info.get('earnings_cache') == 'fallback' else ''}",
+                  flush=True)
     retried = 0
     for t in timed_out:
         left = budget - (time.monotonic() - t0)
