@@ -66,6 +66,8 @@ def build_rules(stock_screen_py: Optional[Path] = None) -> Dict[str, Any]:
                                  "tech_vrec_sma_weeks", "tech_vrec_sma_rise_weeks", "tech_cons_ema104_min_pct",
                                  "tech_cons_newhi_atr", "tech_cons_r2_min", "tech_range_r2_max",
                                  "tech_range_ema52_max_pct")},
+            **{k: C[k] for k in ("tech_dow_k", "tech_swing_min_gap_weeks", "tech_dow_swing", "tech_dow_rev_atr",
+                                 "tech_dow_tol_atr", "cash_etf_atr_pct_max") if k in C},
             "min_smooth_streak_weeks": C["min_smooth_streak_weeks"],
             "reversal_kinds": list(C["reversal_kinds"]),
             "short_float_max_pct": C["short_float_max_pct"], "inst_own_min_pct": C["inst_own_min_pct"],

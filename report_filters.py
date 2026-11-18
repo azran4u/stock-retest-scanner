@@ -128,9 +128,16 @@ CONFIG: Dict[str, Any] = {
     # low, a downtrend on a higher high). f_technical = (trend == up). The v3 paths below are still computed and stored
     # (tech_v3) for comparison only. k = 5 (not tech_pivot_k = 3): validated on his golden charts / calibration marks /
     # 2026-10-09 negatives, k = 3 agreed far less (minor 3-week swings flip on every pullback), see RULES.md.
-    "tech_version": "dow-v4-2026-11-16",
+    "tech_version": "dow-v5-2026-11-16",
     "tech_method": "dow",
     "tech_dow_k": 5,
+    # v5 (2026-11-16 evening, CRWD / EQIX): swings = standard ZigZag (alternating; a swing is confirmed by a reversal
+    # >= tech_dow_rev_atr weekly ATR(14) from its extreme) instead of K-week pivots (missed every pullback low of a
+    # fast advance); a swing counts as higher / lower, and a weekly close as breaking it, only beyond
+    # tech_dow_tol_atr x ATR (else 'equal' / not broken). tech_dow_swing = 'pivot' restores v4.
+    "tech_dow_swing": "zigzag",
+    "tech_dow_rev_atr": 2.0,
+    "tech_dow_tol_atr": 0.25,
     "tech_swing_min_gap_weeks": 8,   # Eyal 2026-11-16: same-type swings >= 8 weeks apart (closer -> keep the extreme)
     "tech_slow_ema_min_pct": 4.0,
     "tech_slow_r2_min": 0.6,
@@ -169,10 +176,23 @@ CONFIG: Dict[str, Any] = {
     # earnings week (or that reported after it, in the week still running) is not PASS: that week's volume and
     # price move are driven by the report. Wait for the close of the FOLLOWING week, then the rules decide again.
     "earnings_week_gate": True,
+    "cash_etf_atr_pct_max": 1.0,  # f_not_cash_etf generic guard: a fund with weekly ATR < 1% of price = cash / bond
     "from_above_tol_atr": 0.25,  # a close less than this x weekly ATR under the bottom is not 'under the zone'
                                  # (same tolerance as the bot's touch count; OXY 2026-09-25 0.07 ATR under its zone)
 }
 
+# Cash / money-market / short-term bond ETFs (Eyal 2026-11-16): never retest candidates (a weekly ATR of ~0.1-0.5% of the
+# price, the 'zone' is the coupon drift). Hard pre-filter f_not_cash_etf. Neither FinViz (sector 'Financial', no industry
+# for ETFs) nor the TradingView type cache ('fund' / 'etf') carries a fund category, so the category comes from this
+# maintained list (treasury bills / ultra-short / short-term treasury & corporate / floating rate / bank loans / CLO),
+# plus a generic guard: any fund (stock_screen.is_fund) whose weekly ATR(14) is under cash_etf_atr_pct_max % of its price
+# (no equity, sector or commodity ETF is that calm).
+CASH_BOND_ETFS = frozenset("""
+ICSH SPTS VGSH FLOT PULS SPSB SRLN BIL SGOV SHV SHY USFR TFLO JPST MINT NEAR GSY FLRN VNLA BSV SCHO SCHR SHM SUB TBIL
+XBIL XHLF BILS CLIP GBIL TBLL OBIL BOXX ULST FTSM RAVI LDUR VUSB JMST PVI SLQD IGSB VCSH ISTB IBTF IBTG IBTH IBDQ IBDR
+IBDS BSCQ BSCR BSCS BKLN FLTR FLBL SEIX CLOA CLOI JAAA JBBB PAAA ICLO AAA GSST UTWO UTRE STIP VTIP SPIP SCHP TDTT
+FLTB LMBS MEAR SMB SHYD CGSM HYS SJNK SHYG VGIT IEI GOVT TFI MUB SCHZ AGG BND
+""".split())
 CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
     "f_dollar_vol", "f_no_earnings_14d", "f_history", "f_rr", "f_from_above", "f_after_earnings_week",
     # red high-volume last week (Eyal 2026-11-09 / 2026-11-16): the last COMPLETED weekly candle is a healthy red bar on above-average volume AND it closed below the planned SL ->
@@ -181,6 +201,7 @@ CORE_FILTERS = [  # status=PASS iff all true (short float removed 2026-10-14)
     # primary uptrend (Eyal 2026-11-16): Dow structure of the weekly swings must be UP (higher highs + higher lows) -
     # sideways (a range) and downtrend stocks are not PASS; his user_overrides.json verdict still wins
     "f_technical",
+    "f_not_cash_etf",  # hard pre-filter (Eyal 2026-11-16): cash / money-market / short-term bond ETFs out
 ]
 EARN_WEEK_COLS = ["earn_week_date", "earn_week_report", "earn_week_detail"]
 # Informational warnings on the last completed weekly candle (Eyal 2026-10-26: status WAIT cancelled; they were
@@ -229,7 +250,7 @@ REPORT_COLS = [
     "current_price", "dollar_vol_30d", "avg_vol_30d", "short_float_pct", "inst_own_pct",
     *OWNERSHIP_COLS,
     "earnings_date", "days_to_earnings", "weekly_bars",
-    "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "weekly_atr", "atrs_from_entry",
+    "zone_lo", "zone_hi", "entry", "sl", "tp", "rr", "sl_atr_mult", "atr", "weekly_atr", "weekly_atr_pct", "atrs_from_entry",
     *TV_COLS, *SOURCE_COLS, *NEAR_ZONE_COLS, *STALE_COLS, *TECH_COLS, *EVIDENCE_COLS,
     "smooth_streak_weeks",
     "weekly_reversal_kind", "weekly_reversal_date",
@@ -708,6 +729,18 @@ def compute_row(
     weekly = ss.to_weekly(hist)  # screen's weekly bars (same as the retest scan)
     r["weekly_bars"] = int(len(weekly))
     r["f_history"] = bool(len(weekly) >= C["min_weekly_bars"])
+    # hard pre-filter: cash / money-market / short-term bond ETFs (CASH_BOND_ETFS, generic ATR guard for funds)
+    try:
+        _atrp = float(ss.atr_series(weekly).iloc[-1]) / last_close * 100 if len(weekly) >= 15 and last_close else None
+    except Exception:  # pragma: no cover
+        _atrp = None
+    r["weekly_atr_pct"] = round(_atrp, 3) if _atrp is not None else None
+    _t = str(ticker).strip().upper()
+    _cash = _t in CASH_BOND_ETFS or (_atrp is not None and _atrp < float(C["cash_etf_atr_pct_max"]) and ss.is_fund(_t))
+    r["f_not_cash_etf"] = not _cash
+    if _cash:
+        notes.append("cash / money-market / short-term bond ETF" + ("" if _t in CASH_BOND_ETFS else
+                     f" (fund, weekly ATR {_atrp:.2f}% < {float(C['cash_etf_atr_pct_max']):g}% of price)"))
 
     # --- f_rr: retest geometry (zone -> entry/SL/TP) AND R:R ----------------
     setup = None
@@ -1359,7 +1392,8 @@ def compute_technical(hist: Optional[pd.DataFrame]) -> Dict[str, Any]:
     if str(C.get("tech_method", "")) == "dow":
         from srs_app.dow_trend import trend as dow_trend
         ds = dow_trend(h.tolist(), l.tolist(), c.tolist(), int(C.get("tech_dow_k", 5)),
-                       gap=int(C.get("tech_swing_min_gap_weeks", 8)))
+                       gap=int(C.get("tech_swing_min_gap_weeks", 8)), swing=str(C.get("tech_dow_swing", "zigzag")),
+                       rev=float(C.get("tech_dow_rev_atr", 2.0)), tol=float(C.get("tech_dow_tol_atr", 0.25)))
         out["tech_v3"] = tech
         out["tech_trend"], out["tech_trend_he"], out["tech_trend_detail"] = ds["trend"], ds["he"], ds.get("detail") or ""
         out["f_technical"] = ds["trend"] == "up"
@@ -1707,7 +1741,7 @@ def tv_note(r: Dict[str, Any]) -> str:
             .get(str(r.get("tv_found")), "no TV drawing read") + " (f_rr False)")
 
 
-NEEDS_DRAWING_FILTERS = ["f_dollar_vol", "f_no_earnings_14d", "f_history"]
+NEEDS_DRAWING_FILTERS = ["f_not_cash_etf", "f_dollar_vol", "f_no_earnings_14d", "f_history"]
 
 
 # ---------------------------------------------------------------------------
@@ -1849,7 +1883,9 @@ def compute_needs_drawing(r: Dict[str, Any]) -> bool:
 
 
 def finalize_status(r: Dict[str, Any]) -> Dict[str, Any]:
-    failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))]
+    failed = [f for f in CORE_FILTERS if not _truthy(r.get(f))
+              and not (f == "f_not_cash_etf" and str(r.get(f)).strip().lower() not in ("false", "0", "no"))]
+    # (f_not_cash_etf fails only when explicitly False: rows built before 2026-11-16 have no such column)
     # PASS / FAIL only (Eyal 2026-10-26: WAIT cancelled; inverted-hammer weeks are informational; a red-volume week
     # that closed below the zone in use is a FAIL gate, 2026-11-09 / 2026-11-16)
     r["status"] = "PASS" if not failed else "FAIL"

@@ -123,7 +123,7 @@ def test_v3_bottoming_downtrend_not_a_v_recovery(ticker):
 NEG_1009 = ["LPLA", "MDLZ", "REGN", "AJG", "AMP", "CACI", "CHD", "ICE", "LW", "MTG"]
 # 10-09 negatives the Dow structure (k = 5) still calls UP on their 2026-10-09 data: their swings were rising then
 # (his 7-day overrides expired long ago; he can mark them again in the app)
-DOW_UP_NEG = {"MDLZ", "AMP", "CHD"}
+DOW_UP_NEG = {"MDLZ", "REGN", "CHD", "LW"}   # v5 ZigZag swings (v4 pivots: MDLZ, AMP, CHD)
 
 
 def _case(t, asof):
@@ -133,7 +133,7 @@ def _case(t, asof):
 
 def test_dow_is_the_primary_trend():
     t = rf.compute_technical(_case("EQIX", "2026-10-09"))
-    assert rf.CONFIG["tech_method"] == "dow" and rf.CONFIG["tech_version"].startswith("dow-v4")
+    assert rf.CONFIG["tech_method"] == "dow" and rf.CONFIG["tech_version"].startswith("dow-v5")
     assert t["tech_trend"] == "up" and t["tech_trend_he"] == "עלייה" and t["f_technical"] is True   # EQIX = uptrend
     assert t["tech_v3"] is True and t["tech_trend_detail"]
 
@@ -155,13 +155,14 @@ def test_dow_golden_agreement_recorded():
         up = c["up"] or c["ticker"] == "EQIX"
         n += 1
         ok += rf.compute_technical(_cut(d, c["asof"]))["f_technical"] == up
-    assert ok >= 97, (ok, n)
+    assert ok >= 103, (ok, n)   # v5 ZigZag 2 ATR / tol 0.25 ATR: 103/130 (v4 pivots 98/130)
 
 
-@pytest.mark.parametrize("ticker,trend", [("IDCC", "up"), ("LNTH", "up"), ("BIO", "sideways"), ("PRU", "sideways"),
-                                          ("TROW", "sideways"), ("MTG", "sideways")])
+@pytest.mark.parametrize("ticker,trend", [("IDCC", "sideways"), ("LNTH", "up"), ("BIO", "up"), ("PRU", "sideways"),
+                                          ("TROW", "sideways"), ("MTG", "up")])
 def test_dow_calibration_marks(ticker, trend):
-    """His 2026-10-26 marks: IDCC / LNTH up, BIO / PRU / TROW not -> agree; MTG (marked up) = sideways under Dow."""
+    """His 2026-10-26 marks: IDCC / LNTH / MTG up, BIO / PRU / TROW not. v5 (ZigZag swings) agrees on LNTH, MTG, PRU,
+    TROW; IDCC = sideways (its 2026-05 low 248.51 is a lower low under 292.23), BIO = up (HH 396 over 343, HL 237 over 211)."""
     t = rf.compute_technical(CAL[ticker][CAL[ticker].index <= pd.Timestamp("2026-10-26")])
     assert t["tech_trend"] == trend, t["tech_trend_detail"]
 
@@ -170,16 +171,16 @@ def test_dow_structure_unit():
     from srs_app.dow_trend import trend
     up_h = [10, 11, 12, 11, 10, 11, 13, 14, 15, 14, 13, 14, 16, 17, 18, 17, 16, 17, 19, 20]
     up_l = [x - 2 for x in up_h]
-    assert trend(up_h, up_l, up_l[:], k=2, gap=0)["trend"] == "up"
+    assert trend(up_h, up_l, up_l[:], k=2, gap=0, swing="pivot")["trend"] == "up"
     dn_h = [-x for x in up_l][::1]
     dn_l = [-x for x in up_h]
-    assert trend([x + 40 for x in dn_h], [x + 40 for x in dn_l], [x + 40 for x in dn_l], k=2, gap=0)["trend"] == "down"
+    assert trend([x + 40 for x in dn_h], [x + 40 for x in dn_l], [x + 40 for x in dn_l], k=2, gap=0, swing="pivot")["trend"] == "down"
     # a fresh weekly CLOSE under the last swing low ends an uptrend at once (not yet a confirmed pivot)
     h2, l2 = up_h + [18, 15], up_l + [16, 11]
     c2 = l2[:]
-    assert trend(h2, l2, c2, k=2, gap=0)["trend"] != "up"
+    assert trend(h2, l2, c2, k=2, gap=0, swing="pivot")["trend"] != "up"
     # a wick under the swing low without a close under it does not break it
-    assert trend(up_h + [19], up_l + [13.9], up_l + [17.5], k=2, gap=0)["broken_lo"] is False
+    assert trend(up_h + [19], up_l + [13.9], up_l + [17.5], k=2, gap=0, swing="pivot")["broken_lo"] is False
 
 
 def test_swing_spacing_merges_close_swings():
@@ -200,11 +201,48 @@ def test_swing_spacing_turns_a_minor_dip_into_one_swing():
     l = [x - 1 for x in h]
     l[54] = l[50] - 0.5
     h[54] = l[54] + 1
-    assert trend(h, l, l[:], k=2, gap=0)["trend"] == "sideways"
-    assert trend(h, l, l[:], k=2, gap=8)["trend"] == "up"
+    assert trend(h, l, l[:], k=2, gap=0, swing="pivot")["trend"] == "sideways"
+    assert trend(h, l, l[:], k=2, gap=8, swing="pivot")["trend"] == "up"
 
 
 def test_compute_technical_uses_the_configured_gap():
     d = _case("LW", "2026-10-09")
-    assert rf.compute_technical(d)["tech_trend"] != "up"                      # 8 weeks: not an uptrend
-    assert _with(d, (), tech_swing_min_gap_weeks=0)["tech_trend"] == "up"     # without spacing it was
+    assert _with(d, (), tech_dow_swing="pivot")["tech_trend"] != "up"                                  # 8 weeks
+    assert _with(d, (), tech_dow_swing="pivot", tech_swing_min_gap_weeks=0)["tech_trend"] == "up"     # no spacing
+
+
+# ----------------------------------------------------------------------------------- v5 ZigZag swings (2026-11-16 pm)
+def _v5(t):
+    a = pd.read_csv(DATA / "dow_v5_daily.csv.gz", parse_dates=["Date"])
+    return a[a.Ticker == t].drop(columns="Ticker").set_index("Date")
+
+
+def test_v5_crwd_uptrend_uses_the_post_february_higher_lows():
+    """CRWD 2026-11-12: v4 K=5 pivots found no swing low after 2026-02-27 (85.68) in the 86 -> 287 run (each pullback
+    low sat above the lows 5 weeks before it) -> 'LL 100.67 -> 85.68' = sideways. ZigZag: HL 181.24 (2026-08-28),
+    HH 286.99 -> up."""
+    d = _v5("CRWD")
+    assert _with(d, (), tech_dow_swing="pivot")["tech_trend"] == "sideways"
+    t = rf.compute_technical(d)
+    assert t["tech_trend"] == "up", t["tech_trend_detail"]
+    assert "286.99" in t["tech_trend_detail"] and "181.24" in t["tech_trend_detail"]
+
+
+def test_v5_eqix_not_a_downtrend():
+    """EQIX 2026-11-12: closes 985.98 / 955.03 under the 989.08 July floor; v4 read LH 1118.65 -> 1103.95 + LL = down.
+    v5: equal highs within 0.25 ATR, the swing low 931.20 is a higher low vs 709.79 -> up (never down)."""
+    d = _v5("EQIX")
+    assert _with(d, (), tech_dow_swing="pivot")["tech_trend"] == "down"
+    assert rf.compute_technical(d)["tech_trend"] == "up"
+
+
+def test_v5_tolerance_equal_swings():
+    from srs_app.dow_trend import trend_v5
+    import math
+    # rising zigzag, then a lower high only 0.1 ATR under the previous one -> 'equal', not LH
+    h, l, c = [], [], []
+    for i in range(120):
+        base = 100 + 10 * math.sin(i / 4.0) + i * 0.3
+        h.append(base + 1); l.append(base - 1); c.append(base)
+    r = trend_v5(h, l, c, 2.0, 0.25, 8)
+    assert r["trend"] == "up", r["detail"]

@@ -502,10 +502,21 @@ def _compute(ticker: str, read_date: Optional[str] = None) -> Dict[str, Any]:
         "n_valid_levels": len(zones), "price_below_zone": bool(last < zb), "dist_price_to_zone_top_atr": round((last - zt) / A, 2),
         "entry_rule": "zone_top - 0.13 ATR", "tp_rule": "max 26w body top - 0.09 ATR", "data_date": rd,
     }
+    if not valid_geometry(en, sl, tp):   # AXTI 2026-11-16 sl -8.23: never a plan with SL <= 0, SL >= entry, TP <= entry
+        return dict(out, has_level=False, reason=f"invalid geometry (entry {en:.2f}, SL {sl:.2f}, TP {tp:.2f})")
     return dict(out, has_level=True, zone_top=round(zt, 2), zone_bottom=round(zb, 2), entry=round(en, 2),
                 stop=round(sl, 2), target=round(tp, 2), rr=round((tp - en) / (en - sl), 2) if en > sl else None,
                 zone_t_start=piv, t_start=t_start.isoformat(),
                 t_end=(t_start + timedelta(days=7 * LONG_W_BARS)).isoformat(), why=why)
+
+
+def valid_geometry(entry: Any, stop: Any, target: Any) -> bool:
+    """A long plan is drawable only when 0 < SL < entry < TP (2026-11-18 guard, AXTI negative SL)."""
+    try:
+        e, s_, t_ = float(entry), float(stop), float(target)
+    except (TypeError, ValueError):
+        return False
+    return 0 < s_ < e < t_
 
 
 # ---------------- candidate selection ----------------
@@ -622,6 +633,8 @@ def plan(report_rows: Iterable[Dict[str, Any]], drawings: Iterable[Dict[str, Any
     for r in report_rows:
         t = str(r["ticker"]).upper()
         if not all(_truthy(r.get(c)) for c in ("f_dollar_vol", "f_history", "f_no_earnings_14d", "f_technical")):
+            continue
+        if str(r.get("f_not_cash_etf")).strip().lower() in ("false", "0", "no"):   # cash / short-bond ETF (2026-11-16)
             continue
         if str(r.get("tv_source") or "") == "user-lines":
             skip[t] = "his own Fib / horizontal lines (user-lines)"; continue
@@ -772,7 +785,7 @@ def emit_sql(results: List[Dict[str, Any]], obsolete: Dict[str, List[str]],
     for ids in obsolete.values():
         out += [sql_supersede(i) if str(i) in his_ids else sql_mark_obsolete(i) for i in ids]
     for r in results:
-        if not r.get("has_level"):
+        if not r.get("has_level") or not valid_geometry(r.get("entry"), r.get("stop"), r.get("target")):
             continue
         meta = {"rule_version": RULE_VERSION, "why": r["why"]}
         if r["ticker"] in superseded:  # bot drawing that replaced a broken drawing of his

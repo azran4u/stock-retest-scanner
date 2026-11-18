@@ -48,7 +48,7 @@ INDEX_COLS = [
     "f_technical", "tech_trend", "tech_trend_he", "tech_trend_detail", "f_near_zone", "needs_drawing", "f_bot_review", "f_tv_stale", "f_last_week_reversal",
     "last_week_reversal_kind", "hammer_entry", "hammer_sl", "hammer_tp", "hammer_rr", "hammer_calm_weeks",
     "hammer_score", "inst_own_pct", "short_float_pct", "tradingview_url",
-    "f_dollar_vol", "f_history", "f_no_earnings_14d",
+    "f_dollar_vol", "f_history", "f_no_earnings_14d", "f_not_cash_etf", "weekly_atr_pct",
     "f_no_red_vol_week", "red_vol_week_date", "red_vol_body_pct", "red_vol_ratio", "red_vol_detail",
     "red_vol_loud", "red_vol_close", "red_vol_ref", "red_vol_held",
     "f_from_above", "from_above_side", "from_above_date", "from_above_detail",
@@ -86,6 +86,11 @@ def _truthy(v: Any) -> bool:
     return _clean(v) is True or str(v).strip().lower() in ("yes", "true", "1")
 
 
+def _cash_etf(r: Any) -> bool:
+    """f_not_cash_etf explicitly False (cash / money-market / short-term bond ETF, report_filters.CASH_BOND_ETFS)."""
+    return str(r.get("f_not_cash_etf")).strip().lower() in ("false", "0", "no")
+
+
 HAMMER_MUST_HAVES = ("f_dollar_vol", "f_history", "f_no_earnings_14d")
 
 
@@ -120,6 +125,8 @@ def build_index(repo: Path, include_all: bool = False, report: Path | None = Non
         if r["ticker"] in positions:
             badges.append("position")
         has_tv = str(r.get("tv_found")).lower() in ("yes", "true")
+        if _cash_etf(r) and r["ticker"] not in positions:   # hard pre-filter (Eyal 2026-11-16): never a candidate
+            continue
         if not (badges or has_tv or include_all):
             continue
         row = {c: _clean(r.get(c)) for c in INDEX_COLS if c in df.columns}

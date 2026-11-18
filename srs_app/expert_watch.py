@@ -50,6 +50,8 @@ WATCH_MAX_DIST_ATR = 1.0
 #   primary uptrend = f_technical (after his overrides), daily $ volume > $50M = f_dollar_vol (30-day average),
 #   history = f_history (>= 150 weekly bars, ~3 years)
 MUST_HAVE = {"f_technical": "לא במגמת עלייה ראשית", "f_dollar_vol": "מחזור יומי < $50M", "f_history": "היסטוריה < 3 שנים"}
+# hard pre-filter (2026-11-16): out only when explicitly False (older reports have no column)
+CASH_ETF_HE = "תעודת מזומן / אג\"ח קצר"
 WATCH_MIN_RR = 2.0
 WATCH_MAX_RISK_PCT = 10.0
 MAX_RISK_USD = 55.0
@@ -205,6 +207,8 @@ def build(out: Path, rows: List[Dict[str, Any]], revc: Dict[str, Any], asof: Opt
                 gated[t] = "אין שורה בדוח (אין נתוני מגמה / מחזור / היסטוריה)"
                 continue
             miss = [he for k, he in MUST_HAVE.items() if str(r.get(k)).strip().lower() not in ("true", "1", "1.0", "yes")]
+            if str(r.get("f_not_cash_etf")).strip().lower() in ("false", "0", "0.0", "no"):
+                miss.append(CASH_ETF_HE)
             if miss:
                 gated[t] = ", ".join(miss)
                 continue

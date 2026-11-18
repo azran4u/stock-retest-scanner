@@ -619,7 +619,7 @@ deleted; the app draws them dashed grey "שלך · נשבר", and the expert zon
 bottom, SL)` and inserted as the bot plan that counts (`app/data/his_broken.json`, `below_his`, `his_broken` in
 `expert_zones.json`). The existing PASS gates still decide PASS.
 
-## 23. Primary uptrend v4 = Dow structure on weekly swings (Eyal 2026-11-16)
+## 23. Primary uptrend v4 = Dow structure on weekly swings (Eyal 2026-11-16) — superseded by §24 (v5)
 
 `f_technical` (`tech_version = dow-v4-2026-11-16`, `tech_method = dow`, `srs_app/dow_trend.py`) replaces the v3
 EMA / R² rules (kept for comparison in `tech_v3`):
@@ -646,3 +646,75 @@ Validation 2026-11-16 (golden 130 = his 10-09 / calibration cases with EQIX as u
 
 8 weeks fits his calibration marks best (IDCC, LNTH up; BIO, PRU, TROW not up); 10 / 13 weeks agree more with the
 broader golden set but break IDCC. Kept: k = 5, gap = 8 (configurable).
+
+## 24. Primary trend v5 = Dow on ZigZag swings (Eyal 2026-11-16 evening, CRWD / EQIX)
+
+`tech_version = dow-v5-2026-11-16`, `tech_dow_swing = zigzag` (`srs_app/dow_trend.trend_v5`; `pivot` restores §23 v4).
+- **Why:** v4 swings were symmetric K = 5 pivots. In a fast advance no weekly low is below the 5 lows *before* it, so
+  the pullback lows were never swings: CRWD (86 -> 287, Mar-Oct 2026) kept the 2026-02-27 low 85.68 as its "last swing
+  low" -> "LL 100.67 -> 85.68" = sideways. Not the spacing merge - the pivot window.
+- **Swings = standard ZigZag:** alternating highs and lows; a high is confirmed when price falls `tech_dow_rev_atr` =
+  2 weekly ATR(14) (ATR at the reversal bar) from it, a low when price rises 2 ATR from it. The 8-week same-type spacing
+  stays (two highs < 8 weeks apart = one swing, the higher; the low between goes with the dropped high and the lower
+  of the two neighbouring lows is kept, so the list stays alternating).
+- **Tolerance `tech_dow_tol_atr` = 0.25 ATR** (standard "equal highs / lows" and decisive-break filter): a swing is
+  higher / lower than the previous one of its type only by more than 0.25 ATR (else equal: double top / bottom); a
+  weekly CLOSE breaks the last swing low / high only more than 0.25 ATR beyond it (then the lowest low / highest high
+  since is the new swing).
+- **Walk (Dow persistence, judged on the sequence since the last change):** HH + HL -> up, LH + LL -> down; an uptrend
+  stays up until a lower low, a downtrend stays down until a higher high; mixed with no trend in force = sideways.
+- CRWD 2026-11-12: HH 227.50 -> 286.99, HL 85.68 -> 181.24 -> **up**. EQIX: highs 1118.65 / 1103.95 equal within
+  the tolerance (no LH), the 2026-10-23 low 931.20 is a higher low vs 709.79 -> **up** (v4: down).
+
+Validation (golden 130 with EQIX as up; 10-09 negatives LPLA MDLZ REGN AJG AMP CACI CHD ICE LW MTG; calibration marks
+2026-10-26 IDCC / LNTH / MTG up, BIO / PRU / TROW not):
+
+| version | golden | 10-09 negatives not up | marks | EQIX 10-09 | EQIX now | CRWD now | IDCC now |
+|---|---|---|---|---|---|---|---|
+| v4 pivots k5 gap 8 | 98 | 7 (MDLZ AMP CHD up) | 5 (MTG sideways) | up | down | sideways | up |
+| **v5 zigzag 2 ATR, tol 0.25** | **103** | 6 (MDLZ REGN CHD LW up) | 4 (IDCC sideways, BIO up) | up | up | up | down |
+| v5 zigzag 2 ATR, tol 0.5 | 103 | 5 | 4 | sideways | up | up | down |
+| v5 zigzag 1.5 ATR, tol 0.5 | 104 | 5 | 4 | up | sideways | up | sideways |
+| v5 zigzag 2.5 ATR, tol 0.25 | 107 | 7 | 2 (LNTH down) | up | up | up | down |
+| v5 zigzag 3 ATR, tol 0.25 | 106 | 9 | 2 (LNTH down) | up | up | sideways | up |
+
+## 25. Hard pre-filter: no cash / money-market / short-term bond ETFs (Eyal 2026-11-16)
+
+`f_not_cash_etf` (core PASS gate, also excluded from the app list, bot / expert plans, the expert watch list; open
+positions stay visible). Out = `report_filters.CASH_BOND_ETFS` (maintained list: T-bills, ultra-short, short-term
+treasury / corporate / TIPS, floating rate, bank loans, CLO, aggregate bond - ICSH SPTS VGSH FLOT PULS SPSB SRLN BIL
+SGOV SHV SHY USFR TFLO JPST MINT …) OR a fund (`stock_screen.is_fund`) whose weekly ATR(14) is under
+`cash_etf_atr_pct_max` = 1% of its price (generic guard). Neither FinViz (ETFs: sector "Financial", no industry) nor the
+TradingView type cache (`fund` / `etf`) has a fund category, so the list is the category source; the ATR guard catches
+new bond / cash funds (no equity, sector or commodity ETF has a weekly ATR under 1%). `weekly_atr_pct` is a report
+column.
+
+## 26. Expert zone v11 - nearest unbroken support, swing lows, valid trade geometry (Eyal 2026-11-16, NWG / AXTI)
+
+`RULE_VERSION = expert-v11-2026-11-16`.
+- **Swing lows are support too** (`_nearest`): besides broken resistances, a weekly swing low (2 weeks each side,
+  confirmed) whose zone has not broken (same 3% / two-close rules) and whose low is at or below the price. Zone bottom =
+  the low, top = the lowest body bottom of the weeks (from 26 weeks before it) with a low within [low, low + 0.5 ATR],
+  width 0.25-0.5 ATR. TP = the high the pullback into it came from (highest high of the 26 weeks before it, or higher
+  since). The highest valid top among both kinds wins.
+- **Nearest wins over a deep strict zone:** when the strict retest zone is more than 2 ATR (`NEAR_ATR`) under the
+  price and a distinct (> 0.5 ATR higher) unbroken support exists at / below the price, the nearer one is the plan
+  (`kind: nearest`, `deeper_strict` keeps the old levels). Strict zones within 2 ATR stay (his validated cases).
+  NWG 2026-11-13: 11.24-11.49 (4.3 ATR under 15.83, R:R 7.69) -> swing-low zone 15.31-15.56, entry 15.56, SL 14.56,
+  TP 19.21, R:R 3.64.
+- **Trade geometry (AXTI sl -8.23):** when the zone top is under half the price, the trade ATR is scaled to the zone
+  (`A x top / price`, ATR scales with price); a plan with SL <= 0, SL >= entry or TP <= entry gets no R:R (note
+  "invalid geometry").
+
+## 27. Earnings lookup cannot hang the nightly (2026-11-18) + plan geometry guard
+
+- **Stall 2026-11-17 / 18:** the nightly sat 7+ h inside one ticker's earnings lookup (STLD, 750/913) although each
+  lookup was thread-bounded at 150 s: a thread bound cannot interrupt a call that never releases the GIL. Now
+  (`stock_screen.earnings_lookup_many`, `_proc_bounded_call`): each ticker's lookup runs in a forked child process that
+  is KILLED at `EARN_TICKER_TIMEOUT_S` (150 s); the whole pass has a budget `SRS_EARN_BUDGET_S` (2400 s) and a breaker
+  (`SRS_EARN_BREAKER`, 6 timeouts in a row); after either, the rest are cache-only. Tickers that timed out get one
+  retry at the end (<= 60 s) while budget is left. Fallback = the cached `earn_{T}.json` date if it is today or later
+  (even when due for a re-check), else **unknown** (the report notes "earnings unknown"). Summary line in the log.
+- **Plan geometry guard (AXTI sl -8.23):** besides the expert-v11 trade-ATR scaling (§26), every bot plan must have
+  0 < SL < entry < TP (`bot_drawings.valid_geometry`): an invalid plan gets no level and is never synced as a drawing;
+  the expert plan gets no R:R ("invalid geometry"), so it cannot PASS.

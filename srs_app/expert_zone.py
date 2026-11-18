@@ -95,7 +95,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-RULE_VERSION = "expert-v10-2026-11-16"
+RULE_VERSION = "expert-v11-2026-11-16"
 LOOKBACK_W = 156
 BASE_W = 26
 MIN_BASE_GAP = 2
@@ -269,6 +269,23 @@ def _find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None, ceiling: O
         if reason:
             first_reason = first_reason or f"{reason}; latest breakout {W[b]['time']} over {top:.2f}"
             continue
+        # v11 (Eyal 2026-11-16, NWG): the plan is the NEAREST unbroken support. A strict zone deep under the price
+        # (NWG 11.3-11.5 at 15.83, 4.3 ATR) loses to a higher unbroken broken-resistance support at / below the price
+        # when the strict zone is more than NEAR_ATR (2) ATR under the price and that level is distinct from it (top
+        # more than CLUSTER_ATR x A higher). A strict zone within 2 ATR stays (his validated retest zones).
+        nz = _nearest(W, Wall, A, last, n, ceiling)
+        if (nz is not None and last > z["top"] + NEAR_ATR * A and nz["z"]["top"] > z["top"] + CLUSTER_ATR * A
+                and nz["z"]["bottom"] <= last):
+            b2, z2 = nz["b"], nz["z"]
+            res = _result(Wall, W, b2, z2, A, last, z2.get("post_hi") or max(x["high"] for x in Wall[b2:]), daily)
+            res.update(hammers(W, res["top"], res["bottom"], A))
+            res["kind"] = "nearest"
+            res["strict_reason"] = (f"strict zone {z['bottom']:.2f}-{z['top']:.2f} ({(last - z['top']) / A:.1f} ATR "
+                                    f"under the price) replaced by the nearer unbroken support")
+            res["deeper_strict"] = {"top": round(z["top"], 2), "bottom": round(z["bottom"], 2)}
+            res["soft"] = nz["soft"]
+            res["_trend"] = _tr
+            return res
         res = _result(Wall, W, b, z, A, last, post_hi, daily)
         if z.get("fallback"):
             res["fallback"] = z["fallback"]
@@ -280,7 +297,7 @@ def _find(daily: Sequence[Sequence[Any]], asof: Optional[str] = None, ceiling: O
     nz = _nearest(W, Wall, A, last, n, ceiling)
     if nz is not None:
         b, z = nz["b"], nz["z"]
-        post_hi = max(x["high"] for x in Wall[b:])
+        post_hi = z.get("post_hi") or max(x["high"] for x in Wall[b:])
         res = _result(Wall, W, b, z, A, last, post_hi, daily)
         res.update(hammers(W, res["top"], res["bottom"], A))
         res["kind"] = "nearest"
@@ -331,6 +348,45 @@ def _nearest(W, Wall, A, last, n, ceiling=None) -> Optional[Dict[str, Any]]:
         key = (L, b)
         if best is None or key > best[0]:
             best = (key, p, b, body, note, cluster)
+    # v11 (Eyal 2026-11-16, NWG): prior swing LOWS are support too (Murphy / Dow: a previous reaction low is support
+    # until a close breaks it). Candidate = a weekly swing low (SWING_W weeks each side, confirmed); zone bottom = the
+    # low, top = the lowest body bottom of the weeks since BASE_W before it whose low is within [low, low + 0.5 A]
+    # (inner edge), same width sanity; not broken by the same rules; bottom at or below the price; top < ceiling.
+    best_lo = None
+    for p in range(SWING_W, n - SWING_W):
+        Lo = W[p]["low"]
+        if Lo > last:
+            continue
+        if any(W[k]["low"] <= Lo for k in range(p - SWING_W, p + SWING_W + 1) if k != p):
+            continue
+        cl = [k for k in range(max(0, p - BASE_W), n) if Lo <= W[k]["low"] <= Lo + CLUSTER_ATR * A] or [p]
+        top = max(min(min(W[k]["open"], W[k]["close"]) for k in cl), Lo)
+        note = None
+        if top - Lo < MIN_W_ATR * A:
+            top, note = Lo + MIN_W_ATR * A, "widened"
+        elif top - Lo > MAX_W_ATR * A:
+            top, note = Lo + MAX_W_ATR * A, "clamped"
+        if ceiling is not None and top >= ceiling:
+            continue
+        if any(W[k]["close"] < Lo * (1 - BREAK_PCT) for k in range(p + 1, n)) or last < Lo * (1 - BREAK_PCT):
+            continue
+        if any(W[k]["close"] < Lo and W[k + 1]["close"] < Lo for k in range(p + 1, n - 1)):
+            continue
+        key = (top, p)
+        if best_lo is None or key > best_lo[0]:
+            best_lo = (key, p, top, note, cl)
+    if best_lo is not None and (best is None or best_lo[0][0] > best[0][0]):
+        (_, _), p, top, note, cl = best_lo
+        Lo = W[p]["low"]
+        # TP = the high the pullback into this low came from (the pre-pullback high), or a higher one since
+        prior_hi = max(x["high"] for x in W[max(0, p - BASE_W):p + 1])
+        post_hi = max(prior_hi, max(x["high"] for x in Wall[p:]))
+        soft = ["swing-low support (prior reaction low, not a broken resistance)"]
+        if last > top + NEAR_ATR * A:
+            soft.append(f"price {(last - top) / A:.1f} ATR above the zone")
+        z = {"top": top, "bottom": Lo, "pivot": p, "cluster": cl, "base_lo": max(0, p - BASE_W), "width_note": note,
+             "swing_low": True, "post_hi": post_hi}
+        return {"b": p, "z": z, "soft": soft}
     if best is None:
         return None
     (_, _), p, b, body, note, cluster = best
@@ -520,6 +576,12 @@ def _trade(Wall, W, b, top, bot, A, post_hi, base_low) -> Dict[str, Any]:
     hi_i = max(range(b, len(Wall)), key=lambda k: Wall[k]["high"])
     retest_low = min(x["low"] for x in Wall[hi_i:])
     entry = top
+    last = float(Wall[-1]["close"])
+    if last > 0 and top < 0.5 * last:
+        # 2026-11-16 (AXTI sl -8.23): the zone sits > 50% under the price, so today's weekly ATR (18.07 at 41.84)
+        # belongs to another price regime than the zone (top 9.84) and 'entry - 1 ATR' went below zero. ATR scales
+        # with price -> use the same ATR % at the zone: A x top / price.
+        A = A * top / last
     sl = min(retest_low, bot) - 0.1 * A
     st = round_step(top)
     rn = math.floor(sl / st) * st + st                      # the round number just above the structural stop
@@ -533,7 +595,9 @@ def _trade(Wall, W, b, top, bot, A, post_hi, base_low) -> Dict[str, Any]:
         notes.append("risk > 8% (IBD max 7-8%)")
     tp = post_hi
     mm = top + (top - base_low)
-    rr = (tp - entry) / (entry - sl) if entry > sl else None
+    if not (0 < sl < entry) or tp <= entry:
+        notes.append("invalid geometry (SL <= 0, SL >= entry or TP <= entry)")
+    rr = (tp - entry) / (entry - sl) if entry > sl > 0 and tp > entry else None
     return {"entry": round(entry, 2), "sl": round(sl, 2), "tp": round(tp, 2), "rr": round(rr, 2) if rr is not None else None,
             "tp_mm": round(mm, 2), "retest_low": round(retest_low, 2), "risk_pct": round(risk_pct, 1),
             "confirmed": Wall[-1]["close"] > top, "notes": notes}
@@ -573,7 +637,8 @@ def report_universe(report: Path = REPORT) -> Dict[str, Dict[str, Any]]:
                 if not t:
                     continue
                 lab = "up" if tr(r.get("f_technical")) else (r.get("tech_trend") or None)
-                out[t] = {"trend": lab, "liquid": tr(r.get("f_dollar_vol")) and tr(r.get("f_history"))}
+                out[t] = {"trend": lab, "liquid": tr(r.get("f_dollar_vol")) and tr(r.get("f_history"))
+                          and str(r.get("f_not_cash_etf")).strip().lower() not in ("false", "0", "no")}
     except Exception:
         pass
     return out

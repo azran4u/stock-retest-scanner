@@ -367,3 +367,33 @@ def test_v10_strict_zones_unchanged_by_the_nearest_fallback():
     """A strict expert zone (all v9 rules) is still returned as before (kind 'expert')."""
     r = E.find(_fixture("crwd_daily_20261113.json"), asof="2026-11-16", trend="up")
     assert r["kind"] == "expert" and (r["bottom"], r["top"]) == (210.65, 217.5)
+
+
+def test_v11_nwg_nearest_unbroken_support_not_the_deep_zone():
+    """NWG 2026-11-13 (Eyal 2026-11-16): price 15.83, weekly ATR ~1.0; v10 planned 11.24-11.49 (4.3 ATR under the
+    price, R:R 7.7). Every broken-resistance level above it broke in the 2026-03 / 2026-10 dips, but the 2026-10-26
+    swing low 15.31 is unbroken support -> zone 15.31-15.56, entry 15.56, SL 14.56, TP 19.21 (pre-pullback high)."""
+    import json as _j
+    from pathlib import Path as _P
+    from srs_app import expert_zone as _E
+    rows = _j.loads((_P(__file__).parent / "data" / "expert_nwg_candles.json").read_text())["d"]
+    r = _E.find(rows, "2026-11-14", "up")
+    assert r["ok"] and r["kind"] == "nearest"
+    assert (r["bottom"], r["top"]) == (15.31, 15.56)
+    assert r["trade"]["entry"] == 15.56 and r["trade"]["sl"] == 14.56 and r["trade"]["tp"] == 19.21
+    assert (r["price"] - r["top"]) / r["atr_w"] < 2
+
+
+def test_trade_geometry_valid_far_zone_axti():
+    """AXTI (2026-11-16): a zone far under the price got sl -8.23 (entry - today's 18 ATR). The trade ATR is scaled to
+    the zone's price; SL must stay in (0, entry), TP above entry."""
+    import pandas as _pd
+    from pathlib import Path as _P
+    from srs_app import expert_zone as _E
+    a = _pd.read_csv(_P(__file__).parent / "data" / "dow_v5_daily.csv.gz")
+    a = a[a.Ticker == "AXTI"]
+    rows = [[str(r.Date)[:10], r.Open, r.High, r.Low, r.Close, r.Volume] for r in a.itertuples()]
+    r = _E.find(rows, "2026-11-14", "up")
+    assert r["ok"]
+    t = r["trade"]
+    assert 0 < t["sl"] < t["entry"] < t["tp"], t
