@@ -56,6 +56,11 @@ def levels(t: str, z: Dict[str, Any], rule_version: str) -> Optional[Dict[str, A
     if not z or not z.get("ok") or not z.get("trade"):
         return None
     tr = z["trade"]
+    try:  # never draw a plan with SL <= 0, SL >= entry or TP <= entry (AXTI 2026-11-16 sl -8.23; RULES.md 27)
+        if not (0 < float(tr["sl"]) < float(tr["entry"]) < float(tr["tp"])):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
     lw = z.get("last_week") or date.today().isoformat()
     t_start = (_monday(lw) + timedelta(days=7)).isoformat()
     t_end = (_monday(lw) + timedelta(days=7 * (1 + LONG_W_BARS))).isoformat()

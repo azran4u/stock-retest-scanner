@@ -715,6 +715,6 @@ column.
   (`SRS_EARN_BREAKER`, 6 timeouts in a row); after either, the rest are cache-only. Tickers that timed out get one
   retry at the end (<= 60 s) while budget is left. Fallback = the cached `earn_{T}.json` date if it is today or later
   (even when due for a re-check), else **unknown** (the report notes "earnings unknown"). Summary line in the log.
-- **Plan geometry guard (AXTI sl -8.23):** besides the expert-v11 trade-ATR scaling (§26), every bot plan must have
-  0 < SL < entry < TP (`bot_drawings.valid_geometry`): an invalid plan gets no level and is never synced as a drawing;
+- **Plan geometry guard (AXTI sl -8.23):** besides the expert-v11 trade-ATR scaling (§26), every bot and expert drawing plan must have
+  0 < SL < entry < TP (`bot_drawings.valid_geometry`, `expert_drawings.levels`): an invalid plan gets no level and is never synced as a drawing;
   the expert plan gets no R:R ("invalid geometry"), so it cannot PASS.

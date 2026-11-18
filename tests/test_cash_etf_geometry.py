@@ -45,3 +45,14 @@ def test_generic_low_atr_fund_out_stock_kept(monkeypatch):
                                       (10, 9, 9, False), (None, 9, 12, False)])
 def test_valid_geometry(e, s, t, ok):
     assert valid_geometry(e, s, t) is ok
+
+
+def test_expert_drawing_levels_reject_invalid_geometry():
+    from srs_app.expert_drawings import levels
+    z = {"ok": True, "top": 12.0, "bottom": 11.5, "last_week": "2026-11-13",
+         "trade": {"entry": 12.0, "sl": -8.23, "tp": 20.0}}
+    assert levels("AXTI", z, "x") is None
+    z["trade"] = {"entry": 12.0, "sl": 11.0, "tp": 11.9}
+    assert levels("AXTI", z, "x") is None
+    z["trade"] = {"entry": 12.0, "sl": 11.0, "tp": 15.0}
+    assert levels("AXTI", z, "x")["stop"] == 11.0
