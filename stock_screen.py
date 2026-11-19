@@ -1088,13 +1088,19 @@ def _proc_bounded_call(fn, timeout_s: float, *args, **kwargs):
             raise TimeoutError(f"{getattr(fn, '__name__', 'call')} timed out after {timeout_s:.0f}s (killed)")
         kind, val = recv.recv()
     except EOFError:
-        pr.join(5)
-        raise RuntimeError(f"{getattr(fn, '__name__', 'call')}: child exited without an answer (exit {pr.exitcode})")
+        # the child died without answering - 2026-11-18/19 nightlies: SIGSEGV (exit -11) in ~98/908 forked children
+        # (fork of the big multi-threaded screen process + curl/SSL state). Redo it in-process, thread-bounded.
+        crashed = True
+    else:
+        crashed = False
     finally:
         recv.close()
         if pr.is_alive():
             pr.kill()
         pr.join(5)
+    if crashed:
+        pr.join(5)
+        return _bounded_call(fn, timeout_s, *args, **kwargs)
     if kind == "e":
         raise val
     return val

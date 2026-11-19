@@ -65,3 +65,15 @@ def test_lookup_many_budget(tmp_path, monkeypatch):
     out = ss.earnings_lookup_many([f"T{i}" for i in range(20)], TODAY, budget_s=3, per_ticker_s=2, breaker=99)
     assert time.monotonic() - t0 < 12
     assert all(not v["earnings_known"] for v in out.values()) and len(out) == 20
+
+
+def test_proc_bound_child_crash_redone_in_process():
+    """2026-11-19: ~98/908 forked children died with SIGSEGV (exit -11) -> the lookup is redone thread-bounded."""
+    import os, signal
+    parent = os.getpid()
+
+    def f():
+        if os.getpid() != parent:
+            os.kill(os.getpid(), signal.SIGSEGV)
+        return "in-process"
+    assert ss._proc_bounded_call(f, 10) == "in-process"
