@@ -40,7 +40,7 @@ UNIVERSE_CACHE = Path("/workspace/cache/stages_universe.json")
 SEED_CACHE = Path("/workspace/hist_cache.pkl")  # the retest scanner's yfinance cache: reused (read only) to save downloads
 
 # FinViz custom view (v=152): ticker, company, sector, industry, market cap, inst own, avg volume, price, earnings date
-FV_COLS = "1,2,3,4,6,28,63,65,68"
+FV_COLS = "1,2,3,4,6,28,30,63,65,68"
 FV_FILTERS = "sh_price_o10,sh_avgvol_o100"  # price > $10 (hard minimum), avg daily volume > 100K (= 500K / week)
 SCREENS = {ex: f"https://finviz.com/screener/stocks?v=152&f=exch_{code},{FV_FILTERS}&ft=4&o=ticker&c={FV_COLS}"
            for ex, code in (("NYSE", "nyse"), ("NASDAQ", "nasd"))}
@@ -138,6 +138,16 @@ RULES: Dict[str, Any] = {
     "idx_consistent_n": 8,       # 'consistently below' = <= 2 of 10 above; otherwise 'crossing back and forth'
     "idx_top_w": 10,             # stage 2 -> 3: the SMA lost its rise and no new high of the advance for 10 weeks
     "mkt_block_stages": [3, 4],  # rule 3: SPY in stage 3 or 4 -> no new long Buy-Stop (was: only stage 4)  # sector ETF in stage 3 fails (it is neither 'clear stage 2' nor 'late stage 1')
+    # short side (Stan Weinstein short-selling rules, mirror of long Buy-Stop)
+    "sell_stop_buf_pct": 0.5,    # Sell-Stop = base support - 0.5% (min $0.05) -- mirror of buy_stop_buf_pct
+    "sell_stop_min_buf": 0.05,
+    "sell_zone_pct": 10.0,       # don't chase shorts: close / Sell-Stop within 10% below breakdown level ...
+    "max_pct_below_ma": 25.0,    # ... AND within 25% below 30W SMA
+    "short_mkt_allow_stages": [3, 4],     # SPY in stage 3 or 4 permits shorts; stage 1 / stage 2 (incl. 2-weak) block
+    "short_mkt_allow_2weak": False,       # 2-weak still has a rising 30W SMA -> wait for stage 3 or 4
+    "short_sector_allow_stages": [3, 4],  # sector / industry ETF in stage 3 or 4 permits shorts; never clear stage 2
+    "short_float_max_pct": 10.0,          # avoid heavily shorted names (>= 10% short float) when data exists
+    "cash_etf_atr_pct_max": 1.0,          # hard pre-filter: cash / money-market / short-bond ETFs out
     "earn_td": 10,               # no new Buy-Stop when the report session is within the next 10 trading days (Eyal 2026-11-14:
                                  # the report week AND the week before; an after-close report counts on the next session)
     "earn_est_days": 91,         # FinViz has only a PAST date -> next report estimated at +13 weeks ('משוער'), blocks too
@@ -222,8 +232,8 @@ def _fv_page(sess, url: str):
             continue
         g = lambda k: (cols[k][i].get_text(strip=True) if k in cols and len(cols[k]) == len(tk) else "")  # noqa: E731
         out.append({"ticker": t, "company": g("company"), "sector": g("sector"), "industry": g("industry"),
-                    "mcap": _num(g("marketCap")), "inst_own": _num(g("instOwn")), "avg_vol": _num(g("averageVolume")),
-                    "fv_price": _num(g("price")), "earn_raw": g("earningsDate")})
+                    "mcap": _num(g("marketCap")), "inst_own": _num(g("instOwn")), "short_float": _num(g("shortInterestShare")),
+                    "avg_vol": _num(g("averageVolume")), "fv_price": _num(g("price")), "earn_raw": g("earningsDate")})
     return out, total
 
 
@@ -485,6 +495,163 @@ def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optio
             "ath": ov["ath"], "cong": _f(ov["cong"]), "hi2y": _f(ov["hi2y"]), "ov_levels": [_f(x) for x in ov["levels"]]}
 
 
+def _base_count_above(c: np.ndarray, end: int, sup: float) -> int:
+    n = 0
+    for j in range(end, max(-1, end - 105), -1):
+        if c[j] >= sup:
+            n += 1
+        else:
+            break
+    return n
+
+
+def find_breakdown(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Optional[Dict[str, Any]]:
+    """Earliest week b among the last bo_max_weeks_ago+1 completed weeks whose close broke below base support
+    (lowest low of base_window_w weeks before b), the support set >= min_base_w weeks before b with >= min_base_w
+    closes at/above it, close < 30W SMA and SMA flat or declining. Volume on breakdown is reported (not required)."""
+    h, l, c, v = w["High"].values, w["Low"].values, w["Close"].values, w["Volume"].values
+    n = len(w)
+    for b in range(max(R["base_window_w"], n - 1 - R["bo_max_weeks_ago"]), n):
+        seg = l[b - R["base_window_w"]:b]
+        sup = seg.min()
+        bot_i = b - R["base_window_w"] + int(np.argmin(seg))
+        if not (c[b] < sup and c[b] < ma[b]):
+            continue
+        sc, _ = slope_class(ma, b, R)
+        if sc not in ("down", "flat"):
+            continue
+        base = _base_count_above(c, b - 1, sup)
+        if base < R["min_base_w"] or (b - bot_i) < R["min_base_w"]:
+            continue
+        av = v[max(0, b - R["vol_avg_w"]):b].mean() if b > 0 else np.nan
+        rng = h[b] - l[b]
+        hi_base = h[b - min(base, R["base_window_w"]):b].max()
+        return {"week": w.index[b].strftime("%Y-%m-%d"), "idx": b, "weeks_ago": n - 1 - b, "level": float(sup),
+                "base_weeks": base, "base_high": float(hi_base), "stop_high": float(h[bot_i:b].max()),
+                "sup_week": w.index[bot_i].strftime("%Y-%m-%d"),
+                "vol_ratio": float(v[b] / av) if av and av > 0 else None,
+                "close_pos": float((c[b] - l[b]) / rng) if rng > 0 else None}
+    return None
+
+
+def short_base_now(w: pd.DataFrame, R=RULES) -> Optional[Dict[str, Any]]:
+    """Current base above its support (pre-breakdown Sell-Stop setup): support = lowest low of the last
+    base_window_w weeks, set >= min_base_w weeks ago, with >= min_base_w closes at / above it."""
+    h, l, c = w["High"].values, w["Low"].values, w["Close"].values
+    n = len(w)
+    if n < R["base_window_w"]:
+        return None
+    seg = l[n - R["base_window_w"]:]
+    bot_i = n - R["base_window_w"] + int(np.argmin(seg))
+    floor = float(seg.min())
+    cnt = _base_count_above(c, n - 1, floor)
+    bhi = float(h[n - min(max(cnt, 1), R["base_window_w"]):].max())
+    return {"floor": floor, "top": bhi, "stop_high": float(h[bot_i:].max()), "weeks": cnt,
+            "bot_week": w.index[bot_i].strftime("%Y-%m-%d"), "since_bot_w": n - 1 - bot_i,
+            "mature": bool(cnt >= R["min_base_w"] and (n - 1 - bot_i) >= R["min_base_w"])}
+
+
+def sell_stop_price(level: float, R=RULES) -> float:
+    return max(0.01, level - max(level * R["sell_stop_buf_pct"] / 100, R["sell_stop_min_buf"]))
+
+
+def support_scan(w: pd.DataFrame, entry: float, R=RULES) -> Dict[str, Any]:
+    """Downside support targets (mirror of overhead_scan): significant weekly swing lows (sig_pivot_w bars each side)
+    of the last overhead_w weeks below entry - target_min_gap_pct, plus the lowest low of the window when older than
+    sig_pivot_w weeks. Nearest (highest below entry) = first target. None -> 'open_sky' (free fall)."""
+    l, c = w["Low"].values, w["Close"].values
+    n = len(w)
+    lo_i = max(0, n - R["overhead_w"])
+    thr = entry * (1 - R["target_min_gap_pct"] / 100)
+    lv = [float(l[i]) for i in pivots(l, R["sig_pivot_w"], False) if i >= lo_i and 0 < l[i] < thr]
+    old = l[lo_i:max(lo_i, n - R["sig_pivot_w"])]
+    if len(old) and 0 < old.min() < thr:
+        lv.append(float(old.min()))
+    nearest = max(lv) if lv else None
+    cs = sorted((float(x) for x in c[lo_i:] if 0 < x < thr), reverse=True)
+    cong = next((x for x in cs if sum(1 for y in cs if x * (1 - R["cong_band_pct"] / 100) <= y <= x) >= R["cong_min_w"]), None)
+    lv_u: List[float] = []
+    for x in sorted(lv, reverse=True):
+        if not lv_u or x < lv_u[-1] * 0.99:
+            lv_u.append(x)
+    return {"support": nearest, "levels": lv_u[:4], "support_pct": (1 - nearest / entry) * 100 if nearest else None,
+            "open_sky": nearest is None, "atl": bool(l.min() >= thr), "cong": cong, "lo2y": float(l[lo_i:].min())}
+
+
+def stop_above(anchor: float, R=RULES) -> float:
+    """Protective Buy-Stop above an anchor (mirror of stop_below): anchor x (1 + stop_margin_pct) (0.75%); when a round
+    number sits just above the anchor and 'round number + stop_round_tick' is still within stop_margin_max_pct (1%) of
+    the anchor, the stop goes just above that round number instead (whichever is higher)."""
+    stop = anchor * (1 + R["stop_margin_pct"] / 100)
+    st = round_step(anchor)
+    rn = math.ceil(anchor / st) * st
+    if rn <= anchor:
+        rn = anchor
+    alt = rn + R["stop_round_tick"]
+    if stop < alt <= anchor * (1 + R["stop_margin_max_pct"] / 100):
+        stop = alt
+    return stop
+
+
+def short_stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_high: Optional[float], R=RULES) -> Dict[str, Any]:
+    """Initial protective Buy-Stop for shorts (exact mirror of stop_anchors, Eyal 2026-11-16):
+    Anchor A = 30W SMA; Anchor B = last unbroken rally high of the current top/base (if exceeded later, that newer
+    higher high). Stop above the HIGHER of the two (stop_above):
+      B <= SMA -> above SMA ('ma');  B > SMA -> above B ('high').
+    'Too far': B > SMA, stop > max_stop_pct (10%) above entry and SMA declining -> above the most recent unbroken LOWER
+    high (weekly pivot, pivot_w bars each side) formed after B, above max(SMA, entry) and below B ('lh'), if any."""
+    h = w["High"].values
+    n = len(w)
+    b, bi = None, None
+    if base_high is not None and base_high > entry:
+        lo_i = max(0, n - 105)
+        hits = [i for i in range(lo_i, n) if abs(h[i] - base_high) <= max(0.005, base_high * 1e-5)]
+        bi = hits[-1] if hits else None
+        b = float(base_high)
+        if bi is not None and bi < n - 1 and h[bi + 1:].max() > b:
+            bi = bi + 1 + int(np.argmax(h[bi + 1:])); b = float(h[bi])
+    if b is None or b <= ma_now:
+        return {"stop": stop_above(ma_now, R), "basis": "ma", "anchor": ma_now, "b": b, "lh": None}
+    stop = stop_above(b, R)
+    out = {"stop": stop, "basis": "high", "anchor": b, "b": b, "lh": None}
+    ma = w["Close"].rolling(R["ma_weeks"]).mean().values
+    sc, _ = slope_class(ma, n - 1, R)
+    if (stop - entry) / entry * 100 > R["max_stop_pct"] and sc == "down" and bi is not None:
+        lhs = [i for i in pivots(h, R["pivot_w"], True)
+               if i > bi and max(ma_now, entry) < h[i] < b and (i == n - 1 or h[i] >= h[i + 1:].max())]
+        if lhs:
+            hv = float(h[lhs[-1]])
+            out.update(stop=stop_above(hv, R), basis="lh", anchor=hv, lh=hv)
+    return out
+
+
+def short_trade_levels(w: pd.DataFrame, ma_now: float, entry: float, support: Optional[float], base_high: Optional[float],
+                       R=RULES) -> Dict[str, Any]:
+    """Short trade plan: Sell-Stop entry, protective Buy-Stop above higher of (30W SMA, base rally high), target =
+    nearest significant support below (last 2 years); none = open sky -> entry - min_rr x risk (if > 0).
+    Enforces 0 < target < entry < stop."""
+    sa = short_stop_anchors(w, ma_now, entry, base_high, R)
+    stop, basis = sa["stop"], sa["basis"]
+    swing_high = sa["anchor"] if basis != "ma" else sa["b"]
+    sup = support_scan(w, entry, R)
+    risk = stop - entry
+    target, tsrc = (sup["support"], "support") if sup["support"] else (None, None)
+    if target is None and risk > 0:
+        t_sky = entry - R["min_rr"] * risk
+        if t_sky > 0:
+            target, tsrc = t_sky, "open_sky"
+    rr = (entry - target) / risk if (target is not None and risk > 0 and 0 < target < entry < stop) else None
+    shares = int(R["risk_usd"] // risk) if risk > 0 else None
+    stop_pct = risk / entry * 100 if entry else None
+    return {"entry": _f(entry), "stop": _f(stop), "stop_basis": basis, "swing_high": _f(swing_high),
+            "anchor_b": _f(sa["b"]), "stop_anchor": _f(sa["anchor"]), "target": _f(target), "target_src": tsrc,
+            "risk_pct": _f(stop_pct, 1), "stop_wide": bool(stop_pct is not None and stop_pct > R["max_stop_pct"]),
+            "rr": _f(rr), "shares": shares, "pos_usd": _f(shares * entry, 0) if shares else None,
+            "support": _f(sup["support"]), "support_pct": _f(sup["support_pct"], 1), "open_sky": sup["open_sky"],
+            "atl": sup["atl"], "cong": _f(sup["cong"]), "lo2y": _f(sup["lo2y"]),
+            "sup_levels": [_f(x) for x in sup["levels"]]}
+
+
 def earnings_live_week(earn: Optional[str], timing: Optional[str], today: date) -> Tuple[bool, Optional[str], str]:
     """Does the report fall in the week a Buy-Stop placed now would be live? Live week = the Mon-Fri trading week of the
     next session after today (run on Saturday -> next week). An after-close ('a') report counts on the next session."""
@@ -540,15 +707,15 @@ def earnings_info(fv_date: Optional[str], timing: Optional[str], cache_date: Opt
     return out
 
 
-def earn_check(ei: Dict[str, Any], R=RULES) -> Dict[str, Any]:
-    """Not in a trade: no new Buy-Stop while the report session is within the next earn_td sessions (blocks on an
-    estimated date too, labelled). Unknown date -> ok None (can't confirm)."""
+def earn_check(ei: Dict[str, Any], R=RULES, order_label: str = "Buy-Stop") -> Dict[str, Any]:
+    """Not in a trade: no new Buy-Stop / Sell-Stop while the report session is within the next earn_td sessions (blocks
+    on an estimated date too, labelled). Unknown date -> ok None (can't confirm)."""
     if not ei["next"]:
-        return {"k": "earn", "ok": None, "he": "תאריך הדוח הבא לא ידוע — לבדוק לפני הצבת Buy-Stop"}
+        return {"k": "earn", "ok": None, "he": f"תאריך הדוח הבא לא ידוע — לבדוק לפני הצבת {order_label}"}
     lab = " (משוער: הדוח האחרון + 13 ש׳)" if ei["est"] else ""
     when = f"{ei['next']}{' אחרי הסגירה' if ei['timing'] == 'a' else ' לפני הפתיחה' if ei['timing'] == 'b' else ''}{lab}"
     if ei["td"] <= R["earn_td"]:
-        return {"k": "earn", "ok": False, "he": f"דוח בעוד {ei['td']} ימי מסחר – לא להציב Buy-Stop (דוח {when})"}
+        return {"k": "earn", "ok": False, "he": f"דוח בעוד {ei['td']} ימי מסחר – לא להציב {order_label} (דוח {when})"}
     return {"k": "earn", "ok": True, "he": f"אין דוח ב-{R['earn_td']} ימי המסחר הקרובים (דוח בעוד {ei['td']} ימ״ס: {when})"}
 
 
@@ -599,6 +766,50 @@ def post_earn_check(ei: Dict[str, Any], pg: Optional[Dict[str, Any]], close: flo
     return {"k": "post", "ok": True, "info": True, "he": f"דוח עבר ({ei['last']}, לפני {ei['last_ago']} ימ״ס) ללא גאפ מעל ההתנגדות"}
 
 
+def post_earn_gap_down(d: Optional[pd.DataFrame], w: pd.DataFrame, last_eff: str, level: float, R=RULES) -> Dict[str, Any]:
+    """Mirror of post_earn_gap for shorts: gap-down below support on high volume = don't chase; wait for >= mini_base_d
+    sessions closing below the broken support."""
+    le = pd.Timestamp(last_eff)
+    if d is not None and len(d) and (d.index >= le).any() and (d.index < le).any():
+        i = int(np.argmax(d.index >= le))
+        o, c, vol = float(d["Open"].iloc[i]), float(d["Close"].iloc[i]), float(d["Volume"].iloc[i])
+        pc = float(d["Close"].iloc[i - 1])
+        av = float(d["Volume"].iloc[max(0, i - R["gap_vol_avg_d"]):i].mean() or 0)
+        gap = bool(o <= pc * (1 - R["gap_min_pct"] / 100) and c < level and pc >= level and av > 0 and vol >= R["gap_vol_mult"] * av)
+        after = d.iloc[i + 1:]
+        hold = bool(gap and len(after) >= R["mini_base_d"] and float(after["Close"].max()) <= level)
+        failed = bool(gap and len(after) and float(after["Close"].iloc[-1]) > level)
+        return {"src": "daily", "gap": gap, "gap_pct": _f((o / pc - 1) * 100, 1), "vol_x": _f(vol / av, 1) if av else None,
+                "days_after": int(len(after)), "hold": hold, "failed": failed,
+                "mini_hi": _f(float(after["High"].max())) if len(after) else None,
+                "mini_lo": _f(float(after["Low"].min())) if len(after) else None}
+    j = int(np.argmax(w.index >= le)) if (w.index >= le).any() else None
+    if j is None or j == 0:
+        return {"src": "none", "gap": False, "hold": False, "failed": False, "days_after": 0}
+    o, c, pc = float(w["Open"].iloc[j]), float(w["Close"].iloc[j]), float(w["Close"].iloc[j - 1])
+    gap = bool(o <= pc * (1 - R["gap_min_pct"] / 100) and c < level and pc >= level)
+    after = w.iloc[j + 1:]
+    return {"src": "weekly", "gap": gap, "gap_pct": _f((o / pc - 1) * 100, 1), "days_after": int(len(after)) * 5,
+            "hold": bool(gap and len(after) >= 1 and float(after["Close"].max()) <= level),
+            "failed": bool(gap and len(after) and float(after["Close"].iloc[-1]) > level)}
+
+
+def post_earn_short_check(ei: Dict[str, Any], pg: Optional[Dict[str, Any]], close: float, level: float, R=RULES) -> Optional[Dict[str, Any]]:
+    if ei["last_ago"] is None or ei["last_ago"] > R["post_earn_td"] or pg is None:
+        return None
+    if pg["gap"]:
+        if pg["hold"]:
+            return {"k": "post", "ok": True, "he": f"גאפ מטה אחרי דוח ({pg['gap_pct']:+}%) החזיק מתחת לרמה ${level:g} ובנה בסיס קטן "
+                                                   f"({pg['days_after']} ימים, ${pg.get('mini_lo')}–${pg.get('mini_hi')}) — מועמדת שוב לשורט"}
+        if pg["failed"]:
+            return {"k": "post", "ok": False, "he": f"גאפ מטה אחרי דוח ({pg['gap_pct']:+}%) נכשל — חזרה מעל הרמה ${level:g}, לא לשורט"}
+        return {"k": "post", "ok": False, "he": f"גאפ מטה אחרי דוח – לא לרדוף, להמתין להחזקה מתחת לרמה (גאפ {pg['gap_pct']:+}%"
+                                                f"{', מחזור ' + str(pg['vol_x']) + 'x' if pg.get('vol_x') else ''}; {pg['days_after']}/{R['mini_base_d']} ימים מתחת ל-${level:g})"}
+    if close > level and (close / level - 1) * 100 <= R["pre_bo_pct"]:
+        return {"k": "post", "ok": True, "he": f"דוח עבר ({ei['last']}) – להחזיר Sell-Stop מתחת ל-${level:g}"}
+    return {"k": "post", "ok": True, "info": True, "he": f"דוח עבר ({ei['last']}, לפני {ei['last_ago']} ימ״ס) ללא גאפ מטה מתחת לתמיכה"}
+
+
 def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
     """Sector / industry ETF gate (Eyal 2026-11-14): never stage 4, and at least one of
     (1) 'שלב 2 מובהק' = stage 2 (broke above its range), close above a RISING 30W SMA;
@@ -618,6 +829,27 @@ def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
         return {"ok": True, "case": "1late", "he": "סוף שלב 1 – התעוררות" if e["stage"] != 2 else "שלב 2 – מעל ממוצע שטוח (התעוררות)"}
     why = "מתחת ל-30W SMA" if not above else "ה-30W SMA עדיין יורד"
     return {"ok": False, "case": "no", "he": f"לא עומד: {why}"}
+
+
+def short_sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
+    """Short-side sector / industry ETF gate: stage 3 or 4, never stage 1 or clear stage 2 (2-weak also fails while
+    30W SMA is still rising). Stage 4 below SMA passes; stage 3 passes when below SMA or SMA not rising."""
+    if not e:
+        return {"ok": None, "case": None, "he": "לא ידוע"}
+    above = e["close"] > e["ma30"]
+    if e["stage"] == 2:
+        msg = "שלב 2 (2-weak, הממוצע עדיין עולה) – לא לשורט" if e.get("sub") == "2-weak" else "שלב 2 – לא לשורט"
+        return {"ok": False, "case": "2", "he": msg}
+    if e["stage"] == 1:
+        return {"ok": False, "case": "1", "he": "שלב 1 (בסיס) – לא בשלב 3 או 4"}
+    if e["stage"] == 4 and not above and e["slope_cls"] == "down":
+        return {"ok": True, "case": "4", "he": "שלב 4 מובהק"}
+    if e["stage"] == 4 and not above:
+        return {"ok": True, "case": "4", "he": "שלב 4 (מתחת לממוצע)"}
+    if e["stage"] == 3 and (not above or e["slope_cls"] != "up"):
+        return {"ok": True, "case": "3", "he": "שלב 3 (פסגה / הפצה)"}
+    why = "מעל 30W SMA" if above else "ה-30W SMA עדיין עולה"
+    return {"ok": False, "case": "no", "he": f"לא עומד לשורט: {why}"}
 
 
 def etf_gate(industry: Optional[str], sector: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -773,16 +1005,26 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         bo["vol_ok"] = bool(bo["vol_ratio"] is not None and bo["vol_ratio"] >= R["vol_mult"])
         bo["pct_above"] = _f((c[i] / bo["level"] - 1) * 100, 1)
         bo_ok = bo["holding"] and bo["vol_ok"]
+    bd = find_breakdown(w, ma, R)
+    bd_ok = None
+    if bd:
+        bd["holding"] = bool(c[i] <= bd["level"] and not above)
+        bd["vol_ok"] = bool(bd["vol_ratio"] is not None and bd["vol_ratio"] >= R["vol_mult"])
+        bd["pct_below"] = _f((1 - c[i] / bd["level"]) * 100, 1)
+        bd_ok = bd["holding"]  # Weinstein: breakdown volume is nice, not required for shorts
 
     sp = stage_path(w, ma, R)
     stage = sp["stage"] or (2 if sc == "up" else 4 if sc == "down" else 1 if prior == "down" else 3)
     if bo_ok and stage != 2:
         bo_ok = False  # broke a 26-week high but is still inside the bigger base range -> not a stage-2 breakout yet
         bo["in_range"] = True
+    if bd_ok and stage != 4:
+        bd_ok = False  # broke a 26-week low but is still inside the bigger stage-3 range -> not stage 4 yet
+        bd["in_range"] = True
     if stage == 2:
         sub = "2A" if bo_ok else ("2-ext" if (c[i] / ma[i] - 1) * 100 > R["extended_pct"] else "2" if above else "2-weak")
     elif stage == 4:
-        sub = "4" if not above else "4-late"
+        sub = "4A" if bd_ok else ("4-ext" if (1 - c[i] / ma[i]) * 100 > R["extended_pct"] else "4" if not above else "4-late")
     elif stage == 1:
         sub = "1B" if sp["since_w"] >= R["min_base_w"] else "1A"
     else:
@@ -814,7 +1056,7 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         "slope": _f(slope), "slope_cls": sc, "pct_ma": _f((c[i] / ma[i] - 1) * 100, 1), "rs": _f(rs_now, 1),
         "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl, "prior": prior, "flat_w": flat_run,
         "crosses13": crosses13, "hi52": _f(hi52), "pct_hi52": _f((c[i] / hi52 - 1) * 100, 1),
-        "at_hi52": bool(c[i] >= hi52 * 0.97), "weeks": n, "bo": None,
+        "at_hi52": bool(c[i] >= hi52 * 0.97), "weeks": n, "bo": None, "bd": None,
         "range": {"ceil": _f(sp["ceil"]), "floor": _f(sp["floor"]), "since_w": sp["since_w"],
                   "since": w.index[sp["start"]].strftime("%Y-%m-%d") if sp["stage"] else None},
     }
@@ -854,6 +1096,38 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         # don't chase: price (or the Buy-Stop) too far above the breakout level / the 30W SMA
         far = max(c[i], p["entry"])
         p["chase"] = bool((far / lvl - 1) * 100 > R["buy_zone_pct"] or (far / ma[i] - 1) * 100 > R["max_pct_above_ma"])
+    # short trade plan (mirror): Sell-Stop slightly below base support -- 4A = fresh breakdown; stage 3 / stage 4
+    # continuation base = order waits below the floor.
+    if bd:
+        out["bd"] = {k2: (_f(v2) if isinstance(v2, float) else v2) for k2, v2 in bd.items() if k2 != "idx"}
+    if bd_ok:
+        sp_s = short_trade_levels(w, ma[i], sell_stop_price(bd["level"], R), bd["level"], bd.get("stop_high", bd["base_high"]), R)
+        sp_s["kind"] = "breakdown"
+        out["short_plan"] = sp_s
+    else:
+        sbn = None
+        if stage == 3:
+            sbn = {"floor": sp["floor"], "top": sp["ceil"], "weeks": sp["since_w"], "since_bot_w": sp["since_w"],
+                   "bot_week": out["range"]["since"], "mature": bool(sp["since_w"] >= R["min_base_w"])}
+        elif stage == 4 and sub != "4-ext" and sc != "up":
+            sbn = short_base_now(w, R)
+            if sbn and not sbn["mature"]:
+                sbn = None
+        if sbn:
+            out["short_base"] = {"floor": _f(sbn["floor"]), "top": _f(sbn["top"]), "weeks": sbn["weeks"],
+                                 "since_bot_w": sbn["since_bot_w"], "bot_week": sbn["bot_week"],
+                                 "mature": sbn["mature"], "dist_pct": _f((c[i] / sbn["floor"] - 1) * 100, 1)}
+            sp_s = short_trade_levels(w, ma[i], sell_stop_price(sbn["floor"], R), sbn["floor"], sbn.get("stop_high", sbn["top"]), R)
+            sp_s["kind"] = "trigger" if stage == 3 else "continuation"
+            out["short_plan"] = sp_s
+    if out.get("short_plan"):
+        p = out["short_plan"]
+        lvl = bd["level"] if bd_ok else out["short_base"]["floor"]
+        p["level"] = _f(lvl)
+        p["close_vs_level"] = _f((c[i] / lvl - 1) * 100, 1)
+        p["entry_vs_ma"] = _f((p["entry"] / ma[i] - 1) * 100, 1)
+        far = min(c[i], p["entry"])
+        p["chase"] = bool((1 - far / lvl) * 100 > R["sell_zone_pct"] or (1 - far / ma[i]) * 100 > R["max_pct_below_ma"])
     return out
 
 
@@ -1059,6 +1333,40 @@ def top_down(mkt: Optional[Dict[str, Any]], sec: Optional[Dict[str, Any]], R=RUL
     return "wait", "להמתין — הסקטור לא עומד בכלל"
 
 
+def short_market_gate(spy: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
+    """Short market gate: SPY in stage 3 or 4 permits shorts; stage 1 and stage 2 (including 2-weak, where 30W SMA is
+    still rising) block new Sell-Stops unless short_mkt_allow_2weak."""
+    if not spy:
+        return {"ok": None, "he": "שוק לשורט (SPY): לא ידוע"}
+    s, sub = spy["stage"], spy.get("sub")
+    if s in R["short_mkt_allow_stages"]:
+        return {"ok": True, "he": f"שוק לשורט (SPY) בשלב {s} — פתוח ל-Sell-Stop ({spy.get('idx', {}).get('td_he', '')})"}
+    if sub == "2-weak":
+        if R.get("short_mkt_allow_2weak"):
+            return {"ok": True, "he": "שוק לשורט (SPY): שלב 2 בסיכון (2-weak) — זהירות"}
+        return {"ok": False, "he": "שוק לשורט (SPY): שלב 2 בסיכון (2-weak — מתחת לממוצע ונשבר שפל, אך 30W SMA עדיין עולה) — ממתינים לשלב 3/4"}
+    return {"ok": False, "he": f"שוק לשורט (SPY) בשלב {s} — לא בשלב 3/4, אין Sell-Stop חדש"}
+
+
+def short_top_down(mkt: Optional[Dict[str, Any]], sec: Optional[Dict[str, Any]], R=RULES) -> Tuple[str, str]:
+    """Top-down label per sector for shorts."""
+    ms = (mkt or {}).get("stage")
+    if ms not in R["short_mkt_allow_stages"]:
+        return "mkt_off", f"שוק בשלב {ms} — אין Sell-Stop חדש"
+    if not sec:
+        return "na", "לא ידוע"
+    s, ok = sec["stage"], sec.get("short_sec_ok")
+    if s == 2:
+        return "avoid", "להימנע משורט (שלב 2)"
+    if s == 1:
+        return "wait", "שלב 1 (בסיס) — להמתין"
+    if ok and s == 4:
+        return "full", "שלב 4 — הקצאה מלאה לשורט"
+    if ok and s == 3:
+        return "early", "שלב 3 (פסגה) — מועמד לשבירה (Sell-Stop)"
+    return "wait", "להמתין — הסקטור לא עומד לשורט"
+
+
 def write_candles(t: str, w: pd.DataFrame, R=RULES) -> None:
     """Weekly OHLCV of the last candle_weeks for the big chart (app/data/stages_candles/T.json), written only on change."""
     wc = w.iloc[-R["candle_weeks"]:]
@@ -1112,6 +1420,52 @@ def liquidity_ok(dv_m: Optional[float], R=RULES) -> bool:
     return (dv_m or 0) >= R["min_dollar_vol_m"]
 
 
+def cash_etf_ok(ticker: str, w: Optional[pd.DataFrame] = None, close: Optional[float] = None, R=RULES) -> bool:
+    """Hard pre-filter (same rule as report_filters.f_not_cash_etf): exclude cash / money-market / short-bond ETFs
+    and any fund whose weekly ATR(14) is < cash_etf_atr_pct_max % of price."""
+    try:
+        import report_filters as rf
+        import stock_screen as ss
+        cash_set = rf.CASH_BOND_ETFS
+        is_fund = ss.is_fund(ticker)
+    except Exception:
+        cash_set = frozenset()
+        is_fund = False
+    t = ticker.upper()
+    if t in cash_set:
+        return False
+    if is_fund and w is not None and len(w) >= 15:
+        c = close if close is not None else float(w["Close"].iloc[-1])
+        aw = weekly_atr(w)
+        if aw is not None and c > 0 and (aw / c) * 100.0 < float(R.get("cash_etf_atr_pct_max", 1.0)):
+            return False
+    return True
+
+
+def _short_float_fallback() -> Dict[str, float]:
+    """Load cached short float percentages from fv_ownership.json and ownership_quote.json as offline fallback."""
+    out: Dict[str, float] = {}
+    for path, is_frac in ((Path("/workspace/cache/ownership_quote.json"), False),
+                          (Path("/workspace/cache/fv_ownership.json"), True)):
+        try:
+            raw = json.loads(path.read_text())
+        except Exception:
+            continue
+        items = raw.get("tickers", {}) if is_frac else raw
+        for tk, rec in items.items():
+            if not isinstance(rec, dict):
+                continue
+            v = rec.get("short_float") if is_frac else rec.get("short_float_pct")
+            if v is not None:
+                try:
+                    f = float(v) * (100.0 if is_frac else 1.0)
+                    if not math.isnan(f):
+                        out[str(tk).upper()] = round(f, 2)
+                except (TypeError, ValueError):
+                    pass
+    return out
+
+
 def prefilter(u: Dict[str, Any], weeks: int, close: float, dollar_vol_m: Optional[float], R=RULES) -> List[Dict[str, Any]]:
     inst = u.get("inst_own")
     small_bio = (u.get("industry") == "Biotechnology") and (u.get("mcap") or 0) < R["biotech_cap_b"] * 1e9
@@ -1150,13 +1504,20 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             etf_out[e].update(sec_ok=ss_["ok"], sec_case=ss_["case"], sec_he=ss_["he"], range=r.get("range"),
                               base=None, bo=None, weeks=r.get("weeks"), atr_w=_f(weekly_atr(weekly(hm[e], last)), 2))
     for e in etf_out:  # rule 3 (top-down) label per sector / market
+        ss_short = short_sector_status(etf_out[e], R)
+        etf_out[e].update(short_sec_ok=ss_short["ok"], short_sec_case=ss_short["case"], short_sec_he=ss_short["he"])
         tk, the = top_down(etf_out.get("SPY"), etf_out[e], R) if e not in MARKET else (etf_out[e]["idx"]["td"], etf_out[e]["idx"]["td_he"])
-        etf_out[e].update(td=tk, td_he=the)
+        stk, sthe = short_top_down(etf_out.get("SPY"), etf_out[e], R) if e not in MARKET else (etf_out[e]["idx"]["td"], etf_out[e]["idx"]["td_he"])
+        etf_out[e].update(td=tk, td_he=the, short_td=stk, short_td_he=sthe)
     strong = sorted([e for e in SECTOR_ETF.values() if e in etf_out and etf_out[e]["stage"] == 2 and (etf_out[e]["rs"] or -99) > 0],
                     key=lambda e: -(etf_out[e]["rs"] or 0))[:3]
+    weak_sec = sorted([e for e in SECTOR_ETF.values() if e in etf_out and etf_out[e]["stage"] in (3, 4) and (etf_out[e]["rs"] or 99) < 0],
+                      key=lambda e: (etf_out[e]["rs"] or 0))[:3]
     mg = market_gate(etf_out.get("SPY"), R)
+    short_mg = short_market_gate(etf_out.get("SPY"), R)
+    sf_fallback = _short_float_fallback()
 
-    rows, sparks, skipped, short_t, thin_t = [], {}, {"no_history": 0, "short_history": 0, "low_volume": 0}, [], []
+    rows, sparks, skipped, short_t, thin_t = [], {}, {"no_history": 0, "short_history": 0, "low_volume": 0, "cash_etf": 0}, [], []
     OUT_CANDLES.mkdir(parents=True, exist_ok=True)
     for t in tickers:
         u = U[t]
@@ -1174,6 +1535,9 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         if not liquidity_ok(dv, R):  # Eyal 2026-11-16 (VBNK): < $50M avg daily $vol -> not classified / listed
             skipped["low_volume"] += 1
             thin_t.append(t)
+            continue
+        if not cash_etf_ok(t, w, float(w["Close"].iloc[-1]), R):
+            skipped["cash_etf"] += 1
             continue
         r = classify(w, bw, R)
         if r is None:
@@ -1238,20 +1602,81 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                 ]
         # 'info' checks (SL width, Eyal 2026-11-14 'don't disqualify for a wide stop') are shown but never gate
         bs = entry_pass(entry, pre)
+        sf_val = u.get("short_float") if u.get("short_float") is not None else sf_fallback.get(t)
+        short_entry = []
+        if r.get("short_plan"):
+            sp = r["short_plan"]
+            skind = sp["kind"]
+            srs_ok = r["checks"][3]["ok"] if r["stage"] == 4 else (r["rs"] is not None and r["rs"] < 0 and r["rs_up"] is False)
+            sup_he = (f"שמיים פתוחים מטה: אין תמיכה משמעותית ב-2 השנים האחרונות{' (שפל תקופה)' if sp['atl'] else ''} — יעד = כניסה − {R['min_rr']:g}×סיכון"
+                      if sp["open_sky"] else f"תמיכה קרובה מטה ${sp['support']} (-{sp['support_pct']}% מהכניסה, שפל סווינג משמעותי ב-2 השנים)")
+            sf_ok = True if sf_val is None else (sf_val < R["short_float_max_pct"])
+            sf_he = (f"שורט פלואט: לא ידוע (לא פוסל)" if sf_val is None
+                     else f"שורט פלואט < {R['short_float_max_pct']:g}% ({sf_val:.1f}% — הימנעות משורט סקוויז)")
+            short_entry = [
+                {"k": "mkt", "ok": short_mg["ok"], "he": short_mg["he"]},
+                {"k": "sector", "ok": None if not e else e["short_sec_ok"],
+                 "he": (f"{'ענף' if ind_etf else 'סקטור'} {etf or '?'} בשלב 3 או 4 (לא שלב 2)"
+                        + (f" — {e['short_sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}, מבנה {e['idx']['struct']}; RS {e['rs']} מידע בלבד) · {e.get('short_td_he', '')}" if e else "")
+                        + (f" · סקטור {sec_etf} שלב {etf_out[sec_etf]['stage']} (מידע)" if ind_etf and sec_etf and sec_etf in etf_out else ""))},
+                {"k": "rs", "ok": srs_ok, "he": "Mansfield RS < 0 ויורד"},
+                {"k": "chase", "ok": not sp["chase"],
+                 "he": f"לא רודפים: עד {R['sell_zone_pct']:g}% מתחת לרמת השבירה ועד {R['max_pct_below_ma']:g}% מתחת ל-30W SMA "
+                       f"(סגירה {sp['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Sell-Stop {sp['entry_vs_ma']:+}% מהממוצע)"
+                       + (" — רחוקה מדי / אל תרדוף" if sp["chase"] else "")},
+                {"k": "sf", "ok": sf_ok, **({"info": True} if sf_val is None else {}), "he": sf_he},
+                {"k": "stop", "ok": not sp["stop_wide"], "info": True,
+                 "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מעל הכניסה ({sp['risk_pct']}%, מעל { {'high': 'שיא הפסגה', 'lh': 'שיא יורד (שיא הפסגה רחוק מדי)'}.get(sp['stop_basis'], '30W SMA') })"
+                       + (" — SL רחב מדי (מעט מניות)" if sp["stop_wide"] else "")},
+                {"k": "air", "ok": True if sp["open_sky"] else (None if sp["rr"] is None else sp["rr"] >= R["min_rr"]), "he": sup_he},
+                {"k": "rr", "ok": None if sp["rr"] is None else sp["rr"] >= R["min_rr"],
+                 "he": f"R:R ≥ {R['min_rr']:g} מה-Sell-Stop ליעד הראשון (1:{sp['rr']})"},
+                earn_check(ei, R, "Sell-Stop"),
+            ]
+            pg_s = None
+            if ei["last_ago"] is not None and ei["last_ago"] <= R["post_earn_td"]:
+                pg_s = post_earn_gap_down(d, w, ei["last_eff"], sp["level"], R)
+            pc_s = post_earn_short_check(ei, pg_s, r["close"], sp["level"], R)
+            if pc_s:
+                short_entry.append(pc_s)
+            if skind == "breakdown":
+                bd = r["bd"]
+                short_entry[2:2] = [
+                    {"k": "vol", "ok": bd["vol_ok"], "info": True,
+                     "he": f"מידע בלבד (לא חובה בשורט): מחזור שבוע השבירה {bd['vol_ratio']}x ממוצע 10 ש׳ (רצוי ≥ {R['vol_mult']:g}x)"},
+                    {"k": "close", "ok": None if bd["close_pos"] is None else bd["close_pos"] <= (1 - R["strong_close"]),
+                     "he": "סגירה חלשה: נר השבירה נסגר ב-25% התחתונים של הטווח"},
+                ]
+            else:
+                sbase = r["short_base"]
+                short_entry[2:2] = [
+                    {"k": "base", "ok": sbase["mature"],
+                     "he": f"פסגה / בסיס בוגר: תמיכה מלפני {sbase['since_bot_w']} ש׳, {sbase['weeks']} סגירות מעליה (≥{R['min_base_w']})"},
+                    {"k": "near", "ok": 0 <= (sbase["dist_pct"] or 0) <= R["pre_bo_pct"],
+                     "he": f"קרובה לתמיכה: עד {R['pre_bo_pct']:g}% מעל הרצפה ({sbase['dist_pct']}%)"},
+                    {"k": "ma_ok", "ok": r["close"] < r["ma30"] and r["slope_cls"] != "up",
+                     "he": f"המחיר מתחת ל-30W SMA שאינו עולה (שיפוע {r['slope_cls']})"},
+                ]
+        ss_flag = entry_pass(short_entry, pre)
         rows.append({
             "t": t, "n": u.get("company"), "ex": u.get("exchange"), "sec": u.get("sector"), "ind": u.get("industry"),
             "etf": etf, "etf_stage": e["stage"] if e else None, "etf_rs": e["rs"] if e else None,
             "etf_td": e.get("td") if e else None, "etf_td_he": e.get("td_he") if e else None,
+            "short_etf_td": e.get("short_td") if e else None, "short_etf_td_he": e.get("short_td_he") if e else None,
             "ind_etf": ind_etf, "sec_etf": sec_etf,
             "sec_etf_stage": etf_out[sec_etf]["stage"] if sec_etf and sec_etf in etf_out else None,
             "mcap_b": _f((u.get("mcap") or 0) / 1e9, 1) if u.get("mcap") else None, "inst": u.get("inst_own"),
+            "short_float": _f(sf_val, 1) if sf_val is not None else None,
             "dv_m": _f(dv, 1), "atr_w": _f(weekly_atr(w), 2), "earn": earn, "earn_td": td, **r, "pre": [{"k": x["k"], "ok": x["ok"]} for x in pre], "pre_ok": all(x["ok"] is not False for x in pre),
             "earn_eff": ei["eff"], "earn_timing": timing, "earn_live_week": in_live, "earn_est": ei["est"],
             "earn_last": ei["last"], "earn_last_ago": ei["last_ago"],
             "earn_block": bool(earn and td is not None and td <= R["earn_td"]),
             "post_earn": next((x["he"] for x in entry if x["k"] == "post"), None),
             "post_gap": bool(next((x for x in entry if x["k"] == "post" and x["ok"] is False), None)),
+            "post_earn_short": next((x["he"] for x in short_entry if x["k"] == "post"), None),
+            "post_gap_short": bool(next((x for x in short_entry if x["k"] == "post" and x["ok"] is False), None)),
             "entry": entry, "entry_ok": bs, "bs": bs,
+            "short_entry": short_entry, "short_entry_ok": ss_flag, "ss": ss_flag,
         })
         sparks[t] = spark(w, R["spark_weeks"])
         write_candles(t, w, R)
@@ -1262,23 +1687,30 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             write_candles(e, we, R)
     counts = {str(s): sum(1 for x in rows if x["stage"] == s) for s in (1, 2, 3, 4)}
     counts["2A"] = sum(1 for x in rows if x["sub"] == "2A")
+    counts["4A"] = sum(1 for x in rows if x["sub"] == "4A")
     cands = sorted((x for x in rows if x["bs"]), key=lambda x: -(x["plan"]["rr"] or 0))
+    short_cands = sorted((x for x in rows if x["ss"]), key=lambda x: -(x["short_plan"]["rr"] or 0))
     counts["bs"] = len(cands)
+    counts["ss"] = len(short_cands)
     doc = {
         "version": 1, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "week": max((x["week"] for x in rows), default=None), "rules": R, "screens": SCREENS,
         "finviz_totals": uni.get("totals"), "finviz_fetched_at": uni.get("fetched_at"), "skipped": skipped,
         "short_history_tickers": short_t, "low_volume_tickers": thin_t,
-        "market": {k: etf_out[k] for k in MARKET if k in etf_out}, "market_gate": mg,
+        "market": {k: etf_out[k] for k in MARKET if k in etf_out}, "market_gate": mg, "short_market_gate": short_mg,
         "sectors": {k: etf_out[k] for k in etf_out if k in set(SECTOR_ETF.values())},
         "industries": {k: etf_out[k] for k in etf_out if k not in MARKET and k not in set(SECTOR_ETF.values())},
-        "strong_sectors": strong,
+        "strong_sectors": strong, "weak_sectors": weak_sec,
         "strong_industries": sorted([e for e in set(INDUSTRY_ETF.values()) | set(INDUSTRY_WATCH)
                                      if e in etf_out and etf_out[e]["stage"] == 2 and (etf_out[e]["rs"] or -99) > 0],
                                     key=lambda e: -(etf_out[e]["rs"] or 0))[:5],
+        "weak_industries": sorted([e for e in set(INDUSTRY_ETF.values()) | set(INDUSTRY_WATCH)
+                                   if e in etf_out and etf_out[e]["stage"] in (3, 4) and (etf_out[e]["rs"] or 99) < 0],
+                                  key=lambda e: (etf_out[e]["rs"] or 0))[:5],
         "pre_he": {x["k"]: x["he"] for x in prefilter({}, 0, 0.0, None, R)},  # row 'pre' = [{k, ok}] (text once here)
         "counts": counts, "rows": rows,
         "buy_stop_candidates": [candidate(x) for x in cands],
+        "sell_stop_candidates": [short_candidate(x) for x in short_cands],
     }
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
     OUT_SPARK.write_text(json.dumps(sparks, separators=(",", ":")))
@@ -1297,37 +1729,84 @@ def candidate(x: Dict[str, Any]) -> Dict[str, Any]:
             "etf": x.get("etf"), "etf_stage": x.get("etf_stage"), "sec_td_he": x.get("etf_td_he")}
 
 
+def short_candidate(x: Dict[str, Any]) -> Dict[str, Any]:
+    p = x["short_plan"]
+    return {"t": x["t"], "n": x["n"], "kind": p["kind"], "sub": x["sub"], "close": x["close"], "level": p["level"],
+            "sell_stop": p["entry"], "stop": p["stop"], "stop_pct": p["risk_pct"], "target": p["target"],
+            "target_src": p["target_src"], "open_sky": p["open_sky"], "rr": p["rr"], "shares": p["shares"],
+            "pos_usd": p["pos_usd"], "atr_w": x.get("atr_w"),
+            "vol_ratio": (x.get("bd") or {}).get("vol_ratio"), "short_float": x.get("short_float"),
+            "earn": x["earn"], "earn_td": x["earn_td"], "earn_est": x.get("earn_est", False),
+            "post_earn": x.get("post_earn_short"), "ex": x["ex"],
+            "etf": x.get("etf"), "etf_stage": x.get("etf_stage"), "sec_td_he": x.get("short_etf_td_he")}
+
+
 KIND_HE = {"breakout": "פריצה טרייה (באזור קנייה)", "trigger": "בסיס שלב 1 מתחת לתקרה", "continuation": "בסיס המשך בשלב 2"}
+SHORT_KIND_HE = {"breakdown": "שבירה טרייה (4A)", "trigger": "פסגת שלב 3 מעל תמיכה", "continuation": "בסיס המשך בשלב 4"}
+
+
+def _earn_alert_str(c: Dict[str, Any]) -> str:
+    if not c.get("earn"):
+        return "לא ידוע"
+    est = " (משוער)" if c.get("earn_est") else ""
+    td = f" — בעוד {c['earn_td']} ימ״ס" if c.get("earn_td") is not None else ""
+    return f"{c['earn']}{est}{td}"
 
 
 def alert_text(doc: Dict[str, Any], research: Optional[Dict[str, Any]] = None) -> Optional[str]:
-    """Hebrew Telegram text for the Buy-Stop candidates (None = nothing actionable -> no message)."""
+    """Hebrew Telegram text for Buy-Stop + Sell-Stop candidates (None = nothing actionable -> no message)."""
     cs = doc.get("buy_stop_candidates") or []
-    if not cs:
+    scs = doc.get("sell_stop_candidates") or []
+    if not cs and not scs:
         return None
     R = doc["rules"]
-    lines = [f"🟢 שיטת סטף — מועמדות ל-Buy-Stop (שבוע {doc['week']}): {len(cs)}"]
+    lines: List[str] = []
     mk = doc.get("market") or {}
+    mkt_line = None
     if mk.get("SPY"):  # rule 3: the market stage + its top-down meaning (QQQ as info)
         q = mk.get("QQQ")
-        lines.append(f"שוק: SPY שלב {mk['SPY']['stage']} — {mk['SPY'].get('idx', {}).get('td_he', '')}"
-                     + (f" · QQQ שלב {q['stage']} (מידע)" if q else ""))
-    lines.append("")
-    for c in cs:
-        tgt = f"${c['target']}" + (" (שמיים פתוחים · R:R 2.5)" if c["open_sky"] else " (התנגדות תקורה)")
-        lines += [f"{c['t']} · {KIND_HE.get(c['kind'], c['kind'])}",
-                  f"Buy-Stop ${c['buy_stop']} · סטופ ${c['stop']} ({c['stop_pct']}%) · יעד {tgt}",
-                  f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {(c['earn'] + (' (משוער)' if c.get('earn_est') else '') + (f" — בעוד {c['earn_td']} ימ״ס" if c.get('earn_td') is not None else '')) if c['earn'] else 'לא ידוע'}"]
-        if c.get("post_earn"):
-            lines.append(c["post_earn"])
-        if c.get("sec_td_he"):
-            lines.append(f"סקטור {c.get('etf')}: שלב {c.get('etf_stage')} — {c['sec_td_he']}")
-        rs = (research or {}).get(c["t"], {}).get("data", {})
-        if rs.get("short_he"):
-            lines.append(f"📊 {rs['short_he']} ({rs.get('as_of', '')})")
-        if c["kind"] != "breakout" and c.get("vol_need"):
-            lines.append(f"תנאי: מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 ש׳ (≥ {int(c['vol_need']):,} מניות) — אחרת פריצת שווא")
+        mkt_line = (f"שוק: SPY שלב {mk['SPY']['stage']} — {mk['SPY'].get('idx', {}).get('td_he', '')}"
+                    + (f" · QQQ שלב {q['stage']} (מידע)" if q else ""))
+    if cs:
+        lines.append(f"🟢 שיטת סטף — מועמדות ל-Buy-Stop (שבוע {doc['week']}): {len(cs)}")
+        if mkt_line:
+            lines.append(mkt_line)
+            mkt_line = None
         lines.append("")
+        for c in cs:
+            tgt = f"${c['target']}" + (" (שמיים פתוחים · R:R 2.5)" if c["open_sky"] else " (התנגדות תקורה)")
+            lines += [f"{c['t']} · {KIND_HE.get(c['kind'], c['kind'])}",
+                      f"Buy-Stop ${c['buy_stop']} · סטופ ${c['stop']} ({c['stop_pct']}%) · יעד {tgt}",
+                      f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}) · דוח {_earn_alert_str(c)}"]
+            if c.get("post_earn"):
+                lines.append(c["post_earn"])
+            if c.get("sec_td_he"):
+                lines.append(f"סקטור {c.get('etf')}: שלב {c.get('etf_stage')} — {c['sec_td_he']}")
+            rs = (research or {}).get(c["t"], {}).get("data", {})
+            if rs.get("short_he"):
+                lines.append(f"📊 {rs['short_he']} ({rs.get('as_of', '')})")
+            if c["kind"] != "breakout" and c.get("vol_need"):
+                lines.append(f"תנאי: מחזור שבוע הפריצה ≥ {R['vol_mult']:g}x ממוצע 10 ש׳ (≥ {int(c['vol_need']):,} מניות) — אחרת פריצת שווא")
+            lines.append("")
+    if scs:
+        lines.append(f"🔴 שיטת סטף — מועמדי שורט / Sell-Stop (שבוע {doc['week']}): {len(scs)}")
+        if mkt_line:
+            lines.append(mkt_line)
+        lines.append("")
+        for c in scs:
+            tgt = f"${c['target']}" + (" (שמיים פתוחים מטה · R:R 2.5)" if c["open_sky"] else " (תמיכה קרובה)")
+            atr_txt = f" · ATR(W) ${c['atr_w']}" if c.get("atr_w") is not None else ""
+            lines += [f"{c['t']} · {SHORT_KIND_HE.get(c['kind'], c['kind'])}",
+                      f"Sell-Stop ${c['sell_stop']} · סטופ ${c['stop']} ({c['stop_pct']}%) · יעד {tgt}",
+                      f"R:R 1:{c['rr']} · {c['shares']} מניות לסיכון ${R['risk_usd']:g} (${c['pos_usd']}){atr_txt} · דוח {_earn_alert_str(c)}"]
+            if c.get("post_earn"):
+                lines.append(c["post_earn"])
+            if c.get("sec_td_he"):
+                lines.append(f"סקטור {c.get('etf')}: שלב {c.get('etf_stage')} — {c['sec_td_he']}")
+            rs = (research or {}).get(c["t"], {}).get("data", {})
+            if rs.get("short_he"):
+                lines.append(f"📊 {rs['short_he']} ({rs.get('as_of', '')})")
+            lines.append("")
     lines.append("בלי פקודות אוטומטיות — רק התראה. https://retest-scanner.vercel.app/#/stages")
     return "\n".join(lines)
 
@@ -1355,7 +1834,8 @@ def send_alert(doc: Dict[str, Any]) -> Dict[str, Any]:
         if not j.get("ok"):
             why = j.get("description"); break
         ids.append((j.get("result") or {}).get("message_id"))
-    return {"sent": bool(ids) and why is None, "message_ids": ids, "why": why, "n": len(doc["buy_stop_candidates"])}
+    return {"sent": bool(ids) and why is None, "message_ids": ids, "why": why,
+            "n": len(doc.get("buy_stop_candidates") or []), "n_short": len(doc.get("sell_stop_candidates") or [])}
 
 
 def split_message(text: str, limit: int = 3900) -> List[str]:
@@ -1398,7 +1878,11 @@ def needs_research(doc: Dict[str, Any], cache: Dict[str, Any], today: Optional[d
     """Candidates without an overview, or with one older than max_age_d days."""
     today = today or datetime.now().date()
     out = []
-    for c in doc.get("buy_stop_candidates") or []:
+    seen = set()
+    for c in (doc.get("buy_stop_candidates") or []) + (doc.get("sell_stop_candidates") or []):
+        if c["t"] in seen:
+            continue
+        seen.add(c["t"])
         r = cache.get(c["t"])
         asof = (r or {}).get("data", {}).get("as_of")
         age = (today - date.fromisoformat(asof)).days if asof else None
@@ -1458,6 +1942,7 @@ def main() -> None:
         return
     doc = build(a.offline)
     print(f"[stages] Buy-Stop candidates: {len(doc['buy_stop_candidates'])} " + ", ".join(c["t"] for c in doc["buy_stop_candidates"]))
+    print(f"[stages] Sell-Stop candidates: {len(doc['sell_stop_candidates'])} " + ", ".join(c["t"] for c in doc["sell_stop_candidates"]))
     if a.publish:
         from srs_app.publish_data import publish
         r = publish(REPO / "app" / "data")

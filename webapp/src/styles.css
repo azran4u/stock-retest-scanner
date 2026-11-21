@@ -543,3 +543,12 @@ a.badge.etfl { text-decoration: none; }
 .b-tup { background: rgba(38,166,154,.10); color: #8fd9cf; border: 1px solid rgba(38,166,154,.35); }
 .b-tdown { background: rgba(239,83,80,.10); color: #ff9a8f; border: 1px solid rgba(239,83,80,.35); }
 .b-tside { background: var(--bg3); color: var(--mut); border: 1px solid rgba(120,123,134,.35); }
+
+/* short-selling Sell-Stop section & badges */
+.badge.b-short { background: rgba(239,83,80,.24); color: #ff8a87; }
+.stshortsec { padding: 10px 12px 24px; border-top: 1px solid var(--bg2); }
+.stshorthead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.stshorthead h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.stshorthead .cnt { font-size: 12px; padding: 1px 7px; border-radius: 99px; background: rgba(239,83,80,.2); color: #ff8a87; }
+.stshortempty { padding: 12px; border: 1px dashed var(--bg3); border-radius: 10px; font-size: 13px; }
+.stshortcard { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); margin-bottom: 6px; cursor: pointer; }

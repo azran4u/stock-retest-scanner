@@ -110,6 +110,7 @@ export function atr(bars: Bar[], n = 14): number | null {
 
 export function rr(entry: number | null | undefined, stop: number | null | undefined, target: number | null | undefined): number | null {
   if (entry == null || stop == null || target == null) return null;
+  if (stop > entry && target < entry) return (entry - target) / (stop - entry);
   const risk = entry - stop;
   if (risk <= 0) return null;
   return (target - entry) / risk;

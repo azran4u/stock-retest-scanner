@@ -13,7 +13,7 @@ import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
-import { UI_DEF, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, isShortSide, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -881,10 +881,12 @@ async function renderStages() {
     }
     if (!t) {
       const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
-      const pick = ui.lastT && rows.some((r) => r.t === ui.lastT) ? ui.lastT : rows[0]?.t;
+      const srows = ui.tab === 'bs' ? filterRows(d.rows, { ...ui, tab: 'ss' }, stEdits, maxRiskUsd(), stMaxStop(d), S.watch) : [];
+      const allPick = rows.length ? rows : srows;
+      const pick = ui.lastT && allPick.some((r) => r.t === ui.lastT) ? ui.lastT : allPick[0]?.t;
       if (pick) { location.replace('#/stages/' + encodeURIComponent(pick)); return; }
       if (stCv) { stCv.destroy(); stCv = null; stCvT = null; }
-      $('#stMain')!.innerHTML = `<div class="center muted">${ui.tab === 'bs' ? 'אין השבוע מועמדות ל-Buy-Stop — בחר לשונית אחרת' : 'בחר מניה מהרשימה'}</div>`;
+      $('#stMain')!.innerHTML = `<div class="center muted">${ui.tab === 'bs' ? 'אין השבוע מועמדות ל-Buy-Stop או ל-Sell-Stop — בחר לשונית אחרת' : ui.tab === 'ss' ? 'אין השבוע מועמדות לשורט (Sell-Stop) — בחר לשונית אחרת' : 'בחר מניה מהרשימה'}</div>`;
       return;
     }
     stMarkSel(t); stRenderDetail(d, t);
@@ -913,7 +915,7 @@ document.addEventListener('click', (ev) => {
 function stMarkSel(t: string | null) {
   const side = $('#stSide'); if (!side) return;
   let hit: HTMLElement | null = null;
-  side.querySelectorAll<HTMLElement>('li[data-st]').forEach((li) => { const on = li.dataset.st === t; li.classList.toggle('sel', on); if (on) hit = li; });
+  side.querySelectorAll<HTMLElement>('li[data-st], [data-stshort]').forEach((li) => { const on = (li.dataset.st || li.dataset.stshort) === t; li.classList.toggle('sel', on); if (on) hit = li; });
   const lst = $('.list', side) as HTMLElement | null, h = hit as HTMLElement | null;
   if (h && lst) { const a = h.offsetTop - lst.offsetTop, b2 = a + h.offsetHeight; if (a < lst.scrollTop || b2 > lst.scrollTop + lst.clientHeight) lst.scrollTop = Math.max(0, a - 40); }
 }
@@ -932,7 +934,8 @@ function stObserveSparks(root: ParentNode, d: StagesDoc) {
 }
 function stDrawSpark(c: HTMLCanvasElement, sp: Record<string, StSpark>, r: StageRow, d: StagesDoc) {
   const ed = stEdits.get(r.t);
-  drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
+  const lvl = isShortSide(r) ? (ed?.zone?.zone_bottom ?? zoneOf(r)?.bottom ?? null) : (ed?.zone?.zone_top ?? zoneOf(r)?.top ?? null);
+  drawStChart(c, sp[r.t], r, effPlan(r, ed, maxRiskUsd(), stMaxStop(d), d.rules), lvl);
 }
 function stBindStar(el: HTMLElement) {
   el.querySelectorAll<HTMLButtonElement>('.star[data-star]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); toggleWatch(b.dataset.star!); }));
@@ -963,10 +966,11 @@ function stRenderList(d: StagesDoc) {
   const more = $('#stmore', host); if (more) more.onclick = () => { stLimit += 160; stRenderList(d); };
   $('#stcopy', host)!.onclick = () => { copyText(rows.map((r) => `${r.ex}:${r.t.replace('-', '.')}`).join(',')).then(() => toast(`הועתקו ${rows.length} סימולים`)); };
   $('#strulesBtn', host)!.onclick = () => stRulesSheet(d);
-  host.querySelectorAll<HTMLElement>('li[data-st]').forEach((li) => (li.onclick = () => {
+  host.querySelectorAll<HTMLElement>('li[data-st], [data-stshort]').forEach((li) => (li.onclick = () => {
+    const tk = li.dataset.st || li.dataset.stshort; if (!tk) return;
     if (stShell === 'list') sessionStorage.setItem('srs-st-scroll', String(window.scrollY));
-    const u = stUi(); u.lastT = li.dataset.st; stSaveUi(u);
-    location.hash = '#/stages/' + encodeURIComponent(li.dataset.st!);
+    const u = stUi(); u.lastT = tk; stSaveUi(u);
+    location.hash = '#/stages/' + encodeURIComponent(tk);
   }));
   stBindStar(host);
   stObserveSparks(host, d);
@@ -983,15 +987,25 @@ function stDrawingsOf(r: StageRow): Drawing[] {
   const ed = stEdits.get(r.t), out: Drawing[] = [];
   const base = { ticker: r.t, note: null, status: 'active' as const, entry: null, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null };
   const z = zoneOf(r);
-  // Eyal 2026-11-14: two solid lines, no labels -- BLUE = resistance (base ceiling = the Buy-Stop level), RED = support
-  // (the stop basis: a valid low above the 30W SMA, else the SMA). Solid, unlike the dotted current-price line.
+  if (isShortSide(r)) {
+    const bot = ed?.zone?.zone_bottom ?? z?.bottom;
+    if (bot != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-floor', kind: 'line', entry: +bot, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'floor' } });
+    const res = stLevelsOf(r, ed).find((x) => x.role === 'res' && (x.id === 'c-res' || x.ref === 'c-res'));
+    if (res) out.push({ ...base, id: res.id, kind: 'line', entry: res.price, source: res.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'res' } });
+    if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
+    else if (r.short_plan) {
+      const e = effPlan(r, ed, maxRiskUsd(), stDoc ? stMaxStop(stDoc) : 10, stP ? (stDoc?.rules ?? {}) : {});
+      out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? r.short_plan.entry, stop: e?.stop ?? r.short_plan.stop, target: e?.target ?? r.short_plan.target, source: 'bot' });
+    }
+    return out;
+  }
   const top = ed?.zone?.zone_top ?? z?.top;
   if (top != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-res', kind: 'line', entry: +top, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'ceil' } });
   const sup = stLevelsOf(r, ed).find((x) => x.role === 'sup' && (x.id === 'c-sup' || x.ref === 'c-sup'));
   if (sup) out.push({ ...base, id: sup.id, kind: 'line', entry: sup.price, source: sup.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'sup' } });
   if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
   else if (r.plan) { // the trade bar follows his lines / ceiling (recomputed target / stop), else the computed plan
-    const e = effPlan(r, ed, maxRiskUsd(), 10, stP ? (stDoc?.rules ?? {}) : {});
+    const e = effPlan(r, ed, maxRiskUsd(), stDoc ? stMaxStop(stDoc) : 10, stP ? (stDoc?.rules ?? {}) : {});
     out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? r.plan.entry, stop: e?.stop ?? r.plan.stop, target: e?.target ?? r.plan.target, source: 'bot' });
   }
   return out;
@@ -1081,7 +1095,7 @@ function stBindDetail(d: StagesDoc, r: StageRow) {
   const rs = $('#streset', host); if (rs) rs.onclick = () => stReset(d, r);
   const aln = $('#staddline', host); if (aln) aln.onclick = () => { stLineTap = !stLineTap; stTap = null; toast(stLineTap ? 'הקש על הגרף במחיר של הקו (מעל המחיר = התנגדות, מתחת = תמיכה)' : 'בוטל'); };
   const dl = $('#stdelline', host); if (dl) dl.onclick = () => stDelLine(d, r);
-  const al = $('#staddlong', host); if (al) al.onclick = () => { stTap = stTap ? null : { pts: [], date: null }; toast(stTap ? 'הקש על מחיר ה-Buy-Stop ואז על ה-SL' : 'בוטל'); };
+  const al = $('#staddlong', host); if (al) al.onclick = () => { stTap = stTap ? null : { pts: [], date: null }; toast(stTap ? (isShortSide(r) ? 'הקש על מחיר ה-Sell-Stop ואז על ה-SL' : 'הקש על מחיר ה-Buy-Stop ואז על ה-SL') : 'בוטל'); };
 }
 /** after an edit: swap the tags / tools / panel, redraw the overlay and the list row (the chart keeps its view) */
 function stRefreshDetail(d: StagesDoc, r: StageRow) {
@@ -1108,11 +1122,14 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
   const m = { ...cur, ...patch };
   const lv = { zone_top: m.zone_top, zone_bottom: m.zone_bottom, entry: m.entry, stop: m.stop, target: m.target, t_start: m.t_start, t_end: m.t_end };
   const ed = stEdits.get(r.t) || {};
-  if (cur.kind === 'line' && cur.meta?.role === 'ceil') { // the blue line = the base ceiling (his zone row)
+  if (cur.kind === 'line' && (cur.meta?.role === 'ceil' || cur.meta?.role === 'floor')) { // the blue line = the base ceiling (long) or floor (short)
+    const isFloor = cur.meta?.role === 'floor';
     const price = Math.round(+(m.entry ?? 0) * 100) / 100, z = zoneOf(r);
-    if (ed.zone) { ed.zone.zone_top = price; await guard(api.updateStageDrawing(ed.zone.id, { zone_top: price })); }
-    else {
-      const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'zone', zone_top: price, zone_bottom: z?.bottom ?? null, t_start: z?.start ?? null, source: 'user', status: 'active', meta: { computed: { zone_top: z?.top, zone_bottom: z?.bottom }, week: d.week } }), 'נשמר כרמות שלך');
+    if (ed.zone) {
+      if (isFloor) { ed.zone.zone_bottom = price; await guard(api.updateStageDrawing(ed.zone.id, { zone_bottom: price })); }
+      else { ed.zone.zone_top = price; await guard(api.updateStageDrawing(ed.zone.id, { zone_top: price })); }
+    } else {
+      const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'zone', zone_top: isFloor ? (z?.top ?? null) : price, zone_bottom: isFloor ? price : (z?.bottom ?? null), t_start: z?.start ?? null, source: 'user', status: 'active', meta: { computed: { zone_top: z?.top, zone_bottom: z?.bottom }, week: d.week } }), 'נשמר כרמות שלך');
       if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
       ed.zone = row; stEdits.set(r.t, ed); stSelDraw = row.id;
     }
@@ -1178,10 +1195,11 @@ async function stOnTap(d: StagesDoc, r: StageRow, price: number, date: string) {
   }
   if (!stTap) { if (stSelDraw) { stSelDraw = null; stCv?.setDrawings(stDrawingsOf(r), null); } return; }
   stTap.pts.push(price);
-  if (stTap.pts.length === 1) { stTap.date = date; toast(`Buy-Stop ${price.toFixed(2)} — הקש על ה-SL`); return; }
+  const shortSide = isShortSide(r);
+  if (stTap.pts.length === 1) { stTap.date = date; toast(`${shortSide ? 'Sell-Stop' : 'Buy-Stop'} ${price.toFixed(2)} — הקש על ה-SL`); return; }
   const [a, b2] = stTap.pts; stTap = null;
-  if (b2 >= a) { toast('ה-SL חייב להיות מתחת ל-Buy-Stop', true); return; }
-  const tgt = Math.round((a + 2.5 * (a - b2)) * 100) / 100;
+  if (shortSide ? (b2 <= a) : (b2 >= a)) { toast(shortSide ? 'ה-SL בשורט חייב להיות מעל ה-Sell-Stop' : 'ה-SL חייב להיות מתחת ל-Buy-Stop', true); return; }
+  const tgt = shortSide ? Math.max(0.01, Math.round((a - 2.5 * (b2 - a)) * 100) / 100) : Math.round((a + 2.5 * (a - b2)) * 100) / 100;
   const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'long', entry: a, stop: b2, target: tgt, source: 'user', status: 'active', meta: { week: d.week } }), 'נשמר');
   if (row) { const ed = stEdits.get(r.t) || {}; ed.long = row; stEdits.set(r.t, ed); stSelDraw = row.id; stRefreshDetail(d, r); }
 }

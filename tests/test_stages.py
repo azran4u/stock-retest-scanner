@@ -434,3 +434,107 @@ def test_weekly_atr_wilder():
     # TR of a 5% range bar around price 40 is about 2; ATR should be in a plausible band
     assert 0.5 < a < 5
     assert weekly_atr(w.iloc[:10]) is None
+
+
+# ---------------------------------------------------------------- Stan Weinstein short-selling side (Eyal 2026-11-21)
+
+
+def test_sell_stop_price_and_stop_above():
+    from srs_app.stages import sell_stop_price, stop_above
+    assert abs(sell_stop_price(100.0) - 99.5) < 1e-9
+    assert abs(sell_stop_price(5.0) - 4.95) < 1e-9
+    # stop_above: 0.75% above anchor, or round number + $0.05 if within 1% and higher
+    assert abs(stop_above(99.5) - 100.24625) < 1e-6  # round 100 + 0.05 = 100.05 < 100.25 -> keeps 0.75%
+    assert abs(stop_above(49.85) - 50.223875) < 1e-6
+    assert abs(stop_above(49.98) - 50.35485) < 1e-6
+
+
+def test_breakdown_4a_volume_not_required():
+    """Weinstein: Stage 4 breakdown (4A) does NOT require high breakdown volume."""
+    top = 80.0 + 1.5 * np.sin(np.arange(60) / 2)
+    c = np.r_[np.linspace(30, 80, 55), top, 72.0, 68.0]
+    v = np.full(len(c), 1e6)  # normal 1.0x volume (below vol_mult=2.0)
+    r = classify(bars(c, v, rng=0.01), bench(len(c)))
+    assert r["stage"] == 4 and r["sub"] == "4A"
+    assert r["bd"] is not None and r["bd"]["holding"] and not r["bd"]["vol_ok"]
+    assert r["short_plan"] is not None and r["short_plan"]["kind"] == "breakdown"
+    assert 0 < r["short_plan"]["target"] < r["short_plan"]["entry"] < r["short_plan"]["stop"]
+
+
+def test_short_stop_anchors_mirror_and_lh_tighten():
+    """Higher of (30W SMA, unbroken base high); tightens to lower high when stop > 10% and SMA down."""
+    from srs_app.stages import short_stop_anchors, stop_above
+    c = np.r_[np.linspace(30, 80, 50), 80 - np.linspace(0, 22, 40)]
+    w = bars(c, rng=0.01)
+    # Give an explicit high B=78 above SMA (~66) followed by a lower high pivot at ~69
+    w.iloc[-20, w.columns.get_loc("High")] = 78.0
+    w.iloc[-10, w.columns.get_loc("High")] = 69.0
+    w.iloc[-11, w.columns.get_loc("High")] = 65.0
+    w.iloc[-12, w.columns.get_loc("High")] = 64.0
+    w.iloc[-9, w.columns.get_loc("High")] = 65.0
+    w.iloc[-8, w.columns.get_loc("High")] = 64.0
+    ma_now = float(w["Close"].rolling(30).mean().iloc[-1])
+    sa = short_stop_anchors(w, ma_now, 56.0, 78.0)
+    assert sa["basis"] in ("high", "lh")
+    assert sa["stop"] > 56.0
+    # When base high <= SMA, stop sits above SMA ('ma')
+    sa_ma = short_stop_anchors(w, ma_now, 56.0, ma_now - 2.0)
+    assert sa_ma["basis"] == "ma" and abs(sa_ma["stop"] - stop_above(ma_now)) < 1e-6
+
+
+def test_support_scan_and_geometry_guard():
+    """support_scan finds nearest significant 2y swing low; open_sky keeps target > 0 and rr=2.5."""
+    from srs_app.stages import short_trade_levels, support_scan
+    c = np.r_[np.linspace(120, 80, 40), np.linspace(80, 110, 30), np.linspace(110, 95, 30)]
+    w = bars(c, rng=0.01)
+    sup = support_scan(w, 94.0)
+    assert not sup["open_sky"] and sup["support"] is not None and sup["support"] < 94.0
+    p = short_trade_levels(w, 102.0, 94.0, sup["support"], 110.0)
+    assert 0 < p["target"] < p["entry"] < p["stop"] and p["rr"] > 0
+    # Open sky with extreme stop (>40% risk) -> t_sky < 0 rejected so target is None, rr is None
+    w_sky = bars(np.linspace(120, 50, 60), rng=0.01)
+    p_bad = short_trade_levels(w_sky, 90.0, 50.0, None, 95.0)
+    assert p_bad["open_sky"] and p_bad["target"] is None and p_bad["rr"] is None
+
+
+def test_short_market_and_sector_gates():
+    from srs_app.stages import short_market_gate, short_sector_status
+    assert short_market_gate({"stage": 3, "sub": "3", "idx": {"td_he": "פסגה"}})["ok"] is True
+    assert short_market_gate({"stage": 4, "sub": "4", "idx": {"td_he": "ירידה"}})["ok"] is True
+    assert short_market_gate({"stage": 2, "sub": "2"})["ok"] is False
+    # 2-weak blocks shorts while 30W SMA is still rising
+    assert short_market_gate({"stage": 2, "sub": "2-weak"})["ok"] is False
+    assert short_market_gate({"stage": 1, "sub": "1B"})["ok"] is False
+    assert short_sector_status({"stage": 4, "sub": "4", "close": 50.0, "ma30": 60.0, "slope_cls": "down"})["ok"] is True
+    assert short_sector_status({"stage": 3, "sub": "3", "close": 60.0, "ma30": 61.0, "slope_cls": "flat"})["ok"] is True
+    assert short_sector_status({"stage": 2, "sub": "2-weak", "close": 60.0, "ma30": 65.0, "slope_cls": "up"})["ok"] is False
+    assert short_sector_status({"stage": 1, "sub": "1B", "close": 40.0, "ma30": 41.0, "slope_cls": "flat"})["ok"] is False
+
+
+def test_cash_etf_ok_prefilter():
+    from srs_app.stages import cash_etf_ok
+    assert cash_etf_ok("SGOV") is False
+    assert cash_etf_ok("BIL") is False
+    assert cash_etf_ok("AAPL") is True
+
+
+def test_alert_text_and_needs_research_include_shorts():
+    from srs_app.stages import RULES, alert_text, needs_research
+    doc = {
+        "week": "2026-11-20",
+        "rules": RULES,
+        "market": {"SPY": {"stage": 3, "idx": {"td_he": "פסגה"}}, "QQQ": {"stage": 4}},
+        "buy_stop_candidates": [],
+        "sell_stop_candidates": [{
+            "t": "SHORTX", "n": "Short Test Corp", "kind": "breakdown", "sub": "4A",
+            "close": 49.0, "level": 50.0, "sell_stop": 49.75, "stop": 54.0, "stop_pct": 8.5,
+            "target": 36.0, "target_src": "support", "open_sky": False, "rr": 3.24,
+            "shares": 12, "pos_usd": 597.0, "atr_w": 2.45,
+            "earn": "2027-01-20", "earn_td": 40, "earn_est": False,
+            "post_earn": None, "ex": "NASDAQ", "etf": "XLY", "etf_stage": 3, "sec_td_he": "שלב 3 (פסגה)",
+        }],
+    }
+    txt = alert_text(doc)
+    assert txt is not None and "Sell-Stop" in txt and "SHORTX" in txt and "ATR(W) $2.45" in txt
+    need = needs_research(doc, cache={})
+    assert [x["t"] for x in need] == ["SHORTX"]

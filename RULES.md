@@ -718,3 +718,24 @@ column.
 - **Plan geometry guard (AXTI sl -8.23):** besides the expert-v11 trade-ATR scaling (§26), every bot and expert drawing plan must have
   0 < SL < entry < TP (`bot_drawings.valid_geometry`, `expert_drawings.levels`): an invalid plan gets no level and is never synced as a drawing;
   the expert plan gets no R:R ("invalid geometry"), so it cannot PASS.
+
+## 28. Weinstein Short-Selling Candidates — Sell-Stop mirror (Eyal 2026-11-21)
+
+Added in `srs_app/stages.py` alongside the existing long `Buy-Stop` pipeline (which is left completely untouched):
+
+- **Setups (`short_plan`):**
+  - **Fresh breakdown (`4A`, `kind: breakdown`):** close breaks below the 26-week (`base_window_w`) support (lowest low set `>= min_base_w` (10) weeks earlier with `>= 10` closes at/above it) within the last `bo_max_weeks_ago + 1` (4) weeks, holding `close <= level` and `close < 30W SMA` while the 30W SMA is `flat` or `down`. **Breakdown volume is reported as `info: True` (`vol_ratio`), NOT required** (per Stan Weinstein's short-selling chapter).
+  - **Pre-breakdown (`trigger` in Stage 3 / `continuation` in Stage 4):** mature base/top (`>= 10` weeks above floor), close near support (`<= pre_bo_pct` = 5% above floor) and below a non-rising 30W SMA (`slope_cls != "up"`).
+  - **Stage 4 sub-stages:** `4A` (fresh breakdown), `4-ext` (>35% below 30W SMA), `4` (below 30W SMA), `4-late` (above declining 30W SMA).
+- **Entry (`sell_stop_price`):** `support - max(support * sell_stop_buf_pct (0.5%), sell_stop_min_buf ($0.05))`.
+- **Don't chase:** close / Sell-Stop within `sell_zone_pct` (10%) below the breakdown level and within `max_pct_below_ma` (25%) below the 30W SMA.
+- **Protective Buy-Stop (`short_stop_anchors`, `stop_above`):** exact mirror of §long 11-16 stop rule — above the **higher** of (Anchor A = `30W SMA`, Anchor B = last unbroken rally high in the top/base) by `stop_margin_pct` (0.75%) or `round_number + $0.05` if within `stop_margin_max_pct` (1.0%) and higher. If `B > SMA`, `stop > max_stop_pct` (10%) above entry, and `slope == "down"`, tighten to above the most recent unbroken weekly lower high (`pivot_w = 2`) between `max(SMA, entry)` and `B` (`stop_basis = "lh"`).
+- **Support target & geometry (`support_scan`, `short_trade_levels`):** nearest significant weekly swing low (`sig_pivot_w = 8`) in the last `overhead_w` (104) weeks below `entry * (1 - 2%)`; if none (`open_sky`), `target = entry - min_rr (2.5) * risk` when `> 0`. Enforces `0 < target < entry < stop` and `R:R >= 2.5`. Risk per trade `$55` (`risk_usd`), weekly ATR(14) (`atr_w`) shown on cards, charts (bottom-right), and Telegram.
+- **Mirrored gates:**
+  - **Market (`short_market_gate`):** `SPY` in Stage 3 or 4 permits shorts; Stage 1, clear Stage 2, and **`2-weak`** block shorts (`short_mkt_allow_2weak = False`, because in `2-weak` the 30W SMA is still rising and the long gate is open — wait for official Stage 3/4).
+  - **Sector / Industry ETF (`short_sector_status`):** prefers mapped industry ETF (`etf_gate`), else broad SPDR sector. Passes in Stage 4 (below SMA) or Stage 3 (below SMA or SMA not rising); never Stage 1 or Stage 2 (including `2-weak`).
+  - **Relative strength:** `Mansfield RS < 0` and falling (`rs_up is False`).
+  - **Short squeeze guard:** `short_float < 10.0%` (`short_float_max_pct`) from FinViz `v=152` column `30` (with offline cache fallback); unknown short float is `info: True` and does not disqualify.
+  - **Pre-filter & cash ETFs:** same `>= $15`, `>= $50M` 50d `$vol`, `25–85%` institutional, no small biotech, `>= 156w` history, plus explicit `cash_etf_ok` (`report_filters.CASH_BOND_ETFS` + fund `ATR(W) < 1%` of price).
+  - **Earnings:** same `earn_td` (10 trading days) block before entry and `post_earn_gap_down` / `post_earn_short_check` after earnings.
+- **Output & UI:** `stages.json` includes `sell_stop_candidates`, `short_market_gate`, `weak_sectors`, `weak_industries`, `counts["4A"]`, `counts["ss"]`, and per-row `short_plan`/`short_entry`/`ss`/`short_float`. Webapp `#/stages` shows a separate `מועמדי שורט (Sell-Stop)` section and `ss` / `4A` tabs; `alert_text` and `needs_research` cover both Buy-Stop and Sell-Stop candidates.

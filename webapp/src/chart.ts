@@ -771,14 +771,15 @@ export class ChartView {
     const pct = (x: number) => (E > 0 ? (x / E * 100).toFixed(1) + '%' : '');
     type L = { cls: string; color: string; full: string; short: string; edge: number | null; first: 'above' | 'below' };
     const labels: L[] = [];
+    const isShort = d.stop != null && +d.stop > E;
     if (d.target != null) {
-      const g = +d.target - E;
-      labels.push({ cls: 'lbl-tp', color: '#5fd4c6', full: `TP ${m(+d.target)} (${g >= 0 ? '+' : '-'}${m(Math.abs(g))}, ${pct(g)})`, short: `TP ${m(+d.target)}`, edge: yt, first: 'below' });
+      const g = isShort ? (E - +d.target) : (+d.target - E);
+      labels.push({ cls: 'lbl-tp', color: '#5fd4c6', full: `TP ${m(+d.target)} (${g >= 0 ? '+' : '-'}${m(Math.abs(g))}, ${pct(g)})`, short: `TP ${m(+d.target)}`, edge: yt, first: isShort ? 'above' : 'below' });
     }
-    labels.push({ cls: 'lbl-entry', color: '#d1d4dc', full: `Entry ${m(E)}`, short: `E ${m(E)}`, edge: ye, first: 'above' });
+    labels.push({ cls: 'lbl-entry', color: '#d1d4dc', full: `${isShort ? 'Sell-Stop' : 'Entry'} ${m(E)}`, short: `E ${m(E)}`, edge: ye, first: isShort ? 'below' : 'above' });
     if (d.stop != null) {
-      const r = E - +d.stop;
-      labels.push({ cls: 'slsz', color: '#ff8a87', full: `SL ${m(r)} (${pct(r)})`, short: `SL ${m(r)}`, edge: ys, first: 'above' });
+      const r = isShort ? (+d.stop - E) : (E - +d.stop);
+      labels.push({ cls: 'slsz', color: '#ff8a87', full: `SL ${m(r)} (${pct(r)})`, short: `SL ${m(r)}`, edge: ys, first: isShort ? 'below' : 'above' });
     }
     const variants = [{ fs: 10.5, cw: 6.1, k: 'full' }, { fs: 9, cw: 5.3, k: 'full' }, { fs: 9, cw: 5.3, k: 'short' }] as const;
     const placed: { x: number; y: number; w: number; h: number }[] = [];
