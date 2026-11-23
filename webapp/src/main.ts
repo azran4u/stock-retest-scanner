@@ -15,6 +15,7 @@ import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './c
 import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
 import { UI_DEF, isShortSide, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import { LIVES_UI_DEF, filterLives, livesTableHtml, livesToolbarHtml, mentorsOf, type Live as LiveRow, type LivesFilters } from './lives';
+import { ROI_RECS, roiBadgeHtml, roiPanelHtml, type RoiAnalysis } from './roi';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -43,6 +44,7 @@ const S = {
   positions: [] as Position[],
   quotes: new Map<string, Quote>(),
   research: new Map<string, Research>(),
+  roi: new Map<string, RoiAnalysis>(),
   lists: [] as StockList[],
 };
 // old single-select chip (before 2026-10-26) -> the equivalent independent filter
@@ -474,6 +476,7 @@ function factsOf(r: Row): Facts {
     expertHam: (() => { const e = expertOf(r.ticker); return e?.ok ? (e.hammers || []).map((h) => ({ k: h.k, s: h.s })) : null; })(),
     expertBelowK: expertOf(r.ticker)?.closes_below_k ?? null,
     conf: (() => { const l = confOf(r.ticker, r); return l ? { w: l.w.map((p) => p.k), d: l.d.map((p) => p.k), entry: l.entry } : null; })(),
+    roiRec: S.roi.get(r.ticker)?.rec_key ?? null,
     today: td,
   };
 }
@@ -491,6 +494,7 @@ function fpanelHtml(): string {
     if (d.param) { const x = st.x ?? d.param.def; extra += `<input class="fx" type="number" inputmode="decimal" dir="ltr" min="${d.param.min}" max="${d.param.max}" step="${d.param.step}" value="${x}" aria-label="${esc(d.label)}" />${d.param.unit ? `<span class="fu muted">${d.param.unit}</span>` : ''}`; }
     if (d.param2) { const p2 = d.param2, y = st.y ?? p2.def; extra += `${p2.pre ? `<span class="fu muted">${p2.pre}</span>` : ''}<input class="fx2" type="number" inputmode="decimal" dir="ltr" min="${p2.min}" max="${p2.max}" step="${p2.step}" value="${y}" aria-label="${esc(d.label)} ${esc(p2.unit || '')}" />${p2.unit ? `<span class="fu muted">${p2.unit}</span>` : ''}`; }
     if (d.select === 'sector') extra += `<select class="fsel" aria-label="תחום"><option value="">בחר…</option>${sectors.map((x) => `<option ${st.v === x ? 'selected' : ''} value="${esc(x)}">${esc(x)}</option>`).join('')}</select>`;
+    if (d.select === 'roiRec') extra += `<select class="fsel" aria-label="המלצת רועי"><option value="">בחר…</option>${ROI_RECS.map((x) => `<option ${st.v === x.key ? 'selected' : ''} value="${x.key}">${esc(x.label)}</option>`).join('')}</select>`;
     let kinds = '';
     if (d.kinds) { const ks = st.kinds?.length ? st.kinds : DEF_KINDS; kinds = `<div class="fk">${REV_KINDS.map((k) => `<button class="kd ${ks.includes(k) ? 'on' : ''}" data-k="${k}">${REV_HE[k]}</button>`).join('')}</div>`; }
     return `<div class="fi ${isActive(id, st) ? 'act' : ''}" data-f="${id}"><label class="ft"><input type="checkbox" ${st.on ? 'checked' : ''} /><span class="fl">${d.label}</span></label>${extra}${kinds}</div>`;
@@ -1439,6 +1443,7 @@ function rowHtml(r: Row) {
   const extra = [
     mine.length ? `<span class="badge b-mine">✎ ${mine.length}</span>` : '',
     expertBadgeHtml(r.ticker),
+    roiBadgeHtml(S.roi.get(r.ticker)),
     tech ? `<span class="badge ${tech.value === 'yes' ? 'b-pass' : 'b-obs'}">${tech.value === 'yes' ? 'טכנית' : 'לא טכנית'}</span>` : '',
     pend ? `<span class="badge b-review">⌛ ${pend}</span>` : '',
     isNi(r.ticker) && latestLabel(r.ticker, 'not_interesting')?.until ? `<span class="muted small">חוזרת ב-${ddmm(latestLabel(r.ticker, 'not_interesting')!.until)}</span>` : '',
@@ -2064,6 +2069,7 @@ function renderPanel() {
       ${ds.length ? '<div class="muted small">עריכה: בחר שרטוט (הקשה עליו בגרף או בשורה) וגרור את הקווים.</div>' : ''}
     </section>
     ${researchHtml(S.research.get(t), S.ui.researchOpen !== false)}
+    ${roiPanelHtml(S.roi.get(t), true)}
     ${confPanelHtml(t)}
     ${expertPanelHtml(t)}
     ${fibPanelHtml(r)}
@@ -2195,8 +2201,7 @@ async function loadAll() {
   S.loaded = true;
   await loadLists();
   loadPositions();
-  loadResearch();
-  loadExpertZones();
+  await Promise.all([loadResearch(), loadRoi(), loadExpertZones()]);
 }
 // ---------------- expert zone (Eyal 2026-11-01): separate overlay for the starred stocks, never a drawing / PASS input ----------------
 let expertDoc: ExpertDoc | null = null;
@@ -2380,6 +2385,11 @@ function expertPanelHtml(t: string): string {
 /** overviews: any ticker with a ticker_research row (PASS overviews + starred research); failure = no section */
 async function loadResearch() {
   try { S.research = new Map((await api.loadResearch()).map((x) => [x.ticker, x])); } catch { return; }
+  if (cv && S.ticker) renderPanel();
+}
+async function loadRoi() {
+  try { S.roi = new Map((await api.loadRoi()).map((x) => [x.ticker, x])); } catch { return; }
+  if ($('.list')) updateListBody();
   if (cv && S.ticker) renderPanel();
 }
 

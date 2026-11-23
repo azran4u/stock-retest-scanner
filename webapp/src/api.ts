@@ -6,6 +6,7 @@ import type { Research } from './research';
 import type { StockList } from './lists';
 import type { StDraw } from './stages';
 import { normalizeLives, type Live } from './lives';
+import { normalizeRoiList, type RoiAnalysis } from './roi';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
@@ -52,6 +53,8 @@ export interface Api {
   updateStageDrawing(id: string, patch: Partial<StDraw>): Promise<void>;
   /** community live sessions (public.lives, owner-only RLS; never a public static file) */
   loadLives(): Promise<Live[]>;
+  /** Roi's PASS analysis (public.roi_analysis, owner-only RLS; never a public static file) */
+  loadRoi(): Promise<RoiAnalysis[]>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -151,7 +154,13 @@ class SupaApi implements Api {
     ).order('display_date', { ascending: false }).order('post_time', { ascending: false })) as any[];
     return normalizeLives(rows);
   }
-  subscribe(fn: ChangeFn) {
+  async loadRoi() {
+    const rows = check(await this.sb.from('roi_analysis').select(
+      'ticker,recommendation,rec_key,entry,stop,target,rr,rationale_he,checklist,roi_mentions,as_of,price,price_date,trigger_he,scanner_report_date'
+    ).order('ticker')) as any[];
+    return normalizeRoiList(rows);
+  }
+    subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
     for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions', 'stock_lists'] as Table[]) {
       ch.on('postgres_changes' as any, { event: '*', schema: 'public', table: t },
@@ -250,6 +259,12 @@ class MemApi implements Api {
         if (r.ok) return normalizeLives(await r.json());
       } catch { /* no local fallback */ }
     }
+    return [];
+  }
+  async loadRoi() {
+    // tests inject window.__demoRoi. The production build never bundles the analysis JSON.
+    const injected = (window as any).__demoRoi;
+    if (Array.isArray(injected)) return normalizeRoiList(injected);
     return [];
   }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }

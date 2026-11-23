@@ -53,3 +53,8 @@ ok(F.activeCount({}) === 0 && F.activeCount({ rr: { on: true }, unfit: { on: tru
 // Eyal 2026-10-26: no earnings in any source (ETF) passes 'days to earnings'; a known date within 14d still fails
 ok(F.matches(f({ daysToEarn: null, earnNone: true }), { earn: { on: true } }), 'no earnings (ETF) passes days-to-earnings');
 ok(!F.matches(f({ daysToEarn: 5, earnNone: false }), { earn: { on: true } }), 'known date within 14d still fails');
+
+// Roi recommendation filter (Eyal 2026-11-23): list filter only, missing data fails when the filter is on
+ok(F.matches(f({ roiRec: 'enter' }), { roiRec: { on: true, v: 'enter' } }) && !F.matches(f({ roiRec: 'wait' }), { roiRec: { on: true, v: 'enter' } }) && !F.matches(f({ roiRec: null }), { roiRec: { on: true, v: 'enter' } }), 'roiRec: enter matches, wait/none fail');
+ok(F.matches(f({ roiRec: 'skip' }), { roiRec: { on: false, v: 'enter' } }) && F.matches(base, { roiRec: { on: true, v: '' } }), 'roiRec off or empty value = ignored');
+ok(F.activeCount({ roiRec: { on: true, v: '' } }) === 0 && F.activeCount({ roiRec: { on: true, v: 'wait' } }) === 1, 'roiRec active only with a value');

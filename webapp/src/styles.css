@@ -589,3 +589,34 @@ a.badge.etfl { text-decoration: none; }
 @media (min-width: 720px) {
   .lives-wrap { padding: 0 12px calc(24px + var(--safe-b)); }
 }
+
+
+/* Roi analysis (Eyal 2026-11-23): same layout on phone and desktop, informational only */
+.badge.b-roi { font-weight: 600; }
+.badge.b-roi-enter { background: rgba(38,166,154,.22); color: #5fd4c6; }
+.badge.b-roi-wait { background: rgba(255,152,0,.2); color: #ffb74d; }
+.badge.b-roi-skip { background: rgba(239,83,80,.2); color: #ff8a87; }
+.roibox { border: 1px solid var(--bg3); border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.roibox > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.roibox > summary::-webkit-details-marker { display: none; }
+.roibox > summary h3 { margin: 0; }
+.roibox > summary h3::before { content: '▸ '; }
+.roibox[open] > summary h3::before { content: '▾ '; }
+.roinote { margin: 8px 0 6px; }
+.roilevels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.roikv { background: var(--bg2); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.roikv span { color: var(--mut); font-size: 11px; }
+.roikv b { font-size: 15px; overflow-wrap: anywhere; }
+.roi-rationale, .roi-trigger { margin: 8px 0; line-height: 1.55; overflow-wrap: anywhere; }
+.roi-check { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.roi-check li { display: flex; gap: 8px; align-items: flex-start; }
+.roi-check .ci { width: 18px; flex: none; text-align: center; font-weight: 700; line-height: 1.4; }
+.roi-check li.ok .ci { color: #5fd4c6; } .roi-check li.bad .ci { color: #ff8a87; } .roi-check li.unk .ci { color: var(--mut); }
+.roi-check li b, .roi-check li .small { overflow-wrap: anywhere; }
+.roi-quotes { margin: 10px 0 4px; }
+.roi-quotes h4 { margin: 0 0 6px; font-size: 13px; color: var(--mut); }
+.roi-quotes blockquote { margin: 0 0 8px; padding: 6px 10px; border-inline-start: 3px solid var(--bg3); background: var(--bg2); border-radius: 0 8px 8px 0; }
+.roi-quotes blockquote p { margin: 0 0 4px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (max-width: 719px) {
+  .roilevels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

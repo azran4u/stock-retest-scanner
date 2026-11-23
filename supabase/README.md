@@ -48,3 +48,10 @@ Owner-only SELECT RLS (same pattern as `ticker_research` / `positions`). No writ
 for `authenticated`; refreshes are upserts from `tools/import_lives.py` applied as SQL.
 This is private community content: do not put the JSON under `app/` or `dist/` (those
 are publicly reachable without login).
+
+## Roi analysis (`public.roi_analysis`, 2026-11-23)
+
+`migrations/20261123_roi_analysis.sql` — Roi's method checklist and recommendation for PASS
+tickers (ניתוח רועי). Owner-only SELECT RLS (same pattern as `lives`). No write policy for
+`authenticated`; refreshes are upserts from `tools/import_roi.py` keyed on `ticker` (every
+column is replaced, not merged). Private: do not put the JSON under `app/` or `dist/`.

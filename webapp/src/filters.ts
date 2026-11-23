@@ -34,6 +34,8 @@ export interface Facts {
   expertScore?: number | null;              // expert-zone score 0-100 (expert_zones.json); null = no expert level / not loaded
   /** confirmation patterns on the zone that counts now (confirm.ts confOnLevel): weekly / daily k (bars back), entry signal */
   conf?: { w: number[]; d: number[]; entry: boolean } | null;
+  /** Roi recommendation key (enter/wait/skip); null = no Roi analysis */
+  roiRec?: 'enter' | 'wait' | 'skip' | null;
   today: string;                            // YYYY-MM-DD (Israel) for "within X weeks"
 }
 
@@ -48,7 +50,7 @@ export interface FilterDef {
   /** second numeric parameter (FState.y), e.g. the window of 'פטישים על אזור המומחים' */
   param2?: { def: number; min: number; max: number; step: number; unit?: string; pre?: string };
   kinds?: boolean;      // reversal kinds picker
-  select?: 'sector';
+  select?: 'sector' | 'roiRec';
   tri?: boolean;        // unfit: hide / only / all
   test: (f: Facts, s: FState) => boolean;
 }
@@ -122,6 +124,8 @@ export const FILTERS: FilterDef[] = [
   { id: 'expertwatch', label: 'ברשימת מעקב מומחים', group: 'setup', test: (f) => !!f.expertWatch },
   { id: 'expertnear', label: 'מרחק מאזור המומחים ≤', group: 'setup', param: { def: 1, min: 0, max: 10, step: 0.1, unit: 'ATR שבועי' }, test: (f, s) => f.expertDist != null && f.expertDist <= (s.x ?? 1) },
   { id: 'sector', label: 'תחום', group: 'setup', select: 'sector', test: (f, s) => !s.v || f.sector === s.v },
+  // Roi's recommendation (Eyal 2026-11-23): list filter only; never a PASS gate and never changes scanner R:R
+  { id: 'roiRec', label: 'המלצת רועי', group: 'setup', select: 'roiRec', test: (f, s) => !s.v || f.roiRec === s.v },
   { id: 'inst', label: 'אחזקה מוסדית ≥', group: 'setup', param: { def: 60, min: 0, max: 100, step: 5, unit: '% (חסר = עובר)' }, test: (f, s) => f.instOwn == null || f.instOwn >= (s.x ?? 60) },
   { id: 'short', label: 'Short float ≤', group: 'setup', param: { def: 5, min: 0, max: 100, step: 0.5, unit: '% (חסר = עובר)' }, test: (f, s) => f.shortFloat == null || f.shortFloat <= (s.x ?? 5) },
 ];
@@ -131,7 +135,7 @@ export const BY_ID = new Map(FILTERS.map((d) => [d.id, d]));
 /** a filter counts as active when it changes the default list (unfit: anything but 'hide') */
 export function isActive(id: string, s: FState | undefined): boolean {
   if (id === 'unfit') return (s?.mode ?? 'hide') !== 'hide';
-  if (id === 'sector') return !!s?.on && !!s.v;
+  if (id === 'sector' || id === 'roiRec') return !!s?.on && !!s.v;
   return !!s?.on;
 }
 export function activeCount(fs: Filters): number { return FILTERS.filter((d) => isActive(d.id, fs[d.id])).length; }
