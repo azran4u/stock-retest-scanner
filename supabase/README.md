@@ -40,3 +40,11 @@ SNX 2026-11-02, 0.5 ATR under the entry, used to be a "touched" message), or the
 levels (entry / SL / TP within 0.5%) is not repeated for 5 days (limit / triggered) or 30 days (cancel) unless the
 levels changed. Manual tests: `?dry=1&force=1` (never sends, never consumes a slot). Code: `logic.ts` `decide()`,
 tests `deno test supabase/functions/srs-price-alerts` (`/workspace/.deno-bin/deno` on the box).
+
+## Lives archive (`public.lives`, 2026-11-23)
+
+`migrations/20261123_lives.sql` — table of Cycles Trading community live sessions (לייבים).
+Owner-only SELECT RLS (same pattern as `ticker_research` / `positions`). No write policy
+for `authenticated`; refreshes are upserts from `tools/import_lives.py` applied as SQL.
+This is private community content: do not put the JSON under `app/` or `dist/` (those
+are publicly reachable without login).

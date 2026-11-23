@@ -14,6 +14,7 @@ import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLoca
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
 import { UI_DEF, isShortSide, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { LIVES_UI_DEF, filterLives, livesTableHtml, livesToolbarHtml, mentorsOf, type Live as LiveRow, type LivesFilters } from './lives';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
 
 // OAuth error coming back from Google / Supabase (e.g. a non-owner account rejected by the server), read before the
@@ -682,6 +683,7 @@ function route() {
   syncBotFab();
   if (!S.email) return renderLogin();
   if (S.email.toLowerCase() !== OWNER_EMAIL) return renderDenied();
+  if (location.hash.startsWith('#/lives')) { layout = null; renderLives(); return; }
   if (!S.loaded) { app.innerHTML = '<div class="center muted">טוען…</div>'; return; }
   const m = location.hash.match(/^#\/t\/([^/?]+)/);
   if (location.hash.startsWith('#/rules')) { layout = null; renderRules(); return; }
@@ -761,7 +763,7 @@ function renderList(root?: HTMLElement) {
   <header class="top">
     <div class="title">Retest <span class="muted small">${esc(S.reportDate || '')}</span></div>
     ${alertStatHtml()}
-    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="stagesLink" class="ghost small btnlike" href="#/stages">שלבים</a><a id="courseLink" class="ghost small btnlike" href="#/course">קורס</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
+    <div class="hbtns"><a id="calLink" class="ghost small btnlike" href="#/calibrate">כיול מגמה</a><a id="stagesLink" class="ghost small btnlike" href="#/stages">שלבים</a><a id="livesLink" class="ghost small btnlike" href="#/lives">לייבים</a><a id="courseLink" class="ghost small btnlike" href="#/course">קורס</a><a id="rulesLink" class="ghost small btnlike" href="#/rules">כללים</a><button id="logout" class="ghost small">יציאה</button></div>
   </header>
   <div class="filters">
     ${listBarHtml()}
@@ -794,6 +796,71 @@ function renderList(root?: HTMLElement) {
   if (split) { markSel(); return; }
   const y = sessionStorage.getItem('srs-scroll'); if (y) window.scrollTo(0, +y);
 }
+// ---------------- lives archive (#/lives, לייבים, 2026-11-23) ----------------
+// Source of truth: public.lives (owner-only RLS). Never ship the CSV/JSON under app/ or dist/:
+// those folders are publicly reachable without login.
+const LV_LS = 'srs-lives-ui';
+let lvRows: LiveRow[] = [];
+let lvLoaded = false;
+let lvP: Promise<LiveRow[]> | null = null;
+let lvUi: LivesFilters = { ...LIVES_UI_DEF, ...(() => { try { return JSON.parse(localStorage.getItem(LV_LS) || '{}'); } catch { return {}; } })() };
+const saveLvUi = () => localStorage.setItem(LV_LS, JSON.stringify(lvUi));
+
+async function loadLivesRows(): Promise<LiveRow[]> {
+  if (lvLoaded) return lvRows;
+  lvP ??= api.loadLives().then((rows) => { lvRows = rows; lvLoaded = true; return rows; })
+    .catch((e) => { lvP = null; throw e; });
+  return lvP;
+}
+
+function paintLivesBody() {
+  if (!location.hash.startsWith('#/lives') || !$('#lvHost')) return;
+  const shown = filterLives(lvRows, lvUi);
+  const count = $('#lvCount');
+  if (count) count.textContent = `${shown.length} מתוך ${lvRows.length} לייבים`;
+  const body = $('#lvBody');
+  const html = livesTableHtml(shown);
+  if (body) {
+    const tmp = document.createElement('div'); tmp.innerHTML = html;
+    const next = tmp.firstElementChild;
+    if (next) body.replaceWith(next);
+  }
+}
+
+function bindLivesFilters() {
+  const q = $('#lvQ') as HTMLInputElement | null;
+  if (q) q.oninput = () => { lvUi.q = q.value; saveLvUi(); paintLivesBody(); };
+  const bind = (id: string, apply: (v: string) => void) => {
+    const el = $(id) as HTMLSelectElement | null;
+    if (el) el.onchange = () => { apply(el.value); saveLvUi(); paintLivesBody(); };
+  };
+  bind('#lvMentor', (v) => { lvUi.mentor = v; });
+  bind('#lvArchive', (v) => { lvUi.archive = v as LivesFilters['archive']; });
+  bind('#lvSum', (v) => { lvUi.hasSummary = v as LivesFilters['hasSummary']; });
+  bind('#lvSort', (v) => { lvUi.sort = (v === 'mentor' ? 'mentor' : 'date'); });
+  $('#lvBack')!.onclick = () => { location.hash = '#/'; };
+}
+
+async function renderLives() {
+  destroyChart();
+  const shown = lvLoaded ? filterLives(lvRows, lvUi) : [];
+  app.innerHTML = `<header class="top"><button id="lvBack" class="ghost">→ רשימה</button><div class="title">לייבים</div><span></span></header>
+    <div id="lvHost">${lvLoaded ? livesToolbarHtml(lvUi, shown.length, lvRows.length, mentorsOf(lvRows)) + livesTableHtml(shown) : '<div class="center muted">טוען…</div>'}</div>`;
+  bindLivesFilters();
+  try {
+    const rows = await loadLivesRows();
+    if (!location.hash.startsWith('#/lives')) return;
+    const now = filterLives(rows, lvUi);
+    $('#lvHost')!.innerHTML = livesToolbarHtml(lvUi, now.length, rows.length, mentorsOf(rows)) + livesTableHtml(now);
+    bindLivesFilters();
+    window.scrollTo(0, 0);
+  } catch (e: any) {
+    if (!location.hash.startsWith('#/lives')) return;
+    $('#lvHost')!.innerHTML = `<div class="center muted">הלייבים לא נטענו${e?.message ? ': ' + esc(e.message) : ''}</div>`;
+    $('#lvBack')!.onclick = () => { location.hash = '#/'; };
+  }
+}
+
 // ---------------- rules page (#/rules) ----------------
 let rulesP: Promise<any> | null = null;
 async function renderRules() {
@@ -2072,7 +2139,8 @@ botSheet.id = 'botSheet'; botSheet.className = 'sheet'; botSheet.hidden = true;
 document.body.append(botFab, botSheet);
 function syncBotFab() {
   const ok = !!S.email && S.email.toLowerCase() === OWNER_EMAIL && S.loaded;
-  botFab.hidden = !ok; if (!ok || location.hash.startsWith('#/t/')) botSheet.hidden = true;
+  const onLives = location.hash.startsWith('#/lives');
+  botFab.hidden = !ok || onLives; if (!ok || onLives || location.hash.startsWith('#/t/')) botSheet.hidden = true;
 }
 function botListHtml() {
   const cs = S.commands.filter((c) => !c.ticker).slice(0, 8);
@@ -2376,8 +2444,14 @@ async function onLogin(email: string | null) {
   if (email && email.toLowerCase() === OWNER_EMAIL && !S.loaded) {
     route();
     loading ??= loadAll().finally(() => { loading = null; });
-    try { await loading; } catch (e: any) { app.innerHTML = `<div class="center">שגיאה בטעינה: ${esc(e?.message || e)}</div>`; return; }
-    if (!subscribed) { api.subscribe(onChange); subscribed = true; }
+    try { await loading; } catch (e: any) {
+      // #/lives does not need the stock dump; keep the page if app data failed to load
+      if (!location.hash.startsWith('#/lives')) {
+        app.innerHTML = `<div class="center">שגיאה בטעינה: ${esc(e?.message || e)}</div>`;
+        return;
+      }
+    }
+    if (S.loaded && !subscribed) { api.subscribe(onChange); subscribed = true; }
   }
   if (!email) { S.loaded = false; destroyChart(); S.ticker = null; }
   route();
