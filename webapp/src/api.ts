@@ -5,6 +5,7 @@ import { normPosition, type Position } from './positions';
 import type { Research } from './research';
 import type { StockList } from './lists';
 import type { StDraw } from './stages';
+import { normalizeLives, type Live } from './lives';
 
 export const SUPABASE_URL = 'https://wkkdblnykgolqijzagva.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_yjtRuTIx0PrxQcdnlfU_Dw_IcJDxi4D';
@@ -49,6 +50,8 @@ export interface Api {
   loadStageDrawings(): Promise<StDraw[]>;
   insertStageDrawing(d: Partial<StDraw>): Promise<StDraw>;
   updateStageDrawing(id: string, patch: Partial<StDraw>): Promise<void>;
+  /** community live sessions (public.lives, owner-only RLS; never a public static file) */
+  loadLives(): Promise<Live[]>;
   subscribe(fn: ChangeFn): void;
 }
 
@@ -142,6 +145,12 @@ class SupaApi implements Api {
   async updateStageDrawing(id: string, patch: Partial<StDraw>) {
     check(await this.sb.from('stage_drawings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id));
   }
+  async loadLives() {
+    const rows = check(await this.sb.from('lives').select(
+      'youtube_id,link,archive,live_date,post_date,post_time,mentor,title,summary_link,stocks,topics,notes,display_date'
+    ).order('display_date', { ascending: false }).order('post_time', { ascending: false })) as any[];
+    return normalizeLives(rows);
+  }
   subscribe(fn: ChangeFn) {
     const ch = this.sb.channel('srs-app');
     for (const t of ['drawings', 'labels', 'commands', 'watchlist', 'positions', 'stock_lists'] as Table[]) {
@@ -230,6 +239,19 @@ class MemApi implements Api {
     this.stageDrawings.push(row); return { ...row };
   }
   async updateStageDrawing(id: string, patch: Partial<StDraw>) { const d = this.stageDrawings.find((x) => x.id === id); if (d) Object.assign(d, patch, { updated_at: new Date().toISOString() }); }
+  async loadLives() {
+    // tests may inject window.__demoLives. The production build never bundles the CSV.
+    // In Vite dev only, /lives-dev.json is served from /workspace/lives/lives.json (not in app/).
+    const injected = (window as any).__demoLives;
+    if (Array.isArray(injected)) return normalizeLives(injected);
+    if (import.meta.env.DEV) {
+      try {
+        const r = await fetch(import.meta.env.BASE_URL + 'lives-dev.json');
+        if (r.ok) return normalizeLives(await r.json());
+      } catch { /* no local fallback */ }
+    }
+    return [];
+  }
   subscribe(fn: ChangeFn) { this.changeFns.push(fn); }
 }
 

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { rmSync } from 'node:fs';
+import { rmSync, readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // Default: built into ../app (old GitHub Pages path /stock-retest-scanner/app/).
@@ -14,5 +14,20 @@ export default defineConfig({
   plugins: [{
     name: 'clean-assets',
     buildStart() { rmSync(resolve(__dirname, outDir, 'assets'), { recursive: true, force: true }); },
+  }, {
+    // Dev-only: serve the private lives JSON. Never emitted into app/ or dist/.
+    // A file under app/ would be publicly reachable without login.
+    name: 'lives-dev-json',
+    configureServer(server) {
+      const file = resolve('/workspace/lives/lives.json');
+      server.middlewares.use((req, res, next) => {
+        const url = req.url?.split('?')[0] || '';
+        if (!url.endsWith('/lives-dev.json') && url !== '/lives-dev.json') return next();
+        if (!existsSync(file)) { res.statusCode = 404; res.end('not found'); return; }
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(readFileSync(file));
+      });
+    },
   }],
 });

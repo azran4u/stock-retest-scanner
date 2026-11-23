@@ -487,7 +487,7 @@ button.gbtn { display: flex; align-items: center; justify-content: center; gap: 
   .stlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; padding: 10px 12px; max-width: 1680px; margin: 0 auto; }
   .stcard { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
 }
-/* header links (5 since the stages page, 2026-11-13): wrap to a second row instead of overflowing on phones / the side list */
+/* header links (6 since the lives page, 2026-11-23): wrap to a second row instead of overflowing on phones / the side list */
 header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
 .hbtns { flex-wrap: wrap; justify-content: flex-end; }
 .hbtns a.btnlike { white-space: nowrap; }
@@ -552,3 +552,40 @@ a.badge.etfl { text-decoration: none; }
 .stshorthead .cnt { font-size: 12px; padding: 1px 7px; border-radius: 99px; background: rgba(239,83,80,.2); color: #ff8a87; }
 .stshortempty { padding: 12px; border: 1px dashed var(--bg3); border-radius: 10px; font-size: 13px; }
 .stshortcard { border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); margin-bottom: 6px; cursor: pointer; }
+
+
+/* lives archive (#/lives, 2026-11-23): same controls on phone and desktop */
+.lives-filters { /* inherits .filters sticky bar */ }
+.lives-frow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.lives-frow .sortlab { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; font-size: 12px; }
+.lives-frow .sortlab select { width: 100%; min-height: 40px; }
+.lives-wrap { padding: 0 0 calc(24px + var(--safe-b)); overflow-x: visible; }
+.lives-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.lives-table th, .lives-table td { padding: 10px 8px; border-bottom: 1px solid var(--bg2); text-align: start; vertical-align: top; }
+.lives-table th { font-size: 12px; color: var(--mut); font-weight: 600; background: var(--bg); }
+.lives-table .lv-date { width: 7rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lives-table .lv-mentor { width: 4.8rem; }
+.lives-table .lv-title { overflow-wrap: anywhere; font-weight: 600; }
+.lives-table .lv-arch { width: 5.2rem; }
+.lives-table th:nth-child(5), .lives-table th:nth-child(6),
+.lives-table td:nth-child(5), .lives-table td:nth-child(6) { width: 5.6rem; }
+.lives-table .lv-stocks-td { width: 26%; }
+.lv-link { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 12px; border-radius: 10px; background: var(--bg3); color: var(--fg); text-decoration: none; font-size: 13px; }
+.lv-link:hover, .lv-link:focus { background: var(--blue); color: #fff; }
+.lv-stocks { display: flex; flex-wrap: wrap; gap: 4px; }
+#lvQ { width: 100%; }
+@media (max-width: 719px) {
+  .lives-frow { grid-template-columns: 1fr 1fr; }
+  .lives-table thead { display: none; }
+  .lives-table, .lives-table tbody { display: block; width: 100%; }
+  .lives-table tr.lv-row { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 12px 14px; border-bottom: 1px solid var(--bg2); }
+  .lives-table td { border: 0; padding: 3px 0; min-width: 0; width: auto !important; }
+  .lives-table td::before { content: attr(data-label); display: block; color: var(--mut); font-size: 11px; font-weight: 600; margin-bottom: 1px; }
+  .lives-table td.lv-title { grid-column: 1 / -1; font-size: 16px; }
+  .lives-table td.lv-title::before { display: none; }
+  .lives-table td.lv-arch { grid-column: 1 / -1; }
+  .lives-table td.lv-stocks-td { grid-column: 1 / -1; }
+}
+@media (min-width: 720px) {
+  .lives-wrap { padding: 0 12px calc(24px + var(--safe-b)); }
+}
