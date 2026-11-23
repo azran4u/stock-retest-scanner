@@ -112,7 +112,7 @@ def sql_text_arr(xs: list[str]) -> str:
     if not xs:
         return "'{}'::text[]"
     inner = ','.join('"' + t.replace('\\', '\\\\').replace('"', '\\"') + '"' for t in xs)
-    return "'" + inner + "'::text[]"
+    return "'{" + inner + "}'::text[]"
 
 
 def render_import_sql(lives: list[dict], n_csv: int, n_dupes: int) -> str:

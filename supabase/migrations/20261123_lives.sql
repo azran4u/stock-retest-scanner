@@ -37,5 +37,6 @@ create policy owner_select on public.lives
   using ((auth.jwt() ->> 'email') = 'azran4u@gmail.com');
 
 -- authenticated may only read; no insert/update/delete policy on purpose.
-revoke all on table public.lives from anon, public;
+-- Revoke from authenticated too: Supabase default privileges otherwise grant ALL.
+revoke all on table public.lives from anon, public, authenticated;
 grant select on table public.lives to authenticated;
