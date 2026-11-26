@@ -2,7 +2,8 @@
 // iPad 1024x1366 / 768x1024, and phone 390x844. Desktop: list on the right (mini chart + stage / tags / R:R / SL% /
 // shares / rules) + the selected stock's big weekly chart; phone: list -> stock page -> back. Tabs (Buy-Stop /
 // Sell-Stop / 2A / 4A / stage 1-4 / no volume) filter; stage 1-4 chips must be fully in the viewport (no horizontal
-// scroll) on every width.
+// scroll) on every width. The results list (not the filter block) must scroll
+// (wheel / touch, scrollTop changes, last card reachable) at desktop, iPad, and phone.
 // SL% sort works, dragging the base ceiling on the big chart saves his level ('הרמות שלך') and the R:R / SL% follow his
 // trade bar, no horizontal overflow, back returns to the retest list.
 // Usage: node e2e_stages.mjs [baseURL] [outDir]
@@ -16,12 +17,89 @@ const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; }
 const tabsInView = async (page) => page.$$eval('.sttabs-stages [data-tab]', (els) => els.map((el) => {
   const r = el.getBoundingClientRect();
   const vw = window.innerWidth, vh = window.innerHeight;
+  let clipped = false;
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (!/(hidden|auto|scroll)/.test(cs.overflow + cs.overflowY + cs.overflowX)) continue;
+    const pr = p.getBoundingClientRect();
+    if (r.bottom > pr.bottom + 1 || r.top < pr.top - 1 || r.right > pr.right + 1 || r.left < pr.left - 1) { clipped = true; break; }
+  }
+  const onScreen = r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= vh + 1 && r.right <= vw + 1;
   return {
     tab: el.getAttribute('data-tab'),
-    ok: r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= vh + 1 && r.right <= vw + 1,
+    ok: onScreen && !clipped,
     box: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
   };
 }));
+const clickInMore = async (loc) => {
+  await loc.evaluate((el) => {
+    const root = el.closest('.stfilters-more') || el.closest('.stresults') || el.closest('.side') || el.closest('.stside1');
+    if (root) {
+      const er = el.getBoundingClientRect(), rr = root.getBoundingClientRect();
+      root.scrollTop += er.top - rr.top - 8;
+    }
+    el.click();
+  });
+  await loc.page().waitForTimeout(150);
+};
+
+// Scroll the results pane with wheel (desktop) or a touch swipe (tablet / phone).
+// Does not use click() or el.scrollTop = to move; those hid the "filters ate the list" bug.
+const assertListScroll = async (page, name, shot) => {
+  const box = page.locator('.stresults');
+  await box.waitFor();
+  const n = await page.locator('.stresults li[data-st]').count();
+  ok(n > 5, `${name}: enough result rows to scroll (${n})`);
+  await box.evaluate((el) => { el.scrollTop = 0; });
+  const before = await box.evaluate((el) => ({ top: el.scrollTop, sh: el.scrollHeight, ch: el.clientHeight }));
+  ok(before.sh > before.ch + 80, `${name}: results list is scrollable (${before.sh} > ${before.ch})`);
+  const bb = await box.boundingBox();
+  ok(!!bb && bb.height >= 140, `${name}: results pane has a usable height (${bb ? Math.round(bb.height) : 0}px)`);
+  const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+  const x = bb.x + bb.width / 2, y = bb.y + Math.max(24, bb.height * 0.55);
+  let how = 'wheel';
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 1200 });
+  await page.waitForTimeout(300);
+  let after = await box.evaluate((el) => el.scrollTop);
+  if (!(after > before.top + 40)) {
+    how = hasTouch ? 'touch' : 'wheel-drag';
+    const y2 = Math.max(bb.y + 16, y - Math.min(240, bb.height * 0.6));
+    if (hasTouch) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 0 }] });
+      const steps = 16;
+      for (let i = 1; i <= steps; i++) {
+        const yi = y + (y2 - y) * (i / steps);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: yi, id: 0 }] });
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } else {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x, y2, { steps: 12 });
+      await page.mouse.up();
+    }
+    await page.waitForTimeout(300);
+    after = await box.evaluate((el) => el.scrollTop);
+  }
+  ok(after > before.top + 40, `${name}: ${how} scroll changes scrollTop (${before.top} -> ${after})`);
+  const last = page.locator('.stresults li[data-st]').last();
+  await last.evaluate((el) => el.scrollIntoView({ block: 'end', inline: 'nearest' }));
+  await page.waitForTimeout(150);
+  const reach = await last.evaluate((el) => {
+    const root = el.closest('.stresults');
+    const lr = el.getBoundingClientRect(), br = root.getBoundingClientRect();
+    const visible = lr.top < br.bottom - 8 && lr.bottom > br.top + 8;
+    return { visible, scrollTop: root.scrollTop, max: root.scrollHeight - root.clientHeight, t: el.dataset.st };
+  });
+  ok(reach.visible && reach.scrollTop > 80, `${name}: last result ${reach.t} is reachable (scrollTop ${Math.round(reach.scrollTop)} / ${Math.round(reach.max)})`);
+  const vis = await tabsInView(page);
+  ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs still in viewport after list scroll`);
+  if (shot) await page.screenshot({ path: shot, animations: 'disabled' });
+  await box.evaluate((el) => { el.scrollTop = 0; });
+};
+
 // a stock with computed support / resistance lines (overhead resistances + valid swing low) for the lines test
 const SD = JSON.parse(readFileSync(new URL('../app/data/stages.json', import.meta.url)));
 const zf = (r) => (r.bo && r.sub === '2A' ? r.bo.base_low : r.base ? r.base.low : r.range?.floor);
@@ -76,6 +154,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   ok(sls.length > 3 && sls.every((v, i) => i === 0 || v >= sls[i - 1]), `${name}: sort by SL% ascending (${sls.slice(0, 4).join(', ')} …)`);
   ok(await page.$$eval('canvas.stchart', (c) => c.slice(0, 2).every((x) => x.dataset.drawn === '1')), `${name}: mini charts drawn`);
   await page.screenshot({ path: `${OUT}/${name}_list_stage2.png` });
+  await assertListScroll(page, name, `${OUT}/${name}_list_scrolled.png`);
   // open one stock (2: first row)
   const first = await page.$eval('li[data-st]', (e) => e.dataset.st);
   await page.click(`li[data-st="${first}"]`);
@@ -155,8 +234,9 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await chip.click(); await page.waitForFunction((e) => location.hash === '#/stages/' + e, chipEtf); await page.waitForTimeout(500);
   ok((await page.locator('#stback').getAttribute('href')) === '#/stages/' + chipT, `${name}: card chip opens ${chipEtf}, back -> ${chipT}`);
   if (mobile) { await page.click('#stback'); await page.waitForTimeout(400); await page.click('#stback'); await page.waitForSelector('li[data-st]'); }
-  await page.locator('details.secs summary').first().click(); await page.waitForTimeout(200);
-  await page.locator('details.secs a.etfl[data-etf="XLU"]').click(); await page.waitForFunction(() => location.hash === '#/stages/XLU'); await page.waitForTimeout(800);
+  await clickInMore(page.locator('details.secs summary').first());
+  await clickInMore(page.locator('details.secs a.etfl[data-etf="XLU"]'));
+  await page.waitForFunction(() => location.hash === '#/stages/XLU'); await page.waitForTimeout(800);
   ok((await page.locator('#secrule').innerText()).includes('סוף שלב 1 – התעוררות'), `${name}: XLU = late stage 1 / awakening`);
   ok(await page.locator('#idxkv .skv').count() >= 8 && /מבנה/.test(await page.locator('#idxkv').innerText()), `${name}: XLU page shows the 4 parameters (position / slope / structure / meaning)`);
   for (const [T, st] of [['XLF', 2], ['SPY', SD.market.SPY.stage], ['QQQ', SD.market.QQQ.stage]]) {
@@ -187,7 +267,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   ok(await page.locator(`li[data-st="${starT}"] .star`).count() === 1, `${name}: star on the card`);
   await page.locator(`li[data-st="${starT}"] .star`).click(); await page.waitForTimeout(300);
   ok(await page.locator(`li[data-st="${starT}"] .star.on`).count() === 1, `${name}: starring ${starT} lights the star`);
-  await page.click('[data-tg="starred"]'); await page.waitForTimeout(300);
+  await clickInMore(page.locator('[data-tg="starred"]')); await page.waitForTimeout(300);
   const starredN = await page.locator('li[data-st]').count();
   ok(starredN >= 1 && starredN === await page.locator('li[data-st] .star.on').count(), `${name}: starred-only filter (${starredN})`);
   await page.click(`li[data-st="${starT}"]`); await page.waitForSelector('#ststar'); await page.waitForTimeout(200);
@@ -195,7 +275,7 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.locator('#ststar').click(); await page.waitForTimeout(300);
   ok(await page.locator('#ststar.on').count() === 0, `${name}: unstar from the stock page`);
   if (mobile) { await page.click('#stback'); await page.waitForSelector('li[data-st], #stHome'); }
-  await page.click('[data-tg="starred"]'); await page.waitForTimeout(200);
+  await clickInMore(page.locator('[data-tg="starred"]')); await page.waitForTimeout(200);
   await page.click('#stHome'); await page.waitForTimeout(500);
   ok(!page.url().includes('#/stages'), `${name}: back leaves the page`);
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
@@ -225,6 +305,7 @@ for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9',
   const mainTxt = await page.locator('#stMain').innerText().catch(() => '');
   ok(!/מועמדות ל-Buy-Stop או ל-Sell-Stop/.test(mainTxt), `${name}: main pane follows the stage tab (not a stale Buy-Stop empty state)`);
   await page.screenshot({ path: `${OUT}/${name}_list_stage2.png` });
+  await assertListScroll(page, name, `${OUT}/${name}_list_scrolled.png`);
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
   await ctx.close();
 }

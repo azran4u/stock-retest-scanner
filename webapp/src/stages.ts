@@ -331,11 +331,12 @@ export function listHtml(d: StagesDoc, ui: UiState, rows: StageRow[], edits: StE
   </section>` : '';
   return `<header class="top"><a id="stHome" class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין <span class="muted small">${ddmm(d.week)}</span></div>
     <div class="hbtns"><button id="strulesBtn" class="ghost small">כללים</button></div></header>
-  <div class="stfilters">
-    <div class="sttabs">
-      <div class="chips sttabs-actions" role="tablist">${ACTION_TABS.map(([t, he]) => `<button class="chip ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${he} <span class="cnt">${cnt(t)}</span></button>`).join('')}</div>
+  <div class="sttabs">
       <div class="chips sttabs-stages" role="tablist" aria-label="סינון לפי שלב">${STAGE_TABS.map(([t, he]) => `<button class="chip ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${he} <span class="cnt">${cnt(t)}</span></button>`).join('')}</div>
+      <div class="chips sttabs-actions" role="tablist">${ACTION_TABS.map(([t, he]) => `<button class="chip ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${he} <span class="cnt">${cnt(t)}</span></button>`).join('')}</div>
     </div>
+  <div class="stfilters">
+    <div class="stfilters-more">
     <div class="strow"><input id="stq" type="search" placeholder="חיפוש סימול / חברה / סקטור" value="${esc(ui.q)}" />
       <label class="sortlab">מיון <select id="stsort">${SORTS.map(([k, he]) => `<option value="${k}" ${ui.sort === k ? 'selected' : ''}>${he}</option>`).join('')}</select></label></div>
     <div class="chips">
@@ -348,12 +349,12 @@ export function listHtml(d: StagesDoc, ui: UiState, rows: StageRow[], edits: StE
       <button class="chip" id="stcopy">העתק ל-TradingView</button>
     </div>
     <div class="small muted" id="stcount">${rows.length} מניות · עודכן ${new Date(d.generated_at).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem', dateStyle: 'short', timeStyle: 'short' })}</div>
-    <div class="stfilters-more">
     ${topDownHtml(d)}
     </div>
   </div>
+  <div class="stresults">
   <ul class="list stlist2">${rows.slice(0, limit).map((r) => rowHtml(r, effPlan(r, edits.get(r.t), maxRisk, ms, d.rules), r.t === selT, !!edits.get(r.t)?.zone || !!edits.get(r.t)?.lines?.length, !!watched?.has(r.t))).join('') || `<li class="center muted">${ui.tab === 'bs' && !ui.starred ? 'אין השבוע מניה שעוברת את כל הכללים ל-Buy-Stop' : ui.tab === 'ss' && !ui.starred ? 'אין השבוע מניה שעוברת את כל הכללים ל-Sell-Stop' : ui.starred ? 'אין מניות במעקב בלשונית הזו' : 'אין מניות ברשימה הזו'}</li>`}
-  ${rows.length > limit ? `<li class="center"><button id="stmore" class="ghost">הצג עוד (${rows.length - limit})</button></li>` : ''}</ul>${shortSec}`;
+  ${rows.length > limit ? `<li class="center"><button id="stmore" class="ghost">הצג עוד (${rows.length - limit})</button></li>` : ''}</ul>${shortSec}</div>`;
 }
 
 /** Selected stock: big weekly chart (editable base ceiling / floor + trade bar) + plan + checks. */

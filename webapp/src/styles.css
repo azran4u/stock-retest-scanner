@@ -507,14 +507,39 @@ header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
 .stside1 .list { padding: 6px 8px 40px; }
 .stside1 .row { margin-bottom: 6px; border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
 .stside1 .stfilters, .stsplit .stfilters { position: static; }
-/* Stage 1-4 tabs must stay visible (no hidden horizontal scroll) on desktop, iPad, and phone.
-   Only the lower block (market / sectors / search) scrolls when the side list is tight. */
-.stfilters .chips { flex-wrap: wrap; overflow: visible; }
-.stfilters .chip { flex: none; }
-.sttabs { display: flex; flex-direction: column; gap: 6px; }
+/* Stage 1-4 tabs stay visible; the results list (not the filter block) is the scroller.
+   ae74bb8 had set stfilters max-height:none, so wrapping tabs + market filled the
+   overflow:hidden split pane and the list shrank to 0. Grid (not a height:auto
+   flex parent) gives the filter block a definite cap so stfilters-more can scroll. */
+.sttabs .chips, .stfilters .chips { flex-wrap: wrap; overflow: visible; }
+.sttabs .chip, .stfilters .chip { flex: none; }
+.sttabs { display: flex; flex-direction: column; gap: 6px; flex: none; }
 .sttabs-stages { padding-top: 0; }
-.stsplit .side .stfilters { max-height: none; overflow: visible; display: flex; flex-direction: column; min-height: 0; }
-.stsplit .side .stfilters-more { max-height: 36vh; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.stside1, .stsplit .side {
+  display: grid;
+  grid-template-rows: auto auto fit-content(28%) minmax(30vh, 1fr);
+  height: calc(100dvh - var(--pb, 0px));
+  min-height: 0;
+  overflow: hidden;
+}
+.stside1 .sttabs, .stsplit .side .sttabs { min-height: 0; overflow: visible; padding: 6px 12px 4px; background: var(--bg); }
+.stside1 .sttabs .chip, .stsplit .side .sttabs .chip { padding: 4px 9px; min-height: 32px; font-size: 13px; }
+.stside1 .stfilters, .stsplit .side .stfilters {
+  max-height: 28%; min-height: 0; overflow: hidden;
+  display: flex; flex-direction: column; padding-top: 0;
+}
+.stfilters-more {
+  flex: 1 1 0%; min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.stresults {
+  min-height: 0; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
+}
+.stsplit .side .stresults .list, .stside1 .stresults .list {
+  flex: none; overflow: visible; min-height: 0; max-height: none;
+}
 .stsplit .topdown, .stside1 .topdown { padding: 0; border: 0; }
 .stpanel { padding: 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
 .stpanel h4 { margin: 8px 0 2px; font-size: 13px; color: var(--mut); }
