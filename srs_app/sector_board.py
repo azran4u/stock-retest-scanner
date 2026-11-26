@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parent.parent
 OUT_BOARD = REPO / "app" / "data" / "sector_board.json"
 OUT_DAILY = REPO / "app" / "data" / "sector_daily"
 BOARD_CACHE = Path("/workspace/cache/sector_board_hist.pkl")
-NEAR_PCT = float(RULES["pre_bo_pct"])  # 5% — same "near" window as the Buy-Stop / Sell-Stop pre-filter
+NEAR_ATRS = 1.0  # board filters only: "near" = within this many weekly ATRs of the level (not RULES.pre_bo_pct)
 DAILY_YEARS = 10
 TOP_N = 10
 # Ordered SPDR sector ETFs (Select Sector / Real Estate).
@@ -104,36 +104,37 @@ def board_badge(row: Dict[str, Any]) -> str:
     return str(stage) if stage in (1, 2, 3, 4) else "?"
 
 
-def near_level(close: Optional[float], level: Optional[float], from_below: bool, near_pct: float = NEAR_PCT) -> bool:
-    """True when close is on the correct side of `level` (or on it) and within near_pct percent."""
-    if close is None or not level or level <= 0:
+def near_level(close: Optional[float], level: Optional[float], from_below: bool,
+               atr_w: Optional[float] = None, near_atrs: float = NEAR_ATRS) -> bool:
+    """True when close is on the correct side of `level` (or on it) and within near_atrs weekly ATRs."""
+    if close is None or not level or atr_w is None or atr_w <= 0:
         return False
-    if from_below:
-        dist = (level - close) / level * 100  # close under resistance
-    else:
-        dist = (close - level) / level * 100  # close over support
-    return 0 <= dist <= near_pct
+    dist = (level - close) if from_below else (close - level)
+    return 0 <= dist <= near_atrs * atr_w
 
 
-def near_abs(close: Optional[float], level: Optional[float], near_pct: float = NEAR_PCT) -> bool:
-    if close is None or not level or level <= 0:
+def near_abs(close: Optional[float], level: Optional[float],
+             atr_w: Optional[float] = None, near_atrs: float = NEAR_ATRS) -> bool:
+    """True when |close - level| is within near_atrs weekly ATRs."""
+    if close is None or not level or atr_w is None or atr_w <= 0:
         return False
-    return abs(close - level) / level * 100 <= near_pct
+    return abs(close - level) <= near_atrs * atr_w
 
 
-def flag_near_res(row: Dict[str, Any], badge: Optional[str] = None, near_pct: float = NEAR_PCT) -> bool:
-    """Main long filter: badge 2a and close within near_pct under resistance."""
+def flag_near_res(row: Dict[str, Any], badge: Optional[str] = None, near_atrs: float = NEAR_ATRS) -> bool:
+    """Main long filter: badge 2a and close within 1 weekly ATR under resistance."""
     b = badge or board_badge(row)
-    return b == "2a" and near_level(row.get("close"), resistance_of(row), from_below=True, near_pct=near_pct)
+    return b == "2a" and near_level(row.get("close"), resistance_of(row), from_below=True,
+                                    atr_w=row.get("atr_w"), near_atrs=near_atrs)
 
 
-def flag_near_sup(row: Dict[str, Any], near_pct: float = NEAR_PCT) -> bool:
-    """Main short-side filter: stage 3 and close within near_pct above support."""
+def flag_near_sup(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
+    """Main short-side filter: stage 3 and close within 1 weekly ATR above support."""
     try:
         stage = int(row.get("stage") or 0)
     except (TypeError, ValueError):
         return False
-    return stage == 3 and near_level(row.get("close"), support_of(row), from_below=False, near_pct=near_pct)
+    return stage == 3 and near_level(row.get("close"), support_of(row), from_below=False, atr_w=row.get("atr_w"), near_atrs=near_atrs)
 
 
 def last_breakout_level(w, lookback_w: int = 52) -> Optional[float]:
@@ -165,7 +166,7 @@ def last_breakout_level(w, lookback_w: int = 52) -> Optional[float]:
     return None
 
 
-def flag_retest2(row: Dict[str, Any], near_pct: float = NEAR_PCT) -> bool:
+def flag_retest2(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
     """Stage 2 pulling back to the broken resistance (now support) — long retest.
 
     Needs a breakout level: recorded bo.level, or one derived from weekly history
@@ -178,10 +179,10 @@ def flag_retest2(row: Dict[str, Any], near_pct: float = NEAR_PCT) -> bool:
     if stage != 2:
         return False
     lvl = (row.get("bo") or {}).get("level") or row.get("_bo_lvl")
-    return near_abs(row.get("close"), _f(lvl), near_pct)
+    return near_abs(row.get("close"), _f(lvl), atr_w=row.get("atr_w"), near_atrs=near_atrs)
 
 
-def flag_retest4(row: Dict[str, Any], near_pct: float = NEAR_PCT) -> bool:
+def flag_retest4(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
     """Stage 4 rallying back to the broken support (now resistance) — short retest.
 
     Requires a recorded breakdown level (bd.level) so a stock sitting on new lows is not
@@ -193,7 +194,7 @@ def flag_retest4(row: Dict[str, Any], near_pct: float = NEAR_PCT) -> bool:
         return False
     if stage != 4:
         return False
-    return near_abs(row.get("close"), broken_support(row), near_pct)
+    return near_abs(row.get("close"), broken_support(row), atr_w=row.get("atr_w"), near_atrs=near_atrs)
 
 
 def _long_levels(row: Dict[str, Any]) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -295,20 +296,20 @@ def recommend(row: Dict[str, Any], badge: Optional[str] = None, flags: Optional[
             "res": res, "sup": sup, "bo_lvl": bo_lvl, "bd_lvl": bd_lvl}
 
 
-def flags_of(row: Dict[str, Any], badge: Optional[str] = None, near_pct: float = NEAR_PCT) -> Dict[str, bool]:
+def flags_of(row: Dict[str, Any], badge: Optional[str] = None, near_atrs: float = NEAR_ATRS) -> Dict[str, bool]:
     b = badge or board_badge(row)
     return {
-        "near_res": flag_near_res(row, b, near_pct),
-        "near_sup": flag_near_sup(row, near_pct),
-        "retest2": flag_retest2(row, near_pct),
-        "retest4": flag_retest4(row, near_pct),
+        "near_res": flag_near_res(row, b, near_atrs),
+        "near_sup": flag_near_sup(row, near_atrs),
+        "retest2": flag_retest2(row, near_atrs),
+        "retest4": flag_retest4(row, near_atrs),
     }
 
 
-def stock_card(row: Dict[str, Any], near_pct: float = NEAR_PCT, hist_start: Optional[str] = None,
+def stock_card(row: Dict[str, Any], near_atrs: float = NEAR_ATRS, hist_start: Optional[str] = None,
                hist_days: Optional[int] = None) -> Dict[str, Any]:
     badge = board_badge(row)
-    flags = flags_of(row, badge, near_pct)
+    flags = flags_of(row, badge, near_atrs)
     rec = recommend(row, badge, flags)
     return {
         "t": row["t"], "n": row.get("n"), "sec": row.get("sec"), "etf": row.get("sec_etf") or row.get("etf"),
@@ -319,7 +320,7 @@ def stock_card(row: Dict[str, Any], near_pct: float = NEAR_PCT, hist_start: Opti
     }
 
 
-def sector_card(etf: str, e: Dict[str, Any], tickers: List[str], near_pct: float = NEAR_PCT) -> Dict[str, Any]:
+def sector_card(etf: str, e: Dict[str, Any], tickers: List[str]) -> Dict[str, Any]:
     row = {
         "t": etf, "stage": e.get("stage"), "sub": e.get("sub"), "close": e.get("close"),
         "ma30": e.get("ma30"), "range": e.get("range"), "base": e.get("base"), "idx": e.get("idx"),
@@ -342,17 +343,17 @@ def top_stocks(rows: List[Dict[str, Any]], etf: str, n: int = TOP_N) -> List[Dic
     return pool[:n]
 
 
-def filter_lists(rows: List[Dict[str, Any]], near_pct: float = NEAR_PCT) -> Dict[str, List[str]]:
+def filter_lists(rows: List[Dict[str, Any]], near_atrs: float = NEAR_ATRS) -> Dict[str, List[str]]:
     out = {"2a_res": [], "3_sup": [], "retest2": [], "retest4": []}
     for r in rows:
         b = board_badge(r)
-        if flag_near_res(r, b, near_pct):
+        if flag_near_res(r, b, near_atrs):
             out["2a_res"].append(r["t"])
-        if flag_near_sup(r, near_pct):
+        if flag_near_sup(r, near_atrs):
             out["3_sup"].append(r["t"])
-        if flag_retest2(r, near_pct):
+        if flag_retest2(r, near_atrs):
             out["retest2"].append(r["t"])
-        if flag_retest4(r, near_pct):
+        if flag_retest4(r, near_atrs):
             out["retest4"].append(r["t"])
     return out
 
@@ -489,7 +490,7 @@ def ensure_board_history(tickers: List[str], hm: Dict[str, pd.DataFrame], offlin
 
 
 def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = None,
-                offline: bool = False, near_pct: float = NEAR_PCT) -> Dict[str, Any]:
+                offline: bool = False, near_atrs: float = NEAR_ATRS) -> Dict[str, Any]:
     """Write sector_board.json + compact daily JSON. Returns the board document."""
     raw_rows: List[Dict[str, Any]] = list(doc.get("rows") or [])
     sectors_doc: Dict[str, Any] = doc.get("sectors") or {}
@@ -521,13 +522,13 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
                         r["_bo_lvl"] = lvl
             derived.append(r)
         rows = derived
-    flists = filter_lists(rows, near_pct)
+    flists = filter_lists(rows, near_atrs)
     want: set[str] = set(SECTOR_ORDER)
     sector_blocks: List[Dict[str, Any]] = []
     for etf in SECTOR_ORDER:
         e = sectors_doc.get(etf) or {}
         tops = top_stocks(rows, etf, TOP_N)
-        sector_blocks.append(sector_card(etf, e, [r["t"] for r in tops], near_pct))
+        sector_blocks.append(sector_card(etf, e, [r["t"] for r in tops]))
         want.update(r["t"] for r in tops)
     for ts in flists.values():
         want.update(ts)
@@ -542,7 +543,7 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
         if not r:
             continue
         start, ndays = _hist_meta(hist.get(t))
-        stocks[t] = stock_card(r, near_pct, start, ndays)
+        stocks[t] = stock_card(r, near_atrs, start, ndays)
 
     written = 0
     years_ok = 0
@@ -565,7 +566,8 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
         "week": doc.get("week"),
         "source": "SPDR Select Sector ETFs (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC) — FinViz sector map in srs_app.stages.SECTOR_ETF",
         "badge_2a": "close above the 30-week SMA (≈150-day) and still at or below base resistance (pre-breakout). Distinct from pipeline sub-stage 2A (fresh stage-2 breakout), which is shown as badge 2.",
-        "near_pct": near_pct,
+        "near_atrs": near_atrs,
+        "near": "1 weekly ATR (board filters only; RULES.pre_bo_pct for Buy-Stop is unchanged)",
         "daily_years": DAILY_YEARS,
         "daily_path": "sector_daily/{t}.json",
         "top_n": TOP_N,

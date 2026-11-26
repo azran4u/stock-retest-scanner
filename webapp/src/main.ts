@@ -928,6 +928,7 @@ const stUi = (): StUi => ({ ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS)
 const stSaveUi = (ui: StUi) => localStorage.setItem(ST_LS, JSON.stringify(ui));
 let stBoard: BoardDoc | null = null;
 let stBoardP: Promise<BoardDoc | null> | null = null;
+let stBoardErr: string | null = null;
 let stMinis: ChartView[] = [];
 function stDestroyMinis() {
   for (const c of stMinis) { try { c.destroy(); } catch { /* */ } }
@@ -945,7 +946,15 @@ async function renderStages() {
   const t = route.mode === 'board' ? null : route.t;
   stP ??= fetchData('stages.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-  stBoardP ??= fetchData('sector_board.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  stBoardP ??= fetchData('sector_board.json').then(async (r) => {
+    if (!r.ok) {
+      stBoardErr = `לוח הסקטורים לא נטען (${r.status})`;
+      console.warn('sector_board.json', r.status, r.url);
+      return null;
+    }
+    stBoardErr = null;
+    return r.json();
+  }).catch((e) => { stBoardErr = 'לוח הסקטורים לא נטען'; console.warn('sector_board.json', e); return null; });
   stEdP ??= stLoadEdits();
   stRsP ??= api.loadResearch().then((rs) => { stResearch.clear(); for (const x of rs) stResearch.set(x.ticker, x); }).catch((e) => console.warn('ticker_research', e));
   if (!stShell) app.innerHTML = '<div class="stages center muted">טוען…</div>';
@@ -1062,7 +1071,7 @@ function stRenderList(d: StagesDoc) {
   const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
   const route = parseStagesHash();
   const selT = route.mode === 'stock' ? route.t : null;
-  const boardHtml = stBoard ? sectorStripHtml(stBoard, route) : '';
+  const boardHtml = stBoard ? sectorStripHtml(stBoard, route) : (stBoardErr ? `<section class="stsectors" id="stBoardErr"><div class="stsec-note warn">${stBoardErr.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))}</div></section>` : '');
   host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT, S.watch, boardHtml);
   const redo = () => { stSaveUi(ui); stRenderList(d); };
   host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => {
@@ -2591,8 +2600,33 @@ async function onLogin(email: string | null) {
 api.onAuth((e) => { if (e !== S.email || (e && !S.loaded)) onLogin(e); });
 api.session().then((s) => onLogin(s.email));
 
+function offerReload(why: string) {
+  if (document.getElementById('newBuild')) return;
+  const b = document.createElement('button');
+  b.id = 'newBuild'; b.className = 'newbuild primary'; b.textContent = 'יש גרסה חדשה · רענן';
+  b.onclick = () => location.reload();
+  document.body.appendChild(b);
+  console.info('new build available', why);
+}
 if ('serviceWorker' in navigator && import.meta.env.PROD && !api.demo) {
-  navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
+  navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { updateViaCache: 'none' }).then((reg) => {
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw?.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) offerReload('sw');
+      });
+    });
+    const poke = () => { reg.update().catch(() => {}); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poke(); });
+    setInterval(poke, 5 * 60 * 1000);
+    return reg.update();
+  }).catch(() => {});
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swRefreshing) return;
+    swRefreshing = true;
+    location.reload();
+  });
 }
 // expose for tests / debugging
 (window as any).__srs = { S, api, factsOf, setChip: (c: string) => { S.ui.f = {}; if (c !== "all") applyChip(S.ui.f, c); saveUi(); if ($(".list")) renderList(); }, refreshQuotes, renderPosBar, atr, botLongFromZone, loadDaily, liveOf, zoneDistOf, fibOfCur, fibManual, snapWick, applyIndicators, filtered, badgesOf, longLevels, sizeLong, maxRiskUsd, refreshLive, get cv() { return cv; }, get revc() { return revc; }, liveZoneOf, expertDistOf, get alertStat() { return alertStat; }, get expertWatch() { return expertWatch; }, get expertDoc() { return expertDoc; }, confOf, get confDoc() { return confDoc; } };
@@ -2606,12 +2640,7 @@ async function checkNewBuild() {
   try {
     const html = await (await fetch(import.meta.env.BASE_URL + 'index.html?v=' + Date.now(), { cache: 'no-store' })).text();
     const m = html.match(/assets\/(index-[\w-]+\.js)/);
-    if (m && m[1] !== myBundle && !document.getElementById('newBuild')) {
-      const b = document.createElement('button');
-      b.id = 'newBuild'; b.className = 'newbuild primary'; b.textContent = 'יש גרסה חדשה · רענן';
-      b.onclick = () => location.reload();
-      document.body.appendChild(b);
-    }
+    if (m && m[1] !== myBundle) offerReload('index ' + m[1]);
   } catch { /* offline */ }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewBuild(); });

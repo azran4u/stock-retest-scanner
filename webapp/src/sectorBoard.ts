@@ -27,7 +27,7 @@ export interface BoardSector {
 }
 export interface BoardDoc {
   version: number; generated_at: string; week: string | null; source: string; badge_2a: string;
-  near_pct: number; daily_years: number; daily_path: string; top_n: number;
+  near_pct?: number; near_atrs?: number; near?: string; daily_years: number; daily_path: string; top_n: number;
   sectors: BoardSector[]; stocks: Record<string, BoardStock>;
   filters: { '2a_res': string[]; '3_sup': string[]; retest2: string[]; retest4: string[] };
   hist_min_start?: string | null;
@@ -111,7 +111,7 @@ export function sectorStripHtml(board: BoardDoc, route: StagesRoute): string {
     const href = route.f === k ? boardHref(route.sec) : boardHref(route.sec, null, k);
     return `<a class="chip${on}" href="${href}" data-bf="${k}">${he} <span class="cnt">${n}</span></a>`;
   }).join('');
-  const src = 'סקטורים לפי תעודות SPDR (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC). 2a = מעל ממוצע 150 יום, לפני פריצה.';
+  const src = 'סקטורים לפי תעודות SPDR (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC). 2a = מעל ממוצע 150 יום, לפני פריצה. ״קרוב״ בסינון = עד ATR שבועי אחד.';
   return `<section class="stsectors" aria-label="סקטורים">
     <div class="stsec-row">${tiles}</div>
     <div class="chips stboard-filters" role="tablist" aria-label="סינון לוח סקטורים">${filters}</div>

@@ -161,3 +161,32 @@ def test_stage2_without_breakout_level_is_not_retest():
     derived = _row(stage=2, close=102, ma30=90, bo=None, _bo_lvl=100,
                    range={"ceil": 120, "floor": 100, "since_w": 10, "since": "x"}, base=None)
     assert flag_retest2(derived) is True
+
+
+def test_board_near_is_one_weekly_atr_not_five_percent():
+    """Board filters use 1 weekly ATR, not RULES.pre_bo_pct (5%)."""
+    assert RULES["pre_bo_pct"] == 5.0
+    # 4.3% under the ceiling (would pass the 5% Buy-Stop window) but 4.5 > ATR 4
+    far_for_atr = _row(stage=1, close=100.5, ma30=95, atr_w=4.0,
+                       base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 4.3})
+    assert flag_near_res(far_for_atr) is False
+    close_enough = _row(stage=1, close=101.5, ma30=95, atr_w=4.0,
+                        base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 3.3})
+    assert flag_near_res(close_enough) is True  # $3.50 <= $4 ATR
+    no_atr = _row(stage=1, close=101, ma30=95, atr_w=None,
+                  base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 3.8})
+    assert flag_near_res(no_atr) is False
+    # stage-3 / retests follow the same ATR window
+    sup_far = _row(stage=3, close=100.5, ma30=110, atr_w=4.0,
+                   short_base={"floor": 90, "top": 110, "weeks": 8, "dist_pct": 11.7},
+                   range={"ceil": 110, "floor": 90, "since_w": 8, "since": "x"}, base=None)
+    assert flag_near_sup(sup_far) is False  # $10.50 > $4
+    retest_far = _row(stage=2, close=106, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+                      range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
+    assert flag_retest2(retest_far) is False  # $6 > $4; was 6% so also outside 5%, use 104
+    retest_mid = _row(stage=2, close=104.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+                      range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
+    assert flag_retest2(retest_mid) is False  # $4.50 > $4 ATR, but 4.5% would have passed the old 5% rule
+    retest_ok = _row(stage=2, close=103.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+                     range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
+    assert flag_retest2(retest_ok) is True
