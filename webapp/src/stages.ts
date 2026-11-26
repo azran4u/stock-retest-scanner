@@ -320,7 +320,7 @@ export function rowHtml(r: StageRow, e: EffPlan | null, sel: boolean, hisZone = 
   return `<li class="row strow2${sel ? ' sel' : ''}" data-st="${esc(r.t)}">${cardInnerHtml(r, e, hisZone, watched)}</li>`;
 }
 
-export function listHtml(d: StagesDoc, ui: UiState, rows: StageRow[], edits: StEdits, maxRisk: number, limit: number, selT: string | null, watched?: { has(t: string): boolean }): string {
+export function listHtml(d: StagesDoc, ui: UiState, rows: StageRow[], edits: StEdits, maxRisk: number, limit: number, selT: string | null, watched?: { has(t: string): boolean }, boardHtml = ''): string {
   const cnt = (t: Tab) => d.rows.filter((r) => inTab(r, t)).length;
   const ms = +(d.rules.max_stop_pct ?? 10);
   const shortRows = ui.tab === 'bs' ? filterRows(d.rows, { ...ui, tab: 'ss' }, edits, maxRisk, ms, watched) : [];
@@ -331,6 +331,7 @@ export function listHtml(d: StagesDoc, ui: UiState, rows: StageRow[], edits: StE
   </section>` : '';
   return `<header class="top"><a id="stHome" class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין <span class="muted small">${ddmm(d.week)}</span></div>
     <div class="hbtns"><button id="strulesBtn" class="ghost small">כללים</button></div></header>
+  ${boardHtml}
   <div class="sttabs">
       <div class="chips sttabs-stages" role="tablist" aria-label="סינון לפי שלב">${STAGE_TABS.map(([t, he]) => `<button class="chip ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${he} <span class="cnt">${cnt(t)}</span></button>`).join('')}</div>
       <div class="chips sttabs-actions" role="tablist">${ACTION_TABS.map(([t, he]) => `<button class="chip ${ui.tab === t ? 'on' : ''}" data-tab="${t}">${he} <span class="cnt">${cnt(t)}</span></button>`).join('')}</div>

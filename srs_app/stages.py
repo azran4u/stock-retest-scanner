@@ -1716,6 +1716,9 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
     OUT_SPARK.write_text(json.dumps(sparks, separators=(",", ":")))
     print(f"[stages] {len(rows)} stocks, counts {counts}, skipped {skipped} -> {OUT} ({OUT.stat().st_size // 1024} KB), "
           f"{OUT_SPARK.name} ({OUT_SPARK.stat().st_size // 1024} KB)")
+    # Sector board (T-7): 11 SPDR ETFs + top-10 daily charts + filter lists. Nightly --publish picks this up.
+    from srs_app.sector_board import write_board
+    write_board(doc, hm, offline=offline)
     return doc
 
 

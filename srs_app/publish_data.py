@@ -49,7 +49,7 @@ def scan(data_dir: Path) -> dict[str, tuple[str, Path]]:
 def plan(files: dict[str, tuple[str, Path]], manifest: dict[str, str], all_: bool = False) -> tuple[list[str], list[str]]:
     """(paths to upload, paths to delete). Deletes only candle files that the export no longer writes."""
     up = [k for k, (h, _) in files.items() if all_ or manifest.get(k) != h]
-    gone = [k for k in manifest if k not in files and k.startswith("candles/")]
+    gone = [k for k in manifest if k not in files and (k.startswith("candles/") or k.startswith("sector_daily/"))]
     return up, gone
 
 

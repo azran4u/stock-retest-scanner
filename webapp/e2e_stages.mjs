@@ -309,4 +309,63 @@ for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9',
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
   await ctx.close();
 }
+
+// T-7 sector board: strip, minis, filters, large daily chart (screenshots under v2/)
+const V2 = '/workspace/stages_shots/v2';
+mkdirSync(V2, { recursive: true });
+const runBoard = async (name, vp, touch) => {
+  const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: touch ? 2 : 1, hasTouch: !!touch, locale: 'he-IL' });
+  const page = await ctx.newPage();
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE + '?demo=1');
+  await page.evaluate(() => localStorage.removeItem('srs-stages-ui'));
+  await page.evaluate(() => { location.hash = '#/stages'; });
+  await page.waitForSelector('.stsectors, #stagesLink');
+  if (await page.locator('.stsectors').count() === 0) {
+    await page.click('#stagesLink');
+    await page.waitForSelector('.stsectors');
+  }
+  ok(await page.locator('a.stsec').count() === 11, `${name}-board: 11 sector tiles`);
+  ok(await page.locator('.stsec .stbadge, .stsec .stsec-bd').count() >= 11, `${name}-board: sector stage badges`);
+  ok(await page.locator('.stboard-filters [data-bf]').count() === 4, `${name}-board: 4 board filters`);
+  await page.screenshot({ path: `${V2}/${name}_strip.png`, animations: 'disabled' });
+  await page.click('a.stsec[data-sec="XLK"]');
+  await page.waitForSelector('.stmini, .stminis-wrap');
+  await page.waitForTimeout(1400);
+  const n = await page.locator('.stmini').count();
+  ok(n >= 1 && n <= 20, `${name}-board: XLK mini charts (${n})`);
+  ok(await page.locator('.stmini .stbadge').count() >= 1, `${name}-board: stage badge next to a mini`);
+  ok(await page.locator('.stmini-rec').count() >= 1, `${name}-board: recommendation next to a mini`);
+  const atr = await page.locator('.stmini-chart .atrw').first().innerText().catch(() => '');
+  ok(/ATR\(W\)/.test(atr), `${name}-board: mini weekly ATR (${atr})`);
+  await page.screenshot({ path: `${V2}/${name}_minis_XLK.png`, animations: 'disabled' });
+  await page.click('[data-bf="2a_res"]');
+  await page.waitForTimeout(900);
+  ok(/f=2a_res/.test(page.url()), `${name}-board: 2a-near-resistance filter in the hash`);
+  await page.screenshot({ path: `${V2}/${name}_filter_2a.png`, animations: 'disabled' });
+  await page.click('[data-bf="3_sup"]');
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: `${V2}/${name}_filter_3.png`, animations: 'disabled' });
+  await page.evaluate(() => { location.hash = '#/stages/board/XLK'; });
+  await page.waitForSelector('.stmini-hit');
+  await page.waitForTimeout(800);
+  await page.locator('.stmini-hit').first().click();
+  await page.waitForSelector('#stbigd, .stbig-d');
+  await page.waitForTimeout(1400);
+  ok(await page.locator('#stbigd canvas, .stbig-d canvas').count() >= 1, `${name}-board: large daily chart canvas`);
+  const atr2 = await page.locator('.stbig-d .atrw, #stbigd .atrw').first().innerText().catch(() => '');
+  ok(/ATR\(W\)/.test(atr2), `${name}-board: large chart weekly ATR (${atr2})`);
+  ok(await page.locator('#stBigDaily .stmini-rec, .stbig-daily .stmini-rec').count() >= 1, `${name}-board: recommendation on the large chart`);
+  await page.screenshot({ path: `${V2}/${name}_large.png`, animations: 'disabled' });
+  ok(!errors.length, `${name}-board: no page errors ${errors.join(' | ')}`);
+  await ctx.close();
+};
+for (const [name, vp, touch] of [
+  ['desktop', { width: 1280, height: 900 }, false],
+  ['ipad-12', { width: 1024, height: 1366 }, true],
+  ['ipad-9', { width: 768, height: 1024 }, true],
+  ['phone', { width: 390, height: 844 }, true],
+]) await runBoard(name, vp, touch);
+
 await browser.close();
+

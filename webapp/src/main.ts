@@ -14,6 +14,7 @@ import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLoca
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
 import { UI_DEF, isShortSide, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { parseStagesHash, boardHref, sectorStripHtml, boardStocks, minisHtml, largeChartHtml, loadBoardDaily, smaPoints, srDrawings, type BoardDoc, type BoardStock, type StagesRoute } from './sectorBoard';
 import { LIVES_UI_DEF, filterLives, livesTableHtml, livesToolbarHtml, mentorsOf, type Live as LiveRow, type LivesFilters } from './lives';
 import { ROI_RECS, roiBadgeHtml, roiPanelHtml, type RoiAnalysis } from './roi';
 import type { Bar, Command, Drawing, FeedbackCategory, Label, Row, Watch } from './types';
@@ -925,7 +926,14 @@ let stDoc: StagesDoc | null = null;
 let stLineTap = false; // '+ קו': the next tap on the big chart adds his support / resistance line
 const stUi = (): StUi => ({ ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') });
 const stSaveUi = (ui: StUi) => localStorage.setItem(ST_LS, JSON.stringify(ui));
-function stDestroy() { if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } stIO?.disconnect(); stShell = null; }
+let stBoard: BoardDoc | null = null;
+let stBoardP: Promise<BoardDoc | null> | null = null;
+let stMinis: ChartView[] = [];
+function stDestroyMinis() {
+  for (const c of stMinis) { try { c.destroy(); } catch { /* */ } }
+  stMinis = [];
+}
+function stDestroy() { stDestroyMinis(); if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } stIO?.disconnect(); stShell = null; }
 const stMaxStop = (d: StagesDoc) => +(d.rules.max_stop_pct ?? 10);
 async function stLoadEdits() {
   try { const rows = await api.loadStageDrawings(); stEdits.clear(); for (const x of rows) { const e = stEdits.get(x.ticker) || {}; if (x.kind === 'line') (e.lines ??= []).push(x); else e[x.kind] = x; stEdits.set(x.ticker, e); } }
@@ -933,17 +941,36 @@ async function stLoadEdits() {
 }
 async function renderStages() {
   destroyChart();
-  const m = location.hash.match(/^#\/stages\/([^/?]+)/);
-  const t = m ? decodeURIComponent(m[1]).toUpperCase() : null;
+  const route = parseStagesHash();
+  const t = route.mode === 'board' ? null : route.t;
   stP ??= fetchData('stages.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   stSpP ??= fetchData('stages_spark.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  stBoardP ??= fetchData('sector_board.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
   stEdP ??= stLoadEdits();
   stRsP ??= api.loadResearch().then((rs) => { stResearch.clear(); for (const x of rs) stResearch.set(x.ticker, x); }).catch((e) => console.warn('ticker_research', e));
   if (!stShell) app.innerHTML = '<div class="stages center muted">טוען…</div>';
-  const d = await stP; await stEdP; await stRsP; stDoc = d;
+  const d = await stP; await stEdP; await stRsP; stBoard = await stBoardP; stDoc = d;
   if (!location.hash.startsWith('#/stages')) return;
   if (!d || !d.rows) { stP = null; app.innerHTML = '<header class="top"><a class="ghost btnlike small" href="#/">→ Retest</a><div class="title">שלבי ויינשטיין</div></header><div class="center muted">נתוני השלבים לא נטענו</div>'; return; }
   const ui = stUi();
+  if (route.mode === 'board') {
+    if (isWide()) {
+      if (stShell !== 'split') {
+        stDestroy();
+        app.innerHTML = '<div class="split stsplit"><aside id="stSide" class="side" aria-label="רשימת מניות"></aside><main id="stMain" class="smain"></main></div>';
+        stShell = 'split';
+      }
+      stRenderList(d);
+      await stShowBoard(stBoard, route, $('#stMain')!);
+    } else if (route.t && stBoard?.stocks[route.t]) {
+      if (stShell !== 'detail') { stDestroy(); app.innerHTML = '<div id="stMain" class="stmain1"></div>'; stShell = 'detail'; }
+      await stShowBoard(stBoard, route, $('#stMain')!);
+    } else {
+      stDestroy(); app.innerHTML = '<div id="stSide" class="stside1"></div>'; stShell = 'list';
+      stRenderList(d);
+    }
+    return;
+  }
   if (isWide()) {
     if (stShell !== 'split') {
       stDestroy();
@@ -972,6 +999,15 @@ async function renderStages() {
     const y = sessionStorage.getItem('srs-st-scroll'); if (y) window.scrollTo(0, +y);
   }
 }
+// Sector-board mini chart: open the large daily chart (#/stages/board/SEC/T)
+document.addEventListener('click', (ev) => {
+  const b = (ev.target as HTMLElement)?.closest?.('[data-stmini-open]') as HTMLElement | null;
+  if (!b || !location.hash.startsWith('#/stages')) return;
+  ev.preventDefault(); ev.stopPropagation();
+  const tk = b.dataset.stminiOpen; if (!tk) return;
+  const route = parseStagesHash();
+  location.hash = boardHref(route.sec, tk, route.f);
+}, true);
 // sector / market ETF links (cards, stock page, sector table, market chips): open #/stages/ETF, back returns to the stock
 document.addEventListener('click', (ev) => {
   const a = (ev.target as HTMLElement)?.closest?.('.etfl') as HTMLElement | null;
@@ -1024,8 +1060,10 @@ function stRenderList(d: StagesDoc) {
   const host = $('#stSide'); if (!host) return;
   const ui = stUi();
   const rows = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
-  const selT = (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1] || null;
-  host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT ? decodeURIComponent(selT).toUpperCase() : null, S.watch);
+  const route = parseStagesHash();
+  const selT = route.mode === 'stock' ? route.t : null;
+  const boardHtml = stBoard ? sectorStripHtml(stBoard, route) : '';
+  host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT, S.watch, boardHtml);
   const redo = () => { stSaveUi(ui); stRenderList(d); };
   host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => {
     ui.tab = b.dataset.tab as StUi['tab']; stLimit = 80; stSaveUi(ui); stRenderList(d);
@@ -1059,8 +1097,76 @@ function stRenderList(d: StagesDoc) {
   }));
   stBindStar(host);
   stObserveSparks(host, d);
+  if (stBoard && route.mode === 'board' && stShell !== 'split') {
+    const box = host.querySelector('.stresults') as HTMLElement | null;
+    if (box) {
+      stDestroyMinis();
+      const stocks = boardStocks(stBoard, route);
+      box.innerHTML = minisHtml(stBoard, route, stocks);
+      stocks.forEach((s) => {
+        const el = box.querySelector(`[data-stmini="${CSS.escape(s.t)}"]`) as HTMLElement | null;
+        if (el) void stPaintMini(el, s);
+      });
+    }
+  }
+}
+async function stShowBoard(board: BoardDoc | null, route: StagesRoute, host: HTMLElement) {
+  stDestroyMinis();
+  if (stCv) { stCv.destroy(); stCv = null; stCvT = null; }
+  if (!board) { host.innerHTML = '<div class="center muted">נתוני לוח הסקטורים לא נטענו</div>'; return; }
+  if (route.t && board.stocks[route.t]) { await stRenderBoardLarge(board, route, host); return; }
+  const stocks = boardStocks(board, route);
+  host.innerHTML = minisHtml(board, route, stocks);
+  stocks.forEach((s) => {
+    const el = host.querySelector(`[data-stmini="${CSS.escape(s.t)}"]`) as HTMLElement | null;
+    if (el) void stPaintMini(el, s);
+  });
+}
+async function stPaintMini(el: HTMLElement, s: BoardStock) {
+  const host = el.querySelector('.stmini-chart') as HTMLElement | null;
+  if (!host) return;
+  const cv = new ChartView(host, { onSelect: () => {}, onDragMove: () => {}, onDragEnd: () => {}, onTap: () => {} });
+  cv.editable = false;
+  cv.centerClose = false;
+  cv.chart.applyOptions({
+    handleScroll: false, handleScale: false,
+    timeScale: { visible: false, borderVisible: false },
+    rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.24 } },
+    crosshair: { vertLine: { visible: false }, horzLine: { visible: false } },
+    layout: { attributionLogo: false },
+  });
+  stMinis.push(cv);
+  const bars = await loadBoardDaily(s.t);
+  if (!el.isConnected) return;
+  if (!bars.length) { host.classList.add('nodata'); return; }
+  cv.setBars(bars, Math.min(180, bars.length), false);
+  cv.setAtr(s.atr_w ?? null);
+  cv.setMAs([{ n: 150, color: '#ff9800', data: smaPoints(bars, 150) }]);
+  cv.setDrawings(srDrawings(s.t, s.res, s.sup) as Drawing[], null);
+  cv.fitLevels();
+}
+async function stRenderBoardLarge(board: BoardDoc, route: StagesRoute, host: HTMLElement) {
+  const s = board.stocks[route.t!];
+  if (!s) { host.innerHTML = `<div class="center muted">אין כרטיס לוח ל-${route.t}</div>`; return; }
+  if (stCv) { stCv.destroy(); stCv = null; }
+  host.innerHTML = largeChartHtml(s, route);
+  const box = $('#stbigd', host);
+  if (!box) return;
+  const cv = new ChartView(box, { onSelect: () => {}, onDragMove: () => {}, onDragEnd: () => {}, onTap: () => {} });
+  cv.editable = false;
+  cv.centerClose = false;
+  stCv = cv; stCvT = s.t;
+  const bars = await loadBoardDaily(s.t);
+  if (stCv !== cv) return;
+  if (!bars.length) { const nd = $('#stnodata-d', host); if (nd) nd.hidden = false; return; }
+  cv.setBars(bars, Math.min(260, bars.length), false);
+  cv.setAtr(s.atr_w ?? null);
+  cv.setMAs([{ n: 150, color: '#ff9800', data: smaPoints(bars, 150) }]);
+  cv.setDrawings(srDrawings(s.t, s.res, s.sup) as Drawing[], null);
+  cv.fitLevels();
 }
 function stRulesSheet(d: StagesDoc) {
+
   document.querySelector('.strulesheet')?.remove();
   const el = document.createElement('div');
   el.className = 'sheet strulesheet';

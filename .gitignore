@@ -4,3 +4,4 @@ __pycache__/
 build/
 dist/
 app/data/stages_candles/
+app/data/sector_daily/

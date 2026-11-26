@@ -652,3 +652,65 @@ a.badge.etfl { text-decoration: none; }
 @media (max-width: 719px) {
   .roilevels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Sector board (T-7): strip + daily minis + large daily chart. Keep the T-6 scroll grid intact. */
+.stside1, .stsplit .side {
+  grid-template-rows: auto auto auto fit-content(28%) minmax(30vh, 1fr);
+}
+.stsectors { padding: 6px 10px 4px; background: var(--bg); flex: none; min-width: 0; }
+.stsec-row {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-start;
+}
+.stsec {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 1px; width: 58px; padding: 6px 4px 5px; border-radius: 12px;
+  text-decoration: none; color: inherit; border: 1px solid var(--bg2, #2a2e39);
+  background: rgba(30,34,45,.45); line-height: 1.15;
+}
+.stsec:hover { border-color: #4a4e59; }
+.stsec.on { outline: 2px solid #5fd4c6; outline-offset: 0; }
+.stsec-ic { width: 22px; height: 22px; display: grid; place-items: center; }
+.stsec-ic svg { width: 20px; height: 20px; }
+.stsec-name { font-size: 10px; text-align: center; max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stsec-etf { font-size: 9px; color: var(--mut); letter-spacing: .02em; }
+.stsec-bd, .stbadge { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 16px; padding: 0 4px; border-radius: 8px; font-size: 10px; font-weight: 700; }
+.stsec .stsec-bd { position: absolute; top: 3px; inset-inline-start: 3px; }
+.st2a, .stsec-2a { background: rgba(38,166,154,.18); color: #9be7c4; }
+.stsec-1 { color: #8aa9ff; } .stsec-2 { color: #5fd4c6; } .stsec-3 { color: #ffb74d; } .stsec-4 { color: #ff8a87; }
+.stsec-2a { color: #9be7c4; }
+.st1.stbadge, .stbadge.st1 { background: rgba(41,98,255,.22); color: #8aa9ff; }
+.st2.stbadge, .stbadge.st2 { background: rgba(38,166,154,.22); color: #5fd4c6; }
+.st3.stbadge, .stbadge.st3 { background: rgba(255,167,38,.22); color: #ffb74d; }
+.st4.stbadge, .stbadge.st4 { background: rgba(239,83,80,.22); color: #ff8a87; }
+.stbadge.st2a { background: rgba(38,166,154,.28); color: #9be7c4; box-shadow: inset 0 0 0 1px rgba(155,231,196,.35); }
+.stboard-filters { flex-wrap: wrap; gap: 6px; margin-top: 6px; overflow: visible; }
+.stboard-filters .chip { flex: none; text-decoration: none; color: inherit; }
+.stsec-note { margin-top: 4px; overflow-wrap: anywhere; }
+.stminis-wrap { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; padding: 8px 10px 24px; }
+.stminis-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.stminis-head h3 { margin: 0; font-size: 15px; }
+.stminis {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px; min-height: 0;
+}
+.stsplit .smain .stminis { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.stside1 .stresults .stminis { grid-template-columns: 1fr; }
+.stmini {
+  display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--bg2, #2a2e39);
+  border-radius: 12px; background: rgba(30,34,45,.4); padding: 8px; min-width: 0;
+}
+.stmini-hd { display: flex; flex-direction: column; gap: 2px; }
+.stmini-tk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.stmini-chart { position: relative; height: 180px; min-height: 160px; background: #131722; border-radius: 8px; overflow: hidden; }
+.stmini-hit { position: absolute; inset: 0; z-index: 4; background: transparent; border: 0; cursor: pointer; }
+.stmini-rec { margin: 2px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+.stbig-daily { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 8px 12px 16px; gap: 8px; }
+.stbig-hd { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stbig-d { flex: 1 1 auto; min-height: 280px; height: min(62dvh, 560px); background: #131722; border-radius: 10px; position: relative; }
+.stmain1 .stbig-d { height: min(58dvh, 520px); }
+.stbig-d .atrw, .stmini-chart .atrw { left: auto; right: 0; top: auto; bottom: 0; width: 44px; height: 28px; background: rgba(19, 23, 34, .88); }
+@media (max-width: 739px) {
+  .stsec { width: 52px; padding: 5px 2px 4px; }
+  .stmini-chart { height: 200px; }
+}
