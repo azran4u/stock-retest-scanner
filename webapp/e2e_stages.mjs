@@ -1,6 +1,8 @@
-// Weinstein stages page (#/stages, Eyal 2026-11-13; retest-like layout 2026-11-14): demo mode at desktop 1280x900 and
-// phone 390x844. Desktop: list on the right (mini chart + stage / tags / R:R / SL% / shares / rules) + the selected
-// stock's big weekly chart; phone: list -> stock page -> back. Tabs (Buy-Stop candidates / 2A / 1-4 / no volume) filter,
+// Weinstein stages page (#/stages, Eyal 2026-11-13; retest-like layout 2026-11-14): demo mode at desktop 1280x900,
+// iPad 1024x1366 / 768x1024, and phone 390x844. Desktop: list on the right (mini chart + stage / tags / R:R / SL% /
+// shares / rules) + the selected stock's big weekly chart; phone: list -> stock page -> back. Tabs (Buy-Stop /
+// Sell-Stop / 2A / 4A / stage 1-4 / no volume) filter; stage 1-4 chips must be fully in the viewport (no horizontal
+// scroll) on every width.
 // SL% sort works, dragging the base ceiling on the big chart saves his level ('הרמות שלך') and the R:R / SL% follow his
 // trade bar, no horizontal overflow, back returns to the retest list.
 // Usage: node e2e_stages.mjs [baseURL] [outDir]
@@ -10,6 +12,16 @@ const BASE = process.argv[2] || 'http://localhost:4173/stock-retest-scanner/app/
 const OUT = process.argv[3] || '/workspace/stages_shots';
 mkdirSync(OUT, { recursive: true });
 const ok = (c, m) => { if (!c) { console.log('FAIL', m); process.exitCode = 1; } else console.log('ok  ', m); };
+// Stage 1-4 tabs must be fully on screen without scrolling (iPad / narrow side list used to clip them).
+const tabsInView = async (page) => page.$$eval('.sttabs-stages [data-tab]', (els) => els.map((el) => {
+  const r = el.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  return {
+    tab: el.getAttribute('data-tab'),
+    ok: r.width > 0 && r.height > 0 && r.top >= -1 && r.left >= -1 && r.bottom <= vh + 1 && r.right <= vw + 1,
+    box: [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)],
+  };
+}));
 // a stock with computed support / resistance lines (overhead resistances + valid swing low) for the lines test
 const SD = JSON.parse(readFileSync(new URL('../app/data/stages.json', import.meta.url)));
 const zf = (r) => (r.bo && r.sub === '2A' ? r.bo.base_low : r.base ? r.base.low : r.range?.floor);
@@ -30,13 +42,17 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   const mktd = await page.locator('#mktd').innerText();
   ok(/SPY\) שלב \d/.test(mktd) && mktd.includes('QQQ'), `${name}: market top-down line (${mktd.slice(0, 70)}…)`);
   ok(await page.locator('[data-tab="bs"].on').count() === 1, `${name}: Buy-Stop candidates tab first + default`);
+  const vis = await tabsInView(page);
+  ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs fully in viewport (${vis.map((v) => v.tab + (v.ok ? '' : '@' + v.box)).join(', ')})`);
   const nbs = await page.locator('li[data-st]').count();
   const cbs = +(await page.locator('[data-tab="bs"] .cnt').innerText());
   ok(nbs === Math.min(cbs, 80), `${name}: Buy-Stop tab lists ${nbs} (count ${cbs})`);
   ok((await page.locator('details.secs summary').nth(1).innerText()).includes('ענפים'), `${name}: industries panel`);
-  const miniAtr = await page.locator('.stchartwrap .atrw b').first().innerText();
-  ok(/\d/.test(miniAtr), `${name}: mini chart weekly ATR (${miniAtr})`);
   await page.screenshot({ path: `${OUT}/${name}_bs.png` });
+  if (nbs) {
+    const miniAtr = await page.locator('.stchartwrap .atrw b').first().innerText();
+    ok(/\d/.test(miniAtr), `${name}: mini chart weekly ATR (${miniAtr})`);
+  } else console.log('skip', `${name}: no Buy-Stop rows this week — ATR / overview checked on a stage-2 card later`);
   // fundamental overview of the Buy-Stop candidates (Eyal 2026-11-14): one line on the card, full on the stock page
   const bsT = SD.buy_stop_candidates.map((c) => c.t).find((t) => RS.some((x) => x.ticker === t));
   if (bsT) {
@@ -47,7 +63,8 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
     ok(full.includes('אנליסטים') && full.includes('סיכונים') && await page.locator('.strsfull .rs-src li').count() >= 3, `${name}: ${bsT} stock page shows the full overview + sources`);
     await page.locator('.strsfull').screenshot({ path: `${OUT}/${name}_${bsT}_overview.png` });
     await page.goto(BASE + '?demo=1#/stages'); await page.waitForSelector('[data-tab="bs"]'); await page.waitForTimeout(400);
-  } else ok(false, `${name}: no candidate with an overview to test`);
+  } else if (nbs) ok(false, `${name}: no candidate with an overview to test`);
+  else console.log('skip', `${name}: no Buy-Stop overview this week`);
   for (const s of ['1', '2', '3', '4']) {
     await page.click(`[data-tab="${s}"]`); await page.waitForTimeout(250);
     const b = await page.$$eval('li[data-st] .r1 .badge.st', (x) => x.map((e) => e.className));
@@ -181,6 +198,33 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await page.click('[data-tg="starred"]'); await page.waitForTimeout(200);
   await page.click('#stHome'); await page.waitForTimeout(500);
   ok(!page.url().includes('#/stages'), `${name}: back leaves the page`);
+  ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
+  await ctx.close();
+}
+
+// iPad portrait (Eyal 2026-11-26): stage 1-4 filter must be on screen and actually filter, like desktop / phone.
+for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9', { width: 768, height: 1024 }], ['ipad-land', { width: 1024, height: 768 }]]) {
+  const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 2, hasTouch: true, locale: 'he-IL' });
+  await ctx.addInitScript((rs) => { window.__demoResearch = rs; }, RS);
+  const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE + '?demo=1'); await page.evaluate(() => localStorage.removeItem('srs-stages-ui'));
+  await page.waitForSelector('#stagesLink'); await page.waitForTimeout(400);
+  await page.click('#stagesLink'); await page.waitForSelector('[data-tab="bs"]');
+  ok(page.url().includes('#/stages'), `${name}: link opens #/stages`);
+  const vis = await tabsInView(page);
+  ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs fully in viewport (${vis.map((v) => v.tab + (v.ok ? '' : '@' + v.box)).join(', ')})`);
+  await page.screenshot({ path: `${OUT}/${name}_bs.png` });
+  for (const s of ['1', '2', '3', '4']) {
+    await page.click(`[data-tab="${s}"]`); await page.waitForTimeout(250);
+    const b = await page.$$eval('li[data-st] .r1 .badge.st', (x) => x.map((e) => e.className));
+    ok(b.length > 0 && b.every((c) => c.includes('st' + s)), `${name}: tab stage ${s} (${b.length} rows)`);
+  }
+  await page.click('[data-tab="2"]');
+  await page.waitForFunction(() => /#\/stages\//.test(location.hash) || document.querySelectorAll('li[data-st]').length === 0);
+  await page.waitForTimeout(400);
+  const mainTxt = await page.locator('#stMain').innerText().catch(() => '');
+  ok(!/מועמדות ל-Buy-Stop או ל-Sell-Stop/.test(mainTxt), `${name}: main pane follows the stage tab (not a stale Buy-Stop empty state)`);
+  await page.screenshot({ path: `${OUT}/${name}_list_stage2.png` });
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
   await ctx.close();
 }

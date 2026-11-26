@@ -507,7 +507,14 @@ header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
 .stside1 .list { padding: 6px 8px 40px; }
 .stside1 .row { margin-bottom: 6px; border: 1px solid var(--bg2); border-radius: 12px; background: rgba(30,34,45,.35); }
 .stside1 .stfilters, .stsplit .stfilters { position: static; }
-.stsplit .side .stfilters { max-height: 46vh; overflow-y: auto; }
+/* Stage 1-4 tabs must stay visible (no hidden horizontal scroll) on desktop, iPad, and phone.
+   Only the lower block (market / sectors / search) scrolls when the side list is tight. */
+.stfilters .chips { flex-wrap: wrap; overflow: visible; }
+.stfilters .chip { flex: none; }
+.sttabs { display: flex; flex-direction: column; gap: 6px; }
+.sttabs-stages { padding-top: 0; }
+.stsplit .side .stfilters { max-height: none; overflow: visible; display: flex; flex-direction: column; min-height: 0; }
+.stsplit .side .stfilters-more { max-height: 36vh; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 .stsplit .topdown, .stside1 .topdown { padding: 0; border: 0; }
 .stpanel { padding: 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
 .stpanel h4 { margin: 8px 0 2px; font-size: 13px; color: var(--mut); }

@@ -1027,7 +1027,21 @@ function stRenderList(d: StagesDoc) {
   const selT = (location.hash.match(/^#\/stages\/([^/?]+)/) || [])[1] || null;
   host.innerHTML = stListHtml(d, ui, rows, stEdits, maxRiskUsd(), stLimit, selT ? decodeURIComponent(selT).toUpperCase() : null, S.watch);
   const redo = () => { stSaveUi(ui); stRenderList(d); };
-  host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => { ui.tab = b.dataset.tab as StUi['tab']; stLimit = 80; stSaveUi(ui); stRenderList(d); if (stShell === 'split') { location.replace('#/stages'); } }));
+  host.querySelectorAll<HTMLElement>('[data-tab]').forEach((b) => (b.onclick = () => {
+    ui.tab = b.dataset.tab as StUi['tab']; stLimit = 80; stSaveUi(ui); stRenderList(d);
+    if (stShell !== 'split') return;
+    const next = filterRows(d.rows, ui, stEdits, maxRiskUsd(), stMaxStop(d), S.watch);
+    const short = ui.tab === 'bs' ? filterRows(d.rows, { ...ui, tab: 'ss' }, stEdits, maxRiskUsd(), stMaxStop(d), S.watch) : [];
+    const all = next.length ? next : short;
+    const pick = ui.lastT && all.some((r) => r.t === ui.lastT) ? ui.lastT : all[0]?.t;
+    const dest = pick ? '#/stages/' + encodeURIComponent(pick) : '#/stages';
+    if (location.hash !== dest) { location.replace(dest); return; }
+    if (!pick) {
+      if (stCv) { stCv.destroy(); stCv = null; stCvT = null; }
+      const main = $('#stMain');
+      if (main) main.innerHTML = `<div class="center muted">${ui.tab === 'bs' ? 'אין השבוע מועמדות ל-Buy-Stop או ל-Sell-Stop — בחר לשונית אחרת' : ui.tab === 'ss' ? 'אין השבוע מועמדות לשורט (Sell-Stop) — בחר לשונית אחרת' : 'בחר מניה מהרשימה'}</div>`;
+    }
+  }));
   host.querySelectorAll<HTMLElement>('[data-tg]').forEach((b) => (b.onclick = () => { const k = b.dataset.tg as 'pre' | 'ready' | 'near' | 'starred'; (ui as any)[k] = !ui[k]; redo(); }));
   host.querySelectorAll<HTMLElement>('[data-conf]').forEach((b) => (b.onclick = () => { const c = b.dataset.conf as 'med' | 'high'; ui.conf = ui.conf === c ? 'all' : c; redo(); }));
   const q = $<HTMLInputElement>('#stq', host)!;
