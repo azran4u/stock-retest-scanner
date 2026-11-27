@@ -262,13 +262,14 @@ ${m}`}class ht extends Error{constructor({message:t,code:e,cause:i,name:n}){var 
     <div class="stsec-row">${e}</div>
     <div class="chips stboard-filters" role="tablist" aria-label="סינון לוח סקטורים">${i}</div>
     <div class="stsec-note small muted">סקטורים לפי תעודות SPDR (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC). 2a = מעל ממוצע 150 יום, לפני פריצה. ״קרוב״ בסינון = עד ATR שבועי אחד.</div>
-  </section>`}function Tu(s,t){let e=[];if(t.f&&s.filters[t.f]?e=s.filters[t.f].slice():t.sec&&(e=s.sectors.find(n=>n.etf===t.sec)?.stocks?.slice()??[]),t.f&&t.sec){const i=new Set(s.sectors.find(r=>r.etf===t.sec)?.stocks??[]);e=s.filters[t.f].filter(r=>{const o=s.stocks[r];return o&&(o.etf===t.sec||i.has(r))});const n=s.filters[t.f].filter(r=>s.stocks[r]?.etf===t.sec&&!e.includes(r));e=[...e,...n]}return e.map(i=>s.stocks[i]).filter(i=>!!i)}function Mu(s,t,e){const i=t.sec?s.sectors.find(l=>l.etf===t.sec):null,n=t.f?oa.find(([l])=>l===t.f)?.[1]??t.f:null,r=i&&n?`${i.name} · ${n}`:i?`10 הגדולות ב${i.name} (${i.etf})`:n||"לוח סקטורים",o='<a class="ghost btnlike small stboard-back" href="#/stages">← הרשימה</a>';if(!e.length)return`<div class="stminis-wrap" id="stMinis"><div class="stminis-head">${o}<h3>${ot(r)}</h3></div>
-      <div class="center muted">אין מניות שתואמות את הסינון</div></div>`;const a=e.map(l=>`<article class="stmini" data-stmini="${ot(l.t)}">
+  </section>`}function Tu(s,t){let e=[];if(t.f&&s.filters[t.f]?e=s.filters[t.f].slice():t.sec&&(e=s.sectors.find(r=>r.etf===t.sec)?.stocks?.slice()??[]),t.f&&t.sec){const n=new Set(s.sectors.find(o=>o.etf===t.sec)?.stocks??[]);e=s.filters[t.f].filter(o=>{const a=s.stocks[o];return a&&(a.etf===t.sec||n.has(o))});const r=s.filters[t.f].filter(o=>s.stocks[o]?.etf===t.sec&&!e.includes(o));e=[...e,...r]}const i=e.map(n=>s.stocks[n]).filter(n=>!!n);if(t.sec){const n=s.stocks[t.sec];if(n){const r={...n,is_sector:!0},o=i.findIndex(a=>a.t===t.sec);o>=0&&i.splice(o,1),i.unshift(r)}}return i}function Mu(s,t,e){const i=t.sec?s.sectors.find(l=>l.etf===t.sec):null,n=t.f?oa.find(([l])=>l===t.f)?.[1]??t.f:null,r=i&&n?`${i.name} · ${n}`:i?`הסקטור ו-10 הגדולות ב${i.name} (${i.etf})`:n||"לוח סקטורים",o='<a class="ghost btnlike small stboard-back" href="#/stages">← הרשימה</a>';if(!e.length)return`<div class="stminis-wrap" id="stMinis"><div class="stminis-head">${o}<h3>${ot(r)}</h3></div>
+      <div class="center muted">אין מניות שתואמות את הסינון</div></div>`;const a=e.map(l=>`<article class="stmini${l.is_sector?" stmini-sec":""}" data-stmini="${ot(l.t)}"${l.is_sector?' data-sector-etf="1"':""}>
     <header class="stmini-hd">
       <div class="stmini-tk"><b dir="ltr">${ot(l.t)}</b> ${la(l.badge)}
+        ${l.is_sector?'<span class="stsec-tag">סקטור</span>':""}
         <span class="muted small" dir="ltr">$${Un(l.close)}</span>
         ${l.mcap_b!=null?`<span class="muted small" dir="ltr">${Un(l.mcap_b,0)}B</span>`:""}</div>
-      <div class="small muted stmini-nm">${ot(l.n||"")}${l.etf?` · <span dir="ltr">${ot(l.etf)}</span>`:""}</div>
+      <div class="small muted stmini-nm">${l.is_sector?"תעודת הסקטור · ":""}${ot(l.n||"")}${!l.is_sector&&l.etf?` · <span dir="ltr">${ot(l.etf)}</span>`:""}</div>
     </header>
     <div class="stmini-chart" data-stmini-chart="${ot(l.t)}"><button type="button" class="stmini-hit" data-stmini-open="${ot(l.t)}" aria-label="פתח גרף גדול של ${ot(l.t)}"></button></div>
     <p class="stmini-rec small">${ot(l.rec.he)}</p>
@@ -280,8 +281,8 @@ ${m}`}class ht extends Error{constructor({message:t,code:e,cause:i,name:n}){var 
   </div>`}function ly(s,t){return`<div class="stbig-daily" id="stBigDaily">
     <header class="stbig-hd">
       <a class="ghost btnlike small" href="${ni(t.sec,null,t.f)}" id="stBoardBack">← לגרפים המוקטנים</a>
-      <div class="tk"><b dir="ltr">${ot(s.t)}</b> ${la(s.badge)} <span class="muted small" dir="ltr">$${Un(s.close)}</span>
-        <div class="small muted stname">${ot(s.n||"")}${s.etf?` · <span dir="ltr">${ot(s.etf)}</span>`:""}${s.mcap_b!=null?` · שווי ${Un(s.mcap_b,1)}B`:""}</div>
+      <div class="tk"><b dir="ltr">${ot(s.t)}</b> ${la(s.badge)} ${s.is_sector?'<span class="stsec-tag">סקטור</span>':""} <span class="muted small" dir="ltr">$${Un(s.close)}</span>
+        <div class="small muted stname">${s.is_sector?"תעודת הסקטור · ":""}${ot(s.n||"")}${!s.is_sector&&s.etf?` · <span dir="ltr">${ot(s.etf)}</span>`:""}${s.mcap_b!=null?` · שווי ${Un(s.mcap_b,1)}B`:""}</div>
       </div>
     </header>
     <div class="stbig stbig-d" id="stbigd" role="img" aria-label="גרף יומי ${ot(s.t)}"></div>

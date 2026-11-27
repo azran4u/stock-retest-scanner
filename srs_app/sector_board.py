@@ -320,6 +320,29 @@ def stock_card(row: Dict[str, Any], near_atrs: float = NEAR_ATRS, hist_start: Op
     }
 
 
+def etf_row(etf: str, e: Dict[str, Any]) -> Dict[str, Any]:
+    """A stages-like row for a SPDR sector ETF, so stock_card / recommend can run unchanged."""
+    return {
+        "t": etf, "n": ETF_NAMES.get(etf, etf), "sec": SECTOR_EN.get(etf, etf),
+        "sec_etf": etf, "etf": etf, "mcap_b": None,
+        "stage": e.get("stage"), "sub": e.get("sub"), "close": e.get("close"),
+        "ma30": e.get("ma30"), "atr_w": e.get("atr_w"),
+        "range": e.get("range"), "base": e.get("base"), "idx": e.get("idx"),
+        "bo": e.get("bo"), "bd": e.get("bd"), "plan": e.get("plan"),
+        "short_plan": e.get("short_plan"), "short_base": e.get("short_base"),
+    }
+
+
+def etf_as_stock(etf: str, e: Dict[str, Any], near_atrs: float = NEAR_ATRS,
+                 hist_start: Optional[str] = None, hist_days: Optional[int] = None) -> Dict[str, Any]:
+    """Board card for the sector ETF itself (first mini when that sector is open)."""
+    card = stock_card(etf_row(etf, e), near_atrs, hist_start, hist_days)
+    card["is_sector"] = True
+    card["n"] = ETF_NAMES.get(etf, etf)
+    card["etf"] = etf
+    return card
+
+
 def sector_card(etf: str, e: Dict[str, Any], tickers: List[str]) -> Dict[str, Any]:
     row = {
         "t": etf, "stage": e.get("stage"), "sub": e.get("sub"), "close": e.get("close"),
@@ -536,14 +559,34 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
     hist = ensure_board_history(sorted(want), hm or {}, offline=offline)
     stocks: Dict[str, Any] = {}
     by_t = {r["t"]: r for r in rows}
-    for t in sorted(want):
-        if t in SECTOR_ORDER:
+    for tkr in sorted(want):
+        start, ndays = _hist_meta(hist.get(tkr))
+        if tkr in SECTOR_ORDER:
+            e = sectors_doc.get(tkr) or {}
+            if not e:
+                continue
+            r = etf_row(tkr, e)
+            if int(r.get("stage") or 0) == 2 and not (r.get("bo") or {}).get("level"):
+                df = hist.get(tkr)
+                if df is not None and not getattr(df, "empty", True):
+                    try:
+                        from srs_app.stages import weekly as _weekly
+                        last = pd.Timestamp(pd.to_datetime(df.index).max()).normalize()
+                        lvl = last_breakout_level(_weekly(df, last))
+                    except Exception:
+                        lvl = None
+                    if lvl:
+                        r["_bo_lvl"] = lvl
+            card = stock_card(r, near_atrs, start, ndays)
+            card["is_sector"] = True
+            card["n"] = ETF_NAMES.get(tkr, tkr)
+            card["etf"] = tkr
+            stocks[tkr] = card
             continue
-        r = by_t.get(t)
+        r = by_t.get(tkr)
         if not r:
             continue
-        start, ndays = _hist_meta(hist.get(t))
-        stocks[t] = stock_card(r, near_atrs, start, ndays)
+        stocks[tkr] = stock_card(r, near_atrs, start, ndays)
 
     written = 0
     years_ok = 0

@@ -333,12 +333,17 @@ const runBoard = async (name, vp, touch) => {
   await page.waitForSelector('.stmini, .stminis-wrap');
   await page.waitForTimeout(1400);
   const n = await page.locator('.stmini').count();
-  ok(n >= 1 && n <= 20, `${name}-board: XLK mini charts (${n})`);
+  ok(n >= 11 && n <= 21, `${name}-board: XLK minis include the sector ETF + top 10 (${n})`);
+  ok(await page.locator('.stmini').first().getAttribute('data-stmini') === 'XLK', `${name}-board: first mini is the XLK sector ETF`);
+  ok(await page.locator('.stmini[data-sector-etf="1"] .stsec-tag').count() === 1, `${name}-board: sector ETF is marked סקטור`);
   ok(await page.locator('.stmini .stbadge').count() >= 1, `${name}-board: stage badge next to a mini`);
   ok(await page.locator('.stmini-rec').count() >= 1, `${name}-board: recommendation next to a mini`);
   const atr = await page.locator('.stmini-chart .atrw').first().innerText().catch(() => '');
   ok(/ATR\(W\)/.test(atr), `${name}-board: mini weekly ATR (${atr})`);
   await page.screenshot({ path: `${V2}/${name}_minis_XLK.png`, animations: 'disabled' });
+  const V3 = '/workspace/stages_shots/v3';
+  mkdirSync(V3, { recursive: true });
+  await page.screenshot({ path: `${V3}/${name}_minis_XLK.png`, animations: 'disabled' });
   await page.click('[data-bf="2a_res"]');
   await page.waitForTimeout(900);
   ok(/f=2a_res/.test(page.url()), `${name}-board: 2a-near-resistance filter in the hash`);
@@ -356,6 +361,7 @@ const runBoard = async (name, vp, touch) => {
   const atr2 = await page.locator('.stbig-d .atrw, #stbigd .atrw').first().innerText().catch(() => '');
   ok(/ATR\(W\)/.test(atr2), `${name}-board: large chart weekly ATR (${atr2})`);
   ok(await page.locator('#stBigDaily .stmini-rec, .stbig-daily .stmini-rec').count() >= 1, `${name}-board: recommendation on the large chart`);
+  ok(/תעודת הסקטור|סקטור/.test(await page.locator('#stBigDaily, .stbig-daily').first().innerText()), `${name}-board: large chart marks the sector ETF`);
   await page.screenshot({ path: `${V2}/${name}_large.png`, animations: 'disabled' });
   ok(!errors.length, `${name}-board: no page errors ${errors.join(' | ')}`);
   await ctx.close();

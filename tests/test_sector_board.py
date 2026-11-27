@@ -1,7 +1,7 @@
 """Sector board badge, filters, and recommendations (srs_app.sector_board, T-7)."""
 from srs_app.sector_board import (
     board_badge, flag_near_res, flag_near_sup, flag_retest2, flag_retest4, recommend, flags_of,
-    resistance_of, support_of, top_stocks, filter_lists, last_breakout_level,
+    resistance_of, support_of, top_stocks, filter_lists, last_breakout_level, etf_as_stock,
 )
 from srs_app.stages import buy_stop_price, stop_below, RULES
 
@@ -190,3 +190,17 @@ def test_board_near_is_one_weekly_atr_not_five_percent():
     retest_ok = _row(stage=2, close=103.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
                      range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     assert flag_retest2(retest_ok) is True
+
+
+def test_etf_as_stock_is_marked_sector():
+    e = dict(stage=2, sub="2", close=230.0, ma30=210.0, atr_w=5.0,
+             range={"ceil": 240.0, "floor": 200.0, "since_w": 10, "since": "x"})
+    card = etf_as_stock("XLK", e, hist_start="2016-11-28", hist_days=2513)
+    assert card["is_sector"] is True
+    assert card["t"] == "XLK"
+    assert card["badge"] == "2"
+    assert card["etf"] == "XLK"
+    assert card["n"]  # Hebrew sector name
+    assert card["rec"]["he"]
+    assert "לא מציבה פקודות" in card["rec"]["he"]
+    assert card["hist_start"] == "2016-11-28"
