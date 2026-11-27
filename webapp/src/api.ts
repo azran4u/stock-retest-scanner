@@ -171,6 +171,7 @@ class SupaApi implements Api {
 }
 
 // ---- demo (in-memory, nothing leaves the browser) ----
+const ST_DRAW_LS = 'srs-demo-stage-drawings';
 class MemApi implements Api {
   demo = true;
   email: string | null = null;
@@ -181,7 +182,16 @@ class MemApi implements Api {
   commands: Command[] = [];
   watch: Watch[] = [];
   seq = 1;
-  constructor(loggedIn: boolean) { this.email = loggedIn ? OWNER_EMAIL : null; }
+  constructor(loggedIn: boolean) {
+    this.email = loggedIn ? OWNER_EMAIL : null;
+    try {
+      const raw = localStorage.getItem(ST_DRAW_LS);
+      if (raw) this.stageDrawings = JSON.parse(raw);
+    } catch { /* ignore */ }
+  }
+  private persistStageDrawings() {
+    try { localStorage.setItem(ST_DRAW_LS, JSON.stringify(this.stageDrawings)); } catch { /* quota / private */ }
+  }
   async session() { return { email: this.email }; }
   onAuth(fn: (e: string | null) => void) { this.authFns.push(fn); }
   async signOut() { this.email = null; this.authFns.forEach((f) => f(null)); }
@@ -245,9 +255,9 @@ class MemApi implements Api {
   async insertStageDrawing(d: Partial<StDraw>) {
     const row = { zone_top: null, zone_bottom: null, entry: null, stop: null, target: null, t_start: null, t_end: null, source: 'user', status: 'active',
       ...d, id: crypto.randomUUID(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as StDraw;
-    this.stageDrawings.push(row); return { ...row };
+    this.stageDrawings.push(row); this.persistStageDrawings(); return { ...row };
   }
-  async updateStageDrawing(id: string, patch: Partial<StDraw>) { const d = this.stageDrawings.find((x) => x.id === id); if (d) Object.assign(d, patch, { updated_at: new Date().toISOString() }); }
+  async updateStageDrawing(id: string, patch: Partial<StDraw>) { const d = this.stageDrawings.find((x) => x.id === id); if (d) Object.assign(d, patch, { updated_at: new Date().toISOString() }); this.persistStageDrawings(); }
   async loadLives() {
     // tests may inject window.__demoLives. The production build never bundles the CSV.
     // In Vite dev only, /lives-dev.json is served from /workspace/lives/lives.json (not in app/).

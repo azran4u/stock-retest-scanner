@@ -73,6 +73,8 @@ export class ChartView {
   selected: string | null = null;
   editable = true;
   weekly = true;
+  /** Dollar risk used for the share-count label on a Long/Short box (Eyal $55). */
+  riskUsd = 55;
   private atrEl: HTMLDivElement;
   private tipEl: HTMLDivElement;
   earnings: EarnMark[] = [];
@@ -655,7 +657,9 @@ export class ChartView {
         s += box(x1, x2, this.Y(d.stop), this.Y(d.entry), broken ? 'rgba(120,123,134,.14)' : 'rgba(239,83,80,.22)', broken ? '#787b86' : '#ef5350', dash).replace('stroke-width="1"', `stroke-width="${sw}"`);
         s += line(x1, x2, this.Y(d.entry), '#d1d4dc');
         const q = rr(d.entry, d.stop, d.target);
-        const rrTxt = pre + 'R:R ' + (q != null ? q.toFixed(2) : '—');
+        const riskAmt = d.entry != null && d.stop != null ? Math.abs(+d.entry - +d.stop) : 0;
+        const shares = riskAmt > 0 ? Math.floor((this.riskUsd || 55) / riskAmt) : 0;
+        const rrTxt = pre + 'R:R ' + (q != null ? q.toFixed(2) : '—') + (riskAmt > 0 ? ` · ${shares} מניות` : '');
         s += tag(x2 - 4, this.Y(d.target), rrTxt, sel ? '#26a69a' : '#2a2e39', d.id);
         const yt0 = this.Y(d.target);
         if (yt0 != null) { const w = rrTxt.length * 6.4 + 12; obst.push({ x: Math.max(2, Math.min(W - w - 2, x2 - 4 - w)), y: yt0 - 9, w, h: 18 }); }
@@ -779,7 +783,7 @@ export class ChartView {
     labels.push({ cls: 'lbl-entry', color: '#d1d4dc', full: `${isShort ? 'Sell-Stop' : 'Entry'} ${m(E)}`, short: `E ${m(E)}`, edge: ye, first: isShort ? 'below' : 'above' });
     if (d.stop != null) {
       const r = isShort ? (+d.stop - E) : (E - +d.stop);
-      labels.push({ cls: 'slsz', color: '#ff8a87', full: `SL ${m(r)} (${pct(r)})`, short: `SL ${m(r)}`, edge: ys, first: isShort ? 'below' : 'above' });
+      labels.push({ cls: 'slsz', color: '#ff8a87', full: `SL ${m(+d.stop)} (${r >= 0 ? '−' : '+'}${m(Math.abs(r))}, ${pct(r)})`, short: `SL ${m(+d.stop)}`, edge: ys, first: isShort ? 'below' : 'above' });
     }
     const variants = [{ fs: 10.5, cw: 6.1, k: 'full' }, { fs: 9, cw: 5.3, k: 'full' }, { fs: 9, cw: 5.3, k: 'short' }] as const;
     const placed: { x: number; y: number; w: number; h: number }[] = [];

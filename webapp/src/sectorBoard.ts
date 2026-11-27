@@ -4,6 +4,7 @@
 // 150d and within 1 weekly ATR of resistance is the Buy-Stop-candidate filter, not 2a.
 import type { Bar } from './types';
 import { fetchData } from './data';
+import { stageToolsHtml, type StEd } from './stages';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const f = (n: number | null | undefined, d = 2) => n == null || Number.isNaN(+n) ? '—' : (+n).toFixed(d);
@@ -191,7 +192,7 @@ export function minisHtml(board: BoardDoc, route: StagesRoute, stocks: BoardStoc
   </div>`;
 }
 
-export function largeChartHtml(s: BoardStock, route: StagesRoute): string {
+export function largeChartHtml(s: BoardStock, route: StagesRoute, ed?: StEd | null): string {
   const backHref = boardHref(route.sec, null, route.f);
   return `<div class="stbig-daily" id="stBigDaily">
     <header class="stbig-hd">
@@ -203,7 +204,7 @@ export function largeChartHtml(s: BoardStock, route: StagesRoute): string {
     <div class="stbig stbig-d" id="stbigd" role="img" aria-label="גרף יומי ${esc(s.t)}"></div>
     <p class="stnodata muted" id="stnodata-d" hidden>אין נתונים יומיים ל-${esc(s.t)}</p>
     <p class="stmini-rec">${esc(s.rec.he)}</p>
-    <p class="small muted">כתום = ממוצע 150 יום · כחול = התנגדות · אדום = תמיכה · ATR(W) בפינה. גרף יומי, עד ${s.hist_start ? 'תחילת הנתונים ' + s.hist_start : '10 שנים'}. המלצה בלבד — לא מציבה פקודות.</p>
+    ${stageToolsHtml(ed, 'כתום = ממוצע 150 יום · כחול = התנגדות · אדום = תמיכה · ATR(W) בפינה. גרף יומי, עד ' + (s.hist_start ? 'תחילת הנתונים ' + s.hist_start : '10 שנים') + '. המלצה בלבד — לא מציבה פקודות.')}
   </div>`;
 }
 

@@ -386,8 +386,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
   </header>
   <div class="sttags pad">${tagsHtml(r, e, !!ed?.zone || !!ed?.lines?.length)}</div>
   <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים למניה הזו</div></div>
-  <div class="tools"><span class="small muted">${toolsHint}</span>
-    ${ed?.zone || ed?.long || ed?.lines?.length ? '<button id="streset" class="ghost small">חזרה לרמות המחושבות</button>' : ''}${!(shortSide ? sp : p) && !ed?.long ? '<button id="staddlong" class="ghost small">+ עסקה</button>' : ''}</div>
+  ${stageToolsHtml(ed, toolsHint)}
   <div class="panel stpanel">
     <div class="stplan"><b>${esc(kindHe)}</b>
       <div class="skvs">
@@ -522,7 +521,7 @@ export function drawStChart(cv: HTMLCanvasElement, sp: StSpark | undefined, r?: 
 
 
 /** Sector / market ETF page: weekly planning chart (orange ≈ 150d / 30W) + daily stage, slope and the sector
- *  rule (not stage 4 + 'שלב 2 מובהק' / 'סוף שלב 1 – התעוררות'), base ceiling when relevant. Read-only. */
+ *  rule (not stage 4 + 'שלב 2 מובהק' / 'סוף שלב 1 – התעוררות'), base ceiling when relevant. Same drawing tools as the stock chart. */
 export function etfCeil(e: EtfStage): number | null {
   if (e.idx) return e.stage === 2 ? null : e.range?.ceil ?? null;
   if (e.bo && e.sub === '2A') return e.bo.level;
@@ -535,7 +534,75 @@ export function etfFloor(e: EtfStage): number | null {
   if (e.idx) return e.stage === 2 ? e.idx.support : e.range?.floor ?? null;
   return null;
 }
-export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string | null): string {
+
+/** Toolbar under every large stages chart (stock weekly, board daily, ETF). Mouse and touch. */
+export const ST_TOOL_HINT = 'לונג / שורט: לחץ למיקום במחיר הכניסה (ברירת מחדל לרמות הבוט אם יש), ואז על ה-SL. גרור כניסה / SL / יעד. קו אופקי: לחץ להוספה, גרור להזזה. ניתן לגרור ולמחוק גם את קווי התמיכה וההתנגדות שהבוט צייר. «חזרה לרמות המחושבות» משחזר את המקור.';
+export function stageToolsHtml(ed?: StEd | null, extraHint = ''): string {
+  const has = !!(ed?.zone || ed?.long || ed?.lines?.length);
+  const hint = [extraHint, ST_TOOL_HINT].filter(Boolean).join(' ');
+  return `<div class="tools sttools" role="toolbar" aria-label="כלי שרטוט">
+    <button type="button" id="sttool-long" class="ghost small" aria-pressed="false">לונג</button>
+    <button type="button" id="sttool-short" class="ghost small" aria-pressed="false">שורט</button>
+    <button type="button" id="sttool-hline" class="ghost small" aria-pressed="false">קו אופקי</button>
+    <button type="button" id="stdelline" class="ghost small" hidden>מחק</button>
+    <button type="button" id="streset" class="ghost small"${has ? '' : ' hidden'}>חזרה לרמות המחושבות</button>
+    <span class="small muted" id="sttoolhint">${hint}</span>
+  </div>`;
+}
+
+/** Build a StageRow so ETF / board large charts can reuse the same drawings, tools and persistence. */
+export function etfAsRow(t: string, e: EtfStage): StageRow {
+  const ceil = etfCeil(e), floor = etfFloor(e);
+  const st = (e.stage === 1 || e.stage === 2 || e.stage === 3 || e.stage === 4) ? e.stage as 1 | 2 | 3 | 4 : 1;
+  const range = e.range ?? { ceil: ceil ?? null, floor: floor ?? null, since_w: 0, since: null };
+  return {
+    t, n: e.name, ex: '', sec: '', ind: '', etf: null, etf_stage: st, etf_rs: e.rs, atr_w: e.atr_w ?? null,
+    mcap_b: null, inst: null, dv_m: null, earn: null, earn_td: null,
+    stage: st, sub: e.sub, score: e.score, conf: (e.conf as StageRow['conf']) || 'med', checks: e.checks || [],
+    week: e.week, close: e.close, ma30: e.ma30, slope: e.slope, slope_cls: e.slope_cls || '',
+    pct_ma: e.pct_ma, rs: e.rs, rs_prev: null, rs_up: e.rs_up ?? null,
+    hh: e.hh ?? null, hl: e.hl ?? null, prior: '', flat_w: 0, crosses13: e.idx?.crosses13 ?? 0,
+    hi52: 0, pct_hi52: 0, at_hi52: false, weeks: e.weeks ?? 0,
+    bo: e.bo ?? null, base: e.base, range, pre: [], pre_ok: false, entry: [], entry_ok: false,
+  };
+}
+
+export interface BoardRowSrc {
+  t: string; n?: string | null; stage: number; sub?: string | null; close: number;
+  ma30?: number | null; res?: number | null; sup?: number | null; etf?: string | null; atr_w?: number | null;
+  rec?: { kind?: string; entry?: number | null; stop?: number | null; side?: string | null; res?: number | null; sup?: number | null };
+}
+export function boardAsRow(s: BoardRowSrc): StageRow {
+  const st = (s.stage === 1 || s.stage === 2 || s.stage === 3 || s.stage === 4) ? s.stage as 1 | 2 | 3 | 4 : 1;
+  const res = s.res ?? s.rec?.res ?? null, sup = s.sup ?? s.rec?.sup ?? null;
+  const rec = s.rec;
+  const risk = rec?.entry != null && rec?.stop != null ? Math.abs(rec.entry - rec.stop) : 0;
+  const side = rec?.side;
+  let plan: Plan | undefined, short_plan: ShortPlan | undefined;
+  if (rec?.entry != null && rec?.stop != null && risk > 0 && side !== 'short') {
+    plan = { kind: 'trigger', entry: rec.entry, stop: rec.stop, stop_basis: 'low', swing_low: sup, target: Math.round((rec.entry + 2.5 * risk) * 100) / 100,
+      target_src: 'open_sky', risk_pct: rec.entry ? (risk / rec.entry) * 100 : null, stop_wide: false, rr: 2.5, shares: Math.floor(55 / risk),
+      overhead: null, overhead_pct: null, open_sky: true, ath: false, cong: null, hi2y: null, level: rec.entry, close_vs_level: null, entry_vs_ma: null, chase: false };
+  }
+  if (rec?.entry != null && rec?.stop != null && risk > 0 && side === 'short') {
+    short_plan = { kind: 'trigger', entry: rec.entry, stop: rec.stop, stop_basis: 'high', swing_high: res, target: Math.max(0.01, Math.round((rec.entry - 2.5 * risk) * 100) / 100),
+      target_src: 'open_sky', risk_pct: rec.entry ? (risk / rec.entry) * 100 : null, stop_wide: false, rr: 2.5, shares: Math.floor(55 / risk),
+      support: null, support_pct: null, open_sky: true, atl: false, cong: null, lo2y: null, level: rec.entry, close_vs_level: null, entry_vs_ma: null, chase: false };
+  }
+  return {
+    t: s.t, n: s.n || s.t, ex: '', sec: '', ind: '', etf: s.etf ?? null, etf_stage: null, etf_rs: null, atr_w: s.atr_w ?? null,
+    mcap_b: null, inst: null, dv_m: null, earn: null, earn_td: null,
+    stage: st, sub: s.sub || String(st), score: 0, conf: 'med', checks: [],
+    week: '', close: s.close, ma30: s.ma30 ?? s.close, slope: 0, slope_cls: '',
+    pct_ma: 0, rs: null, rs_prev: null, rs_up: null, hh: null, hl: null, prior: '', flat_w: 0, crosses13: 0,
+    hi52: 0, pct_hi52: 0, at_hi52: false, weeks: 0, bo: null,
+    base: res != null && sup != null ? { top: res, low: sup, weeks: 0, dist_pct: 0 } : undefined,
+    range: { ceil: res, floor: sup, since_w: 0, since: null },
+    plan, short_plan, pre: [], pre_ok: false, entry: [], entry_ok: false,
+  };
+}
+
+export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string | null, ed?: StEd | null): string {
   const isMkt = !!d.market[t];
   const ok = isMkt && t === 'SPY' ? d.market_gate?.ok ?? e.sec_ok : e.sec_ok, cls = ok ? 'pos' : 'neg', ceil = etfCeil(e), floor = etfFloor(e);
   const users = d.rows.filter((r) => r.etf === t || r.sec_etf === t).length, x = e.idx;
@@ -552,7 +619,7 @@ export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string
   </header>
   <div class="sttags pad"><span class="badge ${isMkt && t !== 'SPY' ? 'b-off' : ok ? 'b-pass' : 'b-fail'}" id="secrule">${isMkt && t !== 'SPY' ? 'ℹ' : ok ? '✓' : '✗'} ${ruleTxt}</span>${e.td_he ? ` <span class="badge b-off" id="sectd">${esc(isMkt ? 'משמעות' : 'Top-Down')}: ${esc(e.td_he)}</span>` : ''}</div>
   <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים</div></div>
-  <div class="tools"><span class="small muted">כתום = ממוצע 150 יום (≈30W)${ceil != null ? ' · כחול = התנגדות (תקרת הטווח)' : ''}${floor != null ? ' · אדום = תמיכה (' + (e.stage === 2 ? 'השפל העולה האחרון' : 'רצפת הטווח') + ')' : ''} · קריאה בלבד</span></div>
+  ${stageToolsHtml(ed, 'כתום = ממוצע 150 יום (≈30W)' + (ceil != null ? ' · כחול = התנגדות (תקרת הטווח)' : '') + (floor != null ? ' · אדום = תמיכה (' + (e.stage === 2 ? 'השפל העולה האחרון' : 'רצפת הטווח') + ')' : ''))}
   <div class="panel stpanel">
     <div class="stplan"><b>${isMkt ? 'שלב המדד (ויינשטיין, 4 פרמטרים)' : 'כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל ממוצע 150 יום עולה) או "סוף שלב 1 – התעוררות" (חזר מעל ממוצע 150 יום והממוצע הפסיק לרדת)'}</b>
       <div class="skvs" id="idxkv">

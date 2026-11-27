@@ -543,9 +543,12 @@ header.top:has(.hbtns) { flex-wrap: wrap; row-gap: 4px; }
 .stsplit .topdown, .stside1 .topdown { padding: 0; border: 0; }
 .stpanel { padding: 8px 12px 40px; display: flex; flex-direction: column; gap: 6px; }
 .stpanel h4 { margin: 8px 0 2px; font-size: 13px; color: var(--mut); }
-.stcv .tools { flex-wrap: wrap; align-items: center; }
-.stcv .tools > button { flex: none; }
-.stcv .tools > span { flex: 1 1 200px; }
+.stcv .tools, .sttools { flex-wrap: wrap; align-items: center; }
+.stcv .tools > button, .sttools > button { flex: none; touch-action: manipulation; }
+.stcv .tools > span, .sttools > span, .sttools #sttoolhint { flex: 1 1 200px; }
+.sttools > button.on { background: var(--bg3); color: #fff; box-shadow: inset 0 0 0 2px var(--blue); }
+.chartwrap.stplacing, .stbig-d.stplacing { cursor: crosshair; }
+.stbig-daily .sttools { margin: 0; }
 .strulesheet { max-height: 80dvh; overflow-y: auto; z-index: 40; }
 .split #stback { display: none; }
 .split .stetf #stback { display: inline-flex; }

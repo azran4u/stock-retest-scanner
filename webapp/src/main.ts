@@ -13,7 +13,7 @@ import { renderRulesHtml } from './rules';
 import { BUILTIN_LISTS, effectiveFilters, loadLocalLists, parseTickers, saveLocalLists, sortLists, type StockList } from './lists';
 import { CAL_LABEL, calPageHtml, drawCalChart, progress, type CalRow } from './calibrate';
 import { CONF_HE, confOnLevel, confRank, confWithin, type ConfDoc, type ConfHit, type ConfLevel } from './confirm';
-import { UI_DEF, isShortSide, stResearch, etfCeil, etfFloor, etfDetailHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
+import { UI_DEF, isShortSide, stResearch, etfDetailHtml, etfAsRow, boardAsRow, stageToolsHtml, detailHtml as stDetailHtml, drawStChart, effPlan, filterRows, listHtml as stListHtml, rowHtml as stRowHtml, rulesHtml as stRulesHtml, levelsOf as stLevelsOf, zoneOf, type StDraw, type StLevel, type StEdits, type StSpark, type StageRow, type StagesDoc, type UiState as StUi } from './stages';
 import { parseStagesHash, boardHref, sectorStripHtml, boardStocks, minisHtml, largeChartHtml, loadBoardDaily, smaPoints, srDrawings, type BoardDoc, type BoardStock, type StagesRoute } from './sectorBoard';
 import { LIVES_UI_DEF, filterLives, livesTableHtml, livesToolbarHtml, mentorsOf, type Live as LiveRow, type LivesFilters } from './lives';
 import { ROI_RECS, roiBadgeHtml, roiPanelHtml, type RoiAnalysis } from './roi';
@@ -922,8 +922,11 @@ let stShell: 'split' | 'list' | 'detail' | null = null;
 let stSelDraw: string | null = null;
 let stLimit = 80;
 let stTap: { pts: number[]; date: string | null } | null = null;
+let stTapSide: 'long' | 'short' = 'long';
+let stTool: null | 'long' | 'short' | 'hline' = null;
+let stPrefSide: 'long' | 'short' | null = null;
 let stDoc: StagesDoc | null = null;
-let stLineTap = false; // '+ קו': the next tap on the big chart adds his support / resistance line
+let stLineTap = false; // horizontal-line tool: the next tap on the big chart adds a support / resistance line
 const stUi = (): StUi => ({ ...UI_DEF, ...JSON.parse(localStorage.getItem(ST_LS) || '{}') });
 const stSaveUi = (ui: StUi) => localStorage.setItem(ST_LS, JSON.stringify(ui));
 let stBoard: BoardDoc | null = null;
@@ -1158,20 +1161,29 @@ async function stRenderBoardLarge(board: BoardDoc, route: StagesRoute, host: HTM
   const s = board.stocks[route.t!];
   if (!s) { host.innerHTML = `<div class="center muted">אין כרטיס לוח ל-${route.t}</div>`; return; }
   if (stCv) { stCv.destroy(); stCv = null; }
-  host.innerHTML = largeChartHtml(s, route);
+  host.innerHTML = largeChartHtml(s, route, stEdits.get(s.t));
   const box = $('#stbigd', host);
   if (!box) return;
-  const cv = new ChartView(box, { onSelect: () => {}, onDragMove: () => {}, onDragEnd: () => {}, onTap: () => {} });
-  cv.editable = false;
+  const r = stRowOf(s.t, s);
+  const d = stDoc;
+  const cv = new ChartView(box, {
+    onSelect: (id) => { stSelDraw = id; if (d && r) { stSyncTools(host); stCv?.setDrawings(stDrawingsOf(r), stSelDraw); } },
+    onDragMove: () => {},
+    onDragEnd: (id, patch) => { if (d && r) void stSaveEdit(d, r, id, patch); },
+    onTap: (price, date) => { if (d && r) void stOnTap(d, r, price, date); },
+  });
+  cv.editable = !!r;
+  cv.riskUsd = d?.rules?.risk_usd ?? 55;
   cv.centerClose = false;
   stCv = cv; stCvT = s.t;
+  if (d && r) stBindTools(host, d, r);
   const bars = await loadBoardDaily(s.t);
   if (stCv !== cv) return;
   if (!bars.length) { const nd = $('#stnodata-d', host); if (nd) nd.hidden = false; return; }
   cv.setBars(bars, Math.min(260, bars.length), false);
   cv.setAtr(s.atr_w ?? null);
   cv.setMAs([{ n: 150, color: '#ff9800', data: smaPoints(bars, 150) }]);
-  cv.setDrawings(srDrawings(s.t, s.res, s.sup) as Drawing[], null);
+  cv.setDrawings(r ? stDrawingsOf(r) : srDrawings(s.t, s.res, s.sup) as Drawing[], stSelDraw);
   cv.fitLevels();
 }
 function stRulesSheet(d: StagesDoc) {
@@ -1183,30 +1195,48 @@ function stRulesSheet(d: StagesDoc) {
   document.body.appendChild(el);
   $('#strulesClose', el)!.onclick = () => el.remove();
 }
+function stRowOf(t: string, fallback?: { t: string; n?: string | null; stage: number; sub?: string | null; close: number; close_d?: number | null; ma30?: number | null; res?: number | null; sup?: number | null; etf?: string | null; atr_w?: number | null; rec?: { kind?: string; entry?: number | null; stop?: number | null; side?: string | null; res?: number | null; sup?: number | null } } | null): StageRow | null {
+  const r = stDoc?.rows.find((x) => x.t === t);
+  if (r) return r;
+  const e = stDoc && (stDoc.market[t] || stDoc.sectors[t] || stDoc.industries?.[t]);
+  if (e) return etfAsRow(t, e);
+  const s = fallback ?? stBoard?.stocks[t];
+  if (s) return boardAsRow({ ...s, close: (s as any).close_d ?? s.close });
+  return null;
+}
 function stDrawingsOf(r: StageRow): Drawing[] {
   const ed = stEdits.get(r.t), out: Drawing[] = [];
   const base = { ticker: r.t, note: null, status: 'active' as const, entry: null, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null };
   const z = zoneOf(r);
-  if (isShortSide(r)) {
+  const L = ed?.long;
+  const shortSide = L?.entry != null && L?.stop != null ? (+L.stop > +L.entry) : (stPrefSide === 'short' ? true : stPrefSide === 'long' ? false : isShortSide(r));
+  if (shortSide) {
     const bot = ed?.zone?.zone_bottom ?? z?.bottom;
     if (bot != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-floor', kind: 'line', entry: +bot, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'floor' } });
     const res = stLevelsOf(r, ed).find((x) => x.role === 'res' && (x.id === 'c-res' || x.ref === 'c-res'));
     if (res) out.push({ ...base, id: res.id, kind: 'line', entry: res.price, source: res.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'res' } });
-    if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
-    else if (r.short_plan) {
-      const e = effPlan(r, ed, maxRiskUsd(), stDoc ? stMaxStop(stDoc) : 10, stP ? (stDoc?.rules ?? {}) : {});
-      out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? r.short_plan.entry, stop: e?.stop ?? r.short_plan.stop, target: e?.target ?? r.short_plan.target, source: 'bot' });
-    }
-    return out;
+  } else {
+    const top = ed?.zone?.zone_top ?? z?.top;
+    if (top != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-res', kind: 'line', entry: +top, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'ceil' } });
+    const sup = stLevelsOf(r, ed).find((x) => x.role === 'sup' && (x.id === 'c-sup' || x.ref === 'c-sup'));
+    if (sup) out.push({ ...base, id: sup.id, kind: 'line', entry: sup.price, source: sup.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'sup' } });
   }
-  const top = ed?.zone?.zone_top ?? z?.top;
-  if (top != null) out.push({ ...base, id: ed?.zone ? ed.zone.id : 'c-res', kind: 'line', entry: +top, source: ed?.zone ? 'user' : 'bot', meta: { nolabel: true, color: '#2962ff', dash: '', role: 'ceil' } });
-  const sup = stLevelsOf(r, ed).find((x) => x.role === 'sup' && (x.id === 'c-sup' || x.ref === 'c-sup'));
-  if (sup) out.push({ ...base, id: sup.id, kind: 'line', entry: sup.price, source: sup.his ? 'user' : 'bot', meta: { nolabel: true, color: '#ef5350', dash: '', role: 'sup' } });
-  if (ed?.long) out.push({ ...base, ...(ed.long as any), source: 'user' });
-  else if (r.plan) { // the trade bar follows his lines / ceiling (recomputed target / stop), else the computed plan
-    const e = effPlan(r, ed, maxRiskUsd(), stDoc ? stMaxStop(stDoc) : 10, stP ? (stDoc?.rules ?? {}) : {});
-    out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? r.plan.entry, stop: e?.stop ?? r.plan.stop, target: e?.target ?? r.plan.target, source: 'bot' });
+  const taken = new Set(out.map((d) => d.id));
+  for (const lv of stLevelsOf(r, ed)) {
+    if (taken.has(lv.id) || (lv.ref && taken.has(lv.ref))) continue;
+    if (!lv.his && lv.id !== 'c-res' && lv.id !== 'c-sup' && lv.id !== 'c-floor' && lv.id !== 'c-ceil') continue;
+    if (lv.id === 'c-res' || lv.id === 'c-sup' || lv.id === 'c-floor' || lv.id === 'c-ceil') continue;
+    const col = lv.his ? '#f7c948' : (lv.role === 'sup' ? '#ef5350' : '#2962ff');
+    out.push({ ...base, id: lv.id, kind: 'line', entry: lv.price, source: lv.his ? 'user' : 'bot', meta: { color: col, dash: '', role: lv.role, label: lv.label, ref: lv.ref } });
+    taken.add(lv.id);
+  }
+  if (L && L.entry != null && L.stop != null) out.push({ ...base, ...(L as any), source: 'user' });
+  else {
+    const p = shortSide ? r.short_plan : r.plan;
+    if (p) {
+      const e = effPlan(r, ed, maxRiskUsd(), stDoc ? stMaxStop(stDoc) : 10, stDoc?.rules ?? {});
+      out.push({ ...base, id: 'c-long', kind: 'long', entry: e?.entry ?? p.entry, stop: e?.stop ?? p.stop, target: e?.target ?? p.target, source: 'bot' });
+    }
   }
   return out;
 }
@@ -1214,16 +1244,25 @@ function stNeighbor(d: StagesDoc, t: string, dir: 1 | -1): string | null {
   const l = filterRows(d.rows, stUi(), stEdits, maxRiskUsd(), stMaxStop(d), S.watch).map((r) => r.t), i = l.indexOf(t);
   return i < 0 ? l[0] ?? null : l[i + dir] ?? null;
 }
-/** big weekly chart of a sector / market ETF (read-only): candles + 30W SMA + base ceiling (blue) when relevant */
+/** big weekly chart of a sector / market ETF: candles + 30W SMA + S/R + the same drawing tools as the stock chart */
 async function stRenderEtf(d: StagesDoc, t: string, e: StagesDoc['sectors'][string]) {
   const host = $('#stMain'); if (!host) return;
-  if (stCv && stCvT === t) return;
+  const r = etfAsRow(t, e);
+  if (stCv && stCvT === t) { stNotifyEdit(d, r); return; }
   if (stCv) { stCv.destroy(); stCv = null; }
-  stSelDraw = null; stTap = null;
-  host.innerHTML = etfDetailHtml(d, t, e, sessionStorage.getItem('srs-st-from'));
+  stSelDraw = null; stTap = null; stTool = null; stLineTap = false; stPrefSide = null;
+  host.innerHTML = etfDetailHtml(d, t, e, sessionStorage.getItem('srs-st-from'), stEdits.get(t));
   stCvT = t;
-  const cv = new ChartView($('#stbig', host)!, { onSelect: () => {}, onDragMove: () => {}, onDragEnd: () => {}, onTap: () => {} });
-  cv.editable = false; stCv = cv;
+  const cv = new ChartView($('#stbig', host)!, {
+    onSelect: (id) => { stSelDraw = id; stNotifyEdit(d, r); },
+    onDragMove: () => {},
+    onDragEnd: (id, patch) => { void stSaveEdit(d, r, id, patch); },
+    onTap: (price, date) => void stOnTap(d, r, price, date),
+  });
+  cv.editable = true;
+  cv.riskUsd = d.rules?.risk_usd ?? 55;
+  stCv = cv;
+  stBindTools(host, d, r);
   try {
     const res = await fetchData('stages_candles/' + encodeURIComponent(t) + '.json');
     if (!res.ok) throw new Error('no candles');
@@ -1237,9 +1276,7 @@ async function stRenderEtf(d: StagesDoc, t: string, e: StagesDoc['sectors'][stri
     let sum = 0;
     for (let i = 0; i < bars.length; i++) { sum += bars[i].close; if (i >= 30) sum -= bars[i - 30].close; if (i >= 29) ma.push({ time: bars[i].time, value: sum / 30 }); }
     cv.setMAs([{ n: 30, color: '#ff9800', data: ma }]);
-    const c = etfCeil(e), fl = etfFloor(e);
-    const ln = (id: string, p: number, color: string) => ({ id, ticker: t, kind: 'line', entry: p, stop: null, target: null, zone_top: null, zone_bottom: null, t_start: null, t_end: null, source: 'bot', status: 'active', note: null, meta: { nolabel: true, color, dash: '' } } as Drawing);
-    cv.setDrawings([...(c != null ? [ln('etf-ceil', c, '#2962ff')] : []), ...(fl != null ? [ln('etf-floor', fl, '#ef5350')] : [])], null);
+    cv.setDrawings(stDrawingsOf(r), stSelDraw);
     cv.fitLevels();
   } catch {
     const nd = $('#stnodata', host); if (nd) nd.hidden = false;
@@ -1253,7 +1290,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
     if (etf) { stRenderEtf(d, t, etf); return; }
     if (stCv) { stCv.destroy(); stCv = null; stCvT = null; } host.innerHTML = `<div class="center muted">${esc(t)} לא ברשימת השלבים</div>`; return;
   }
-  if (stCvT !== t) { stSelDraw = null; stTap = null; stLineTap = false; }
+  if (stCvT !== t) { stSelDraw = null; stTap = null; stLineTap = false; stTool = null; stPrefSide = null; }
   if (stCv && stCvT === t) { stRefreshDetail(d, r); return; }
   if (stCv) { stCv.destroy(); stCv = null; }
   const ed = stEdits.get(t);
@@ -1266,6 +1303,7 @@ async function stRenderDetail(d: StagesDoc, t: string) {
     onDragEnd: (id, patch) => { stSaveEdit(d, r, id, patch); },
     onTap: (price, date) => stOnTap(d, r, price, date),
   });
+  stCv.riskUsd = d.rules?.risk_usd ?? 55;
   try {
     const res = await fetchData('stages_candles/' + encodeURIComponent(t) + '.json');
     if (!res.ok) throw new Error('no candles');
@@ -1288,14 +1326,97 @@ async function stRenderDetail(d: StagesDoc, t: string) {
 function stBindDetail(d: StagesDoc, r: StageRow) {
   const host = $('#stMain')!;
   const go = (dir: 1 | -1) => { const n = stNeighbor(d, r.t, dir); if (n) location.replace('#/stages/' + encodeURIComponent(n)); else toast(dir > 0 ? 'סוף הרשימה' : 'תחילת הרשימה'); };
-  $('#stprev', host)!.onclick = () => go(-1);
-  $('#stnext', host)!.onclick = () => go(1);
+  const prev = $('#stprev', host), next = $('#stnext', host);
+  if (prev) prev.onclick = () => go(-1);
+  if (next) next.onclick = () => go(1);
   const star = $('#ststar', host) as HTMLButtonElement | null;
   if (star) star.onclick = (e) => { e.stopPropagation(); toggleWatch(r.t); };
-  const rs = $('#streset', host); if (rs) rs.onclick = () => stReset(d, r);
-  const aln = $('#staddline', host); if (aln) aln.onclick = () => { stLineTap = !stLineTap; stTap = null; toast(stLineTap ? 'הקש על הגרף במחיר של הקו (מעל המחיר = התנגדות, מתחת = תמיכה)' : 'בוטל'); };
-  const dl = $('#stdelline', host); if (dl) dl.onclick = () => stDelLine(d, r);
-  const al = $('#staddlong', host); if (al) al.onclick = () => { stTap = stTap ? null : { pts: [], date: null }; toast(stTap ? (isShortSide(r) ? 'הקש על מחיר ה-Sell-Stop ואז על ה-SL' : 'הקש על מחיר ה-Buy-Stop ואז על ה-SL') : 'בוטל'); };
+  stBindTools(host, d, r);
+}
+function stIsStockDetail(): boolean {
+  return !!document.querySelector('#stMain .stcv:not(.stetf)') && !document.getElementById('stBigDaily');
+}
+function stToolsRoot(): HTMLElement | null {
+  return (document.getElementById('stBigDaily') as HTMLElement | null)
+    || (document.querySelector('#stMain .stetf') as HTMLElement | null)
+    || (document.getElementById('stMain') as HTMLElement | null);
+}
+function stSyncTools(host: HTMLElement) {
+  const set = (id: string, on: boolean) => {
+    const b = host.querySelector('#' + id) as HTMLButtonElement | null;
+    if (!b) return;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  };
+  set('sttool-long', stTool === 'long');
+  set('sttool-short', stTool === 'short');
+  set('sttool-hline', stTool === 'hline' || stLineTap);
+  const del = host.querySelector('#stdelline') as HTMLButtonElement | null;
+  if (del) del.hidden = !stSelDraw;
+  const wrap = host.querySelector('#stbig, #stbigd') as HTMLElement | null;
+  wrap?.classList.toggle('stplacing', !!(stTool || stLineTap || stTap));
+}
+function stBindTools(host: HTMLElement, d: StagesDoc, r: StageRow) {
+  const longB = $('#sttool-long', host); if (longB) longB.onclick = () => { void stArmTrade(d, r, 'long'); };
+  const shortB = $('#sttool-short', host); if (shortB) shortB.onclick = () => { void stArmTrade(d, r, 'short'); };
+  const hl = $('#sttool-hline', host);
+  if (hl) hl.onclick = () => {
+    stLineTap = !stLineTap; stTap = null; stTool = stLineTap ? 'hline' : null;
+    toast(stLineTap ? 'הקש על הגרף במחיר של הקו (מעל המחיר = התנגדות, מתחת = תמיכה)' : 'בוטל');
+    stSyncTools(host);
+  };
+  const dl = $('#stdelline', host); if (dl) dl.onclick = () => { void stDelSelected(d, r); };
+  const rs = $('#streset', host); if (rs) rs.onclick = () => { void stReset(d, r); };
+  stSyncTools(host);
+}
+async function stArmTrade(d: StagesDoc, r: StageRow, side: 'long' | 'short') {
+  const p = side === 'short' ? r.short_plan : r.plan;
+  stPrefSide = side;
+  stLineTap = false;
+  const L = stEdits.get(r.t)?.long;
+  if (L && L.entry != null && L.stop != null) {
+    const isShort = +L.stop > +L.entry;
+    if ((side === 'short') === isShort) {
+      stTool = null; stTap = null; stSelDraw = L.id;
+      toast(side === 'short' ? 'עסקה קצרה — גרור כניסה / SL / יעד' : 'עסקה ארוכה — גרור כניסה / SL / יעד');
+      stNotifyEdit(d, r); return;
+    }
+  }
+  if (p && !L) {
+    stTool = null; stTap = null; stSelDraw = 'c-long';
+    toast(side === 'short' ? 'עסקה קצרה לפי Sell-Stop של הבוט — גרור כניסה / SL / יעד' : 'עסקה ארוכה לפי Buy-Stop של הבוט — גרור כניסה / SL / יעד');
+    stNotifyEdit(d, r); return;
+  }
+  stTool = side; stTap = { pts: [], date: null }; stTapSide = side; stSelDraw = null;
+  toast(side === 'short' ? 'הקש על מחיר ה-Sell-Stop ואז על ה-SL' : 'הקש על מחיר ה-Buy-Stop ואז על ה-SL');
+  stNotifyEdit(d, r);
+}
+function stNotifyEdit(d: StagesDoc, r: StageRow) {
+  if (stIsStockDetail()) { stRefreshDetail(d, r); return; }
+  stCv?.setDrawings(stDrawingsOf(r), stSelDraw);
+  stCv?.fitLevels();
+  const root = stToolsRoot();
+  if (!root) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = stageToolsHtml(stEdits.get(r.t));
+  const a = root.querySelector('.sttools, .tools');
+  const b = tmp.querySelector('.tools');
+  if (a && b) a.replaceWith(b);
+  stBindTools(root, d, r);
+}
+async function stDelSelected(d: StagesDoc, r: StageRow) {
+  if (!stSelDraw) return;
+  const ed = stEdits.get(r.t);
+  const isLong = stSelDraw === 'c-long' || stSelDraw === ed?.long?.id;
+  if (isLong) {
+    if (ed?.long) {
+      await guard(api.updateStageDrawing(ed.long.id, { status: 'deleted' }));
+      delete ed.long; if (!ed.zone && !ed.lines?.length) stEdits.delete(r.t); else stEdits.set(r.t, ed);
+      stSelDraw = null; toast('העסקה נמחקה'); stNotifyEdit(d, r);
+    } else toast('זו עסקת הבוט — גרור ידיות כדי לשמור כשלך, או לחץ «חזרה לרמות המחושבות» אחרי שינוי');
+    return;
+  }
+  await stDelLine(d, r);
 }
 /** after an edit: swap the tags / tools / panel, redraw the overlay and the list row (the chart keeps its view) */
 function stRefreshDetail(d: StagesDoc, r: StageRow) {
@@ -1333,7 +1454,7 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
       if (!row) { stCv?.setDrawings(stDrawingsOf(r), stSelDraw); return; }
       ed.zone = row; stEdits.set(r.t, ed); stSelDraw = row.id;
     }
-    stRefreshDetail(d, r); return;
+    stNotifyEdit(d, r); return;
   }
   if (cur.kind === 'line') {
     const price = Math.round(+(m.entry ?? 0) * 100) / 100;
@@ -1345,7 +1466,7 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
       const mine = ed.lines?.find((x) => x.id === id); if (mine) mine.entry = price;
       await guard(api.updateStageDrawing(id, { entry: price }));
     }
-    stRefreshDetail(d, r); return;
+    stNotifyEdit(d, r); return;
   }
   if (id.startsWith('c-')) {
     const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: cur.kind as 'zone' | 'long', ...lv, source: 'user', status: 'active',
@@ -1357,14 +1478,14 @@ async function stSaveEdit(d: StagesDoc, r: StageRow, id: string, patch: Partial<
     if (mine) Object.assign(mine, lv);
     await guard(api.updateStageDrawing(id, lv as Partial<StDraw>));
   }
-  stRefreshDetail(d, r);
+  stNotifyEdit(d, r);
 }
 async function stReset(d: StagesDoc, r: StageRow) {
   const ed = stEdits.get(r.t); if (!ed) return;
   for (const x of [ed.zone, ed.long, ...(ed.lines || [])]) if (x) await guard(api.updateStageDrawing(x.id, { status: 'deleted' }));
   stEdits.delete(r.t); stSelDraw = null;
   toast('חזרה לרמות המחושבות');
-  stRefreshDetail(d, r);
+  stNotifyEdit(d, r);
 }
 function stSelLine(r: StageRow): StLevel | null {
   return stSelDraw ? stLevelsOf(r, stEdits.get(r.t)).find((x) => x.id === stSelDraw) ?? null : null;
@@ -1383,25 +1504,29 @@ async function stDelLine(d: StagesDoc, r: StageRow) {
     (ed.lines ??= []).push(row);
   }
   stEdits.set(r.t, ed); stSelDraw = null; toast('הקו נמחק');
-  stRefreshDetail(d, r);
+  stNotifyEdit(d, r);
 }
 async function stOnTap(d: StagesDoc, r: StageRow, price: number, date: string) {
-  if (stLineTap) {
-    stLineTap = false;
+  if (stLineTap || stTool === 'hline') {
+    stLineTap = false; stTool = null;
     const role = price >= r.close ? 'res' : 'sup', px = Math.round(price * 100) / 100;
     const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'line', entry: px, t_start: date, source: 'user', status: 'active', meta: { role, week: d.week } }), role === 'res' ? 'נוסף קו התנגדות' : 'נוסף קו תמיכה');
-    if (row) { const ed = stEdits.get(r.t) || {}; (ed.lines ??= []).push(row); stEdits.set(r.t, ed); stSelDraw = row.id; stRefreshDetail(d, r); }
+    if (row) { const ed = stEdits.get(r.t) || {}; (ed.lines ??= []).push(row); stEdits.set(r.t, ed); stSelDraw = row.id; stNotifyEdit(d, r); }
+    else stNotifyEdit(d, r);
     return;
   }
-  if (!stTap) { if (stSelDraw) { stSelDraw = null; stCv?.setDrawings(stDrawingsOf(r), null); } return; }
+  if (!stTap) { if (stSelDraw) { stSelDraw = null; stCv?.setDrawings(stDrawingsOf(r), null); stSyncTools(stToolsRoot() || document.body); } return; }
   stTap.pts.push(price);
-  const shortSide = isShortSide(r);
+  const shortSide = stTapSide === 'short';
   if (stTap.pts.length === 1) { stTap.date = date; toast(`${shortSide ? 'Sell-Stop' : 'Buy-Stop'} ${price.toFixed(2)} — הקש על ה-SL`); return; }
-  const [a, b2] = stTap.pts; stTap = null;
-  if (shortSide ? (b2 <= a) : (b2 >= a)) { toast(shortSide ? 'ה-SL בשורט חייב להיות מעל ה-Sell-Stop' : 'ה-SL חייב להיות מתחת ל-Buy-Stop', true); return; }
+  const [a, b2] = stTap.pts; stTap = null; stTool = null;
+  if (shortSide ? (b2 <= a) : (b2 >= a)) { toast(shortSide ? 'ה-SL בשורט חייב להיות מעל ה-Sell-Stop' : 'ה-SL חייב להיות מתחת ל-Buy-Stop', true); stNotifyEdit(d, r); return; }
   const tgt = shortSide ? Math.max(0.01, Math.round((a - 2.5 * (b2 - a)) * 100) / 100) : Math.round((a + 2.5 * (a - b2)) * 100) / 100;
-  const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'long', entry: a, stop: b2, target: tgt, source: 'user', status: 'active', meta: { week: d.week } }), 'נשמר');
-  if (row) { const ed = stEdits.get(r.t) || {}; ed.long = row; stEdits.set(r.t, ed); stSelDraw = row.id; stRefreshDetail(d, r); }
+  const prev = stEdits.get(r.t)?.long;
+  if (prev) await guard(api.updateStageDrawing(prev.id, { status: 'deleted' }));
+  const row = await guard(api.insertStageDrawing({ ticker: r.t, kind: 'long', entry: a, stop: b2, target: tgt, source: 'user', status: 'active', meta: { week: d.week, side: stTapSide } }), 'נשמר');
+  if (row) { const ed = stEdits.get(r.t) || {}; ed.long = row; stEdits.set(r.t, ed); stSelDraw = row.id; }
+  stNotifyEdit(d, r);
 }
 // ---------------- trend calibration page (#/calibrate, calibrate.ts) ----------------
 let calP: Promise<CalRow[]> | null = null;
