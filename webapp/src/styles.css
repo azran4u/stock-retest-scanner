@@ -685,6 +685,44 @@ a.badge.etfl { text-decoration: none; }
 .st4.stbadge, .stbadge.st4 { background: rgba(239,83,80,.22); color: #ff8a87; }
 .stbadge.st2a { background: rgba(38,166,154,.28); color: #9be7c4; box-shadow: inset 0 0 0 1px rgba(155,231,196,.35); }
 .stboard-filters { flex-wrap: wrap; gap: 6px; margin-top: 6px; overflow: visible; }
+/* Desktop side panel (Eyal t456u, 2026-11-27): the T-6 grid caps later rows so
+   the sector strip + board filters can crush the stage chips and search to a few
+   pixels, and overflow:hidden then blocks the wheel. From 1200px up the whole
+   panel (strip, chips, tabs, list) scrolls with the wheel / trackpad. iPad and
+   phone keep the T-6 grid (results list is the scroller, stage 1-4 tabs stay pinned). */
+@media (min-width: 1200px) {
+  .stsplit .side {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - var(--pb, 0px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .stsplit .side > * { flex: none; min-height: auto; }
+  .stsplit .side .sttabs { min-height: auto; overflow: visible; }
+  .stsplit .side .stfilters {
+    max-height: min(40vh, 22rem);
+    min-height: 8rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .stsplit .side .stfilters-more {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .stsplit .side .stresults {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+  .stsplit .side .stresults .list { overflow: visible; }
+}
+
 .stboard-filters .chip { flex: none; text-decoration: none; color: inherit; }
 .stsec-note { margin-top: 4px; overflow-wrap: anywhere; }
 .stminis-wrap { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; padding: 8px 10px 24px; }

@@ -46,7 +46,11 @@ const clickInMore = async (loc) => {
 // Scroll the results pane with wheel (desktop) or a touch swipe (tablet / phone).
 // Does not use click() or el.scrollTop = to move; those hid the "filters ate the list" bug.
 const assertListScroll = async (page, name, shot) => {
-  const box = page.locator('.stresults');
+  const panelScroll = await page.evaluate(() => {
+    const side = document.querySelector('#stSide, .stsplit .side');
+    return !!(side && /(auto|scroll)/.test(getComputedStyle(side).overflowY) && side.scrollHeight > side.clientHeight + 40);
+  });
+  const box = panelScroll ? page.locator('#stSide, .stsplit .side').first() : page.locator('.stresults');
   await box.waitFor();
   const n = await page.locator('.stresults li[data-st]').count();
   ok(n > 5, `${name}: enough result rows to scroll (${n})`);
@@ -87,17 +91,64 @@ const assertListScroll = async (page, name, shot) => {
   const last = page.locator('.stresults li[data-st]').last();
   await last.evaluate((el) => el.scrollIntoView({ block: 'end', inline: 'nearest' }));
   await page.waitForTimeout(150);
-  const reach = await last.evaluate((el) => {
-    const root = el.closest('.stresults');
-    const lr = el.getBoundingClientRect(), br = root.getBoundingClientRect();
-    const visible = lr.top < br.bottom - 8 && lr.bottom > br.top + 8;
+  const reach = await last.evaluate((el, panel) => {
+    const root = panel
+      ? (el.closest('#stSide') || el.closest('.stsplit .side'))
+      : el.closest('.stresults');
+    const lr = el.getBoundingClientRect();
+    const br = root.getBoundingClientRect();
+    const visible = lr.top < Math.min(br.bottom, window.innerHeight) - 8 && lr.bottom > Math.max(br.top, 0) + 8;
     return { visible, scrollTop: root.scrollTop, max: root.scrollHeight - root.clientHeight, t: el.dataset.st };
-  });
+  }, panelScroll);
   ok(reach.visible && reach.scrollTop > 80, `${name}: last result ${reach.t} is reachable (scrollTop ${Math.round(reach.scrollTop)} / ${Math.round(reach.max)})`);
   const vis = await tabsInView(page);
-  ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs still in viewport after list scroll`);
+  if (panelScroll) {
+    // Desktop t456u: the whole panel scrolls, so stage tabs may leave the viewport. iPad/phone still pin them (T-6).
+    console.log('info', `${name}: desktop panel scroller — tabs may leave the viewport after list scroll`);
+  } else {
+    ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs still in viewport after list scroll`);
+  }
   if (shot) await page.screenshot({ path: shot, animations: 'disabled' });
   await box.evaluate((el) => { el.scrollTop = 0; });
+};
+
+
+// Desktop (Eyal t456u, 2026-11-27): the side panel itself — sector strip, board
+// filters, stage chips, candidate list — must scroll with the mouse wheel / trackpad,
+// including on short laptop heights (~700-800). Pointer is over the filter block,
+// not the results list. iPad / phone keep the T-6 results-list scroller.
+const assertFilterPanelScroll = async (page, name, shot) => {
+  const side = page.locator('#stSide, .stsplit .side').first();
+  await side.waitFor();
+  const before = await side.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { top: el.scrollTop, sh: el.scrollHeight, ch: el.clientHeight, oy: cs.overflowY };
+  });
+  ok(/(auto|scroll)/.test(before.oy), `${name}: side panel overflow-y is scrollable (${before.oy})`);
+  ok(before.sh > before.ch + 40, `${name}: side panel content overflows and can scroll (${before.sh} > ${before.ch})`);
+  await side.evaluate((el) => { el.scrollTop = 0; });
+  const target = page.locator('.stsectors, .stboard-filters, .sttabs').first();
+  const bb = await target.boundingBox();
+  ok(!!bb && bb.height > 20, `${name}: filter / sector block is a wheel target (${bb ? Math.round(bb.height) : 0}px)`);
+  const x = bb.x + Math.min(bb.width, 80) / 2, y = bb.y + Math.min(40, Math.max(16, bb.height * 0.3));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 1400 });
+  await page.waitForTimeout(300);
+  let after = await side.evaluate((el) => el.scrollTop);
+  ok(after > 40, `${name}: wheel over the filters changes the panel scrollTop (0 -> ${after})`);
+  const last = page.locator('.stresults li[data-st]').last();
+  if (await last.count()) {
+    await last.evaluate((el) => el.scrollIntoView({ block: 'end', inline: 'nearest' }));
+    await page.waitForTimeout(150);
+    const reach = await last.evaluate((el) => {
+      const lr = el.getBoundingClientRect();
+      return { visible: lr.top < window.innerHeight - 8 && lr.bottom > 8, t: el.dataset.st };
+    });
+    ok(reach.visible, `${name}: last result ${reach.t} is reachable by scrolling the panel`);
+  }
+  if (shot) await page.screenshot({ path: shot, animations: 'disabled' });
+  await side.evaluate((el) => { el.scrollTop = 0; });
 };
 
 // a stock with computed support / resistance lines (overhead resistances + valid swing low) for the lines test
@@ -282,6 +333,25 @@ for (const [name, vp, mobile] of [['desktop', { width: 1280, height: 900 }, fals
   await ctx.close();
 }
 
+// Desktop short windows (Eyal t456u): 1280x720 and 1920x800 — wheel the filter panel.
+for (const [name, vp] of [['desktop-720', { width: 1280, height: 720 }], ['desktop-1920', { width: 1920, height: 800 }]]) {
+  const ctx = await browser.newContext({ viewport: vp, locale: 'he-IL' });
+  const page = await ctx.newPage();
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE + '?demo=1');
+  await page.evaluate(() => localStorage.removeItem('srs-stages-ui'));
+  await page.goto(BASE + '?demo=1#/stages');
+  await page.waitForSelector('#stSide .stsectors, #stSide [data-tab="bs"]');
+  await page.waitForTimeout(500);
+  const vis = await tabsInView(page);
+  ok(vis.length === 4 && vis.every((v) => v.ok), `${name}: stage 1-4 tabs fully in viewport before panel scroll (${vis.map((v) => v.tab + (v.ok ? '' : '@' + v.box)).join(', ')})`);
+  await page.click('[data-tab="2"]');
+  await page.waitForTimeout(300);
+  await assertFilterPanelScroll(page, name, `${OUT}/${name}_filters_scrolled.png`);
+  ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
+  await ctx.close();
+}
+
 // iPad portrait (Eyal 2026-11-26): stage 1-4 filter must be on screen and actually filter, like desktop / phone.
 for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9', { width: 768, height: 1024 }], ['ipad-land', { width: 1024, height: 768 }]]) {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 2, hasTouch: true, locale: 'he-IL' });
@@ -309,6 +379,7 @@ for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9',
   ok(!errors.length, `${name}: no page errors ${errors.join(' | ')}`);
   await ctx.close();
 }
+
 
 // T-7 sector board: strip, minis, new filters, large daily chart (screenshots under v5/)
 const V5 = '/workspace/stages_shots/v5';

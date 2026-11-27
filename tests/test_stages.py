@@ -1,4 +1,4 @@
-"""Weinstein / TraderLion stage classifier (srs_app/stages.py) — daily 150d engine, weekly Buy-Stop helpers."""
+"""Weinstein / TraderLion stage classifier (srs_app/stages.py) — daily 150d engine, including Buy-Stop / Sell-Stop."""
 import numpy as np
 import pandas as pd
 
@@ -94,21 +94,20 @@ def wk(t):
 
 
 def test_kkr_overhead_rejects():
-    """Eyal: KKR breakout 117.79, stop 97.15, overhead 144.11 -> R:R 1.28, stop 17.5% too wide -> skip."""
-    w = wk("kkr")
+    """Eyal: KKR breakout 117.79 has significant daily overhead near 144 within 2 years; R:R < 2.5, skip."""
+    w = to_daily(wk("kkr"))
     ov = overhead_scan(w, 117.79)
-    assert not ov["open_sky"] and abs(ov["overhead"] - 144.11) < 0.5
-    assert round((ov["overhead"] - 117.79) / (117.79 - 97.15), 2) in (1.27, 1.28)
-    p = trade_levels(w, float(w["Close"].rolling(30).mean().iloc[-1]), 117.79, None, None)
+    assert not ov["open_sky"] and ov["overhead"] is not None and abs(ov["overhead"] - 144.0) < 1.0
+    p = trade_levels(w, float(w["Close"].rolling(150).mean().iloc[-1]), 117.79, None, None)
     assert p["target_src"] == "overhead" and p["rr"] < RULES["min_rr"] and p["stop_wide"]
 
 
 def test_wmt_open_sky():
     """Eyal: WMT breakout above 134.68 = all-time high, no overhead ('open sky') -> R:R 2.5 by construction."""
-    w = wk("wmt")
+    w = to_daily(wk("wmt"))
     ov = overhead_scan(w, 134.68)
     assert ov["open_sky"] and ov["ath"]
-    p = trade_levels(w, float(w["Close"].rolling(30).mean().iloc[-1]), 134.68, None, None)
+    p = trade_levels(w, float(w["Close"].rolling(150).mean().iloc[-1]), 134.68, None, None)
     assert p["target_src"] == "open_sky" and p["rr"] == RULES["min_rr"]
 
 
@@ -230,7 +229,7 @@ def test_post_earnings_back_under_resistance():
 
 
 def test_stop_lower_of_sma_and_base_low():
-    """Eyal 2026-11-16: anchors A = 30W SMA, B = the base's last unbroken low; stop 0.75% under the LOWER one."""
+    """Eyal 2026-11-16: anchors A = 150d SMA, B = the base's last unbroken low; stop 0.75% under the LOWER one."""
     from srs_app.stages import stop_anchors, stop_below
     c = np.r_[np.full(30, 100.0), [104, 106, 103, 100, 104, 108, 110, 112, 111, 113]]
     w = bars(c, rng=0.01)
@@ -252,16 +251,30 @@ def test_stop_round_number_and_margin():
 
 
 def test_stop_too_far_uses_higher_low_when_sma_rising():
-    """B below the SMA but > 10% away and the SMA rising -> the most recent unbroken higher low under the SMA."""
-    from srs_app.stages import stop_anchors
-    c = np.r_[np.linspace(60, 100, 60), [96, 92, 88, 90, 95, 99, 97, 94, 96, 100, 104, 106]]
-    w = bars(c, rng=0.01)
-    lows = w["Low"].values
-    b = float(lows[60:].min())                           # base floor (the lower low, ~87)
-    ma = float(w["Close"].rolling(30).mean().values[-1])
-    sa = stop_anchors(w, ma, 110.0, b)
+    """B below the 150d SMA but > 10% away and the SMA rising -> the most recent unbroken higher low under the SMA."""
+    from srs_app.stages import stop_anchors, sma_slope
+    c = np.r_[np.linspace(40, 80, 160), np.linspace(80, 120, 80), np.linspace(120, 90, 15), np.linspace(90, 118, 45)]
+    w = bars_d(c, rng=0.005)
+    bi = 240 + int(np.argmin(c[240:255]))
+    hli = bi + 25
+    lows = w["Low"].to_numpy().copy()
+    lows[bi] = 87.0
+    for i in range(hli - 12, hli + 13):
+        if 0 <= i < len(lows) and i != hli:
+            lows[i] = max(lows[i], 97.0)
+    lows[hli] = 94.0
+    lows[bi] = 87.0
+    for i in range(bi + 1, len(lows)):
+        if i != hli:
+            lows[i] = max(lows[i], 90.0)
+    w["Low"] = lows
+    ma = float(w["Close"].rolling(150).mean().values[-1])
+    sc, _, _ = sma_slope(w["Close"].rolling(150).mean().values, len(w) - 1)
+    assert sc == "up"
+    b = 87.0
+    sa = stop_anchors(w, ma, 115.0, b)
     assert b < ma and sa["hl"] is not None and b < sa["hl"] < ma and sa["basis"] == "hl"
-    sa2 = stop_anchors(w, ma, 96.0, b)                     # entry close enough -> B itself (not 'too far')
+    sa2 = stop_anchors(w, ma, 95.0, b)                     # entry close enough -> B itself (not 'too far')
     assert sa2["basis"] == "low" and sa2["anchor"] == b
 
 
@@ -574,3 +587,21 @@ def test_alert_text_and_needs_research_include_shorts():
     assert txt is not None and "Sell-Stop" in txt and "SHORTX" in txt and "ATR(W) $2.45" in txt
     need = needs_research(doc, cache={})
     assert [x["t"] for x in need] == ["SHORTX"]
+
+
+def test_entry_R_daily_thresholds():
+    """Eyal t454u: Buy-Stop math uses daily 150d / 50d volume / 15-session breakout / 2y daily swings."""
+    from srs_app.stages import RULES, _entry_R, buy_stop_price, sell_stop_price
+    e = _entry_R(RULES)
+    assert e["ma_weeks"] == 150
+    assert e["sma_slope_w"] == 20
+    assert e["base_window_w"] == 130
+    assert e["min_base_w"] == 50
+    assert e["bo_max_weeks_ago"] == 15
+    assert e["vol_avg_w"] == 50
+    assert e["sig_pivot_w"] == 40
+    assert e["overhead_w"] == 504
+    assert e["cong_min_w"] == 25
+    assert RULES["risk_usd"] == 55
+    assert abs(buy_stop_price(100.0) - 100.5) < 1e-9
+    assert abs(sell_stop_price(100.0) - 99.5) < 1e-9

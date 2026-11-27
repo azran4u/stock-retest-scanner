@@ -152,30 +152,31 @@ def flag_near_sup(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
     return stage == 3 and near_level(row.get("close"), support_of(row), from_below=False, atr_w=row.get("atr_w"), near_atrs=near_atrs)
 
 
-def last_breakout_level(w, lookback_w: int = 52) -> Optional[float]:
-    """Most recent valid base breakout in the last lookback_w weeks (same tests as find_breakout,
-    but scanning newest-first and looking further back than the 3-week entry window)."""
+def last_breakout_level(d, lookback_d: int = 260) -> Optional[float]:
+    """Most recent valid daily base breakout in the last lookback_d sessions (same tests as find_breakout,
+    but scanning newest-first and looking further back than the 15-session entry window)."""
     import numpy as np
-    from srs_app.stages import _base_count, slope_class
-    if w is None or len(w) < RULES["base_window_w"] + RULES["min_base_w"]:
+    from srs_app.stages import _base_count, _entry_R, sma_slope
+    R = _entry_R(RULES)
+    if d is None or len(d) < R["base_window_w"] + R["min_base_w"]:
         return None
-    h, c = w["High"].values, w["Close"].values
-    ma = w["Close"].rolling(int(RULES["ma_weeks"])).mean().values
-    n = len(w)
-    start = max(int(RULES["base_window_w"]), n - 1 - lookback_w)
+    h, c = d["High"].values, d["Close"].values
+    ma = d["Close"].rolling(int(R["ma_weeks"])).mean().values
+    n = len(d)
+    start = max(int(R["base_window_w"]), n - 1 - lookback_d)
     for b in range(n - 1, start - 1, -1):
-        seg = h[b - int(RULES["base_window_w"]):b]
+        seg = h[b - int(R["base_window_w"]):b]
         if len(seg) == 0:
             continue
         res = float(seg.max())
-        top_i = b - int(RULES["base_window_w"]) + int(np.argmax(seg))
+        top_i = b - int(R["base_window_w"]) + int(np.argmax(seg))
         if not (c[b] > res and c[b] > ma[b]):
             continue
-        sc, _ = slope_class(ma, b, RULES)
+        sc, _, _ = sma_slope(ma, b, R)
         if sc not in ("up", "flat"):
             continue
         base = _base_count(c, b - 1, res)
-        if base < RULES["min_base_w"] or (b - top_i) < RULES["min_base_w"]:
+        if base < R["min_base_w"] or (b - top_i) < R["min_base_w"]:
             continue
         return _f(res)
     return None
@@ -579,7 +580,7 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
                 df = hm.get(r["t"])
                 if df is not None and not getattr(df, "empty", True) and last is not None:
                     try:
-                        lvl = last_breakout_level(_weekly(df, last))
+                        lvl = last_breakout_level(df)
                     except Exception:
                         lvl = None
                     if lvl:
@@ -612,9 +613,7 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
                 df = hist.get(tkr)
                 if df is not None and not getattr(df, "empty", True):
                     try:
-                        from srs_app.stages import weekly as _weekly
-                        last = pd.Timestamp(pd.to_datetime(df.index).max()).normalize()
-                        lvl = last_breakout_level(_weekly(df, last))
+                        lvl = last_breakout_level(df)
                     except Exception:
                         lvl = None
                     if lvl:
