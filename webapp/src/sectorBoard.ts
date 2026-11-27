@@ -7,6 +7,7 @@ import { fetchData } from './data';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const f = (n: number | null | undefined, d = 2) => n == null || Number.isNaN(+n) ? '—' : (+n).toFixed(d);
+const displayClose = (s: BoardStock) => (s.close_d != null && !Number.isNaN(+s.close_d) ? s.close_d : s.close);
 
 export type BoardBadge = '1' | '2a' | '2' | '3' | '4' | string;
 export interface BoardRec {
@@ -20,6 +21,7 @@ export interface BoardStock {
   res: number | null; sup: number | null; bo_lvl: number | null; bd_lvl: number | null;
   flags: BoardFlags; rec: BoardRec; hist_start: string | null; hist_days: number | null;
   is_sector?: boolean;
+  close_d?: number | null; asof_d?: string | null;
 }
 export interface BoardSector {
   etf: string; name: string; name_en: string; stage: number; sub: string | null; badge: BoardBadge;
@@ -165,7 +167,7 @@ export function minisHtml(board: BoardDoc, route: StagesRoute, stocks: BoardStoc
     <header class="stmini-hd">
       <div class="stmini-tk"><b dir="ltr">${esc(s.t)}</b> ${badgeHtml(s.badge)}
         ${s.is_sector ? '<span class="stsec-tag">סקטור</span>' : ''}
-        <span class="muted small" dir="ltr">$${f(s.close)}</span>
+        <span class="muted small" dir="ltr">$${f(displayClose(s))}</span>
         ${s.mcap_b != null ? `<span class="muted small" dir="ltr">${f(s.mcap_b, 0)}B</span>` : ''}</div>
       <div class="small muted stmini-nm">${s.is_sector ? 'תעודת הסקטור · ' : ''}${esc(s.n || '')}${!s.is_sector && s.etf ? ` · <span dir="ltr">${esc(s.etf)}</span>` : ''}</div>
     </header>
@@ -185,7 +187,7 @@ export function largeChartHtml(s: BoardStock, route: StagesRoute): string {
   return `<div class="stbig-daily" id="stBigDaily">
     <header class="stbig-hd">
       <a class="ghost btnlike small" href="${backHref}" id="stBoardBack">← לגרפים המוקטנים</a>
-      <div class="tk"><b dir="ltr">${esc(s.t)}</b> ${badgeHtml(s.badge)} ${s.is_sector ? '<span class="stsec-tag">סקטור</span>' : ''} <span class="muted small" dir="ltr">$${f(s.close)}</span>
+      <div class="tk"><b dir="ltr">${esc(s.t)}</b> ${badgeHtml(s.badge)} ${s.is_sector ? '<span class="stsec-tag">סקטור</span>' : ''} <span class="muted small" dir="ltr">$${f(displayClose(s))}</span>
         <div class="small muted stname">${s.is_sector ? 'תעודת הסקטור · ' : ''}${esc(s.n || '')}${!s.is_sector && s.etf ? ` · <span dir="ltr">${esc(s.etf)}</span>` : ''}${s.mcap_b != null ? ` · שווי ${f(s.mcap_b, 1)}B` : ''}</div>
       </div>
     </header>

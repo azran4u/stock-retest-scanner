@@ -344,6 +344,9 @@ const runBoard = async (name, vp, touch) => {
   const V3 = '/workspace/stages_shots/v3';
   mkdirSync(V3, { recursive: true });
   await page.screenshot({ path: `${V3}/${name}_minis_XLK.png`, animations: 'disabled' });
+  const V4 = '/workspace/stages_shots/v4';
+  mkdirSync(V4, { recursive: true });
+  await page.screenshot({ path: `${V4}/${name}_minis_XLK.png`, animations: 'disabled' });
   await page.click('[data-bf="2a_res"]');
   await page.waitForTimeout(900);
   ok(/f=2a_res/.test(page.url()), `${name}-board: 2a-near-resistance filter in the hash`);
@@ -363,6 +366,12 @@ const runBoard = async (name, vp, touch) => {
   ok(await page.locator('#stBigDaily .stmini-rec, .stbig-daily .stmini-rec').count() >= 1, `${name}-board: recommendation on the large chart`);
   ok(/תעודת הסקטור|סקטור/.test(await page.locator('#stBigDaily, .stbig-daily').first().innerText()), `${name}-board: large chart marks the sector ETF`);
   await page.screenshot({ path: `${V2}/${name}_large.png`, animations: 'disabled' });
+  const V4b = '/workspace/stages_shots/v4';
+  mkdirSync(V4b, { recursive: true });
+  await page.screenshot({ path: `${V4b}/${name}_large_XLK.png`, animations: 'disabled' });
+  const bigTxt = await page.locator('#stBigDaily, .stbig-daily').first().innerText();
+  ok(/\$155\.79/.test(bigTxt), `${name}-board: large header uses last daily close $155.79 (not weekly $149.01)`);
+  ok(/\b4\b/.test(await page.locator('#stBigDaily .stbadge, .stbig-daily .stbadge').first().innerText().catch(() => '')), `${name}-board: XLK large chart stage badge is 4`);
   ok(!errors.length, `${name}-board: no page errors ${errors.join(' | ')}`);
   await ctx.close();
 };

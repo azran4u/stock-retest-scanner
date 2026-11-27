@@ -427,6 +427,17 @@ def _hist_meta(df: Optional[pd.DataFrame]) -> Tuple[Optional[str], Optional[int]
     return str(pd.Timestamp(idx.min()).date()), int(len(df))
 
 
+def _last_daily(df: Optional[pd.DataFrame]) -> Tuple[Optional[float], Optional[str]]:
+    """Last daily close and its session date (the chart's last candle). Weekly close stays on the card as 'close'."""
+    if df is None or getattr(df, "empty", True):
+        return None, None
+    try:
+        asof = pd.Timestamp(pd.to_datetime(df.index).max()).strftime("%Y-%m-%d")
+        return _f(df["Close"].iloc[-1]), asof
+    except Exception:
+        return None, None
+
+
 def ensure_board_history(tickers: List[str], hm: Dict[str, pd.DataFrame], offline: bool = False) -> Dict[str, pd.DataFrame]:
     """10-year daily history for board tickers only (separate cache; does not rewrite the 5y stage cache)."""
     out: Dict[str, pd.DataFrame] = {}
@@ -581,12 +592,21 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
             card["is_sector"] = True
             card["n"] = ETF_NAMES.get(tkr, tkr)
             card["etf"] = tkr
+            cd, asof = _last_daily(hist.get(tkr))
+            if cd is not None:
+                card["close_d"] = cd
+                card["asof_d"] = asof
             stocks[tkr] = card
             continue
         r = by_t.get(tkr)
         if not r:
             continue
-        stocks[tkr] = stock_card(r, near_atrs, start, ndays)
+        card = stock_card(r, near_atrs, start, ndays)
+        cd, asof = _last_daily(hist.get(tkr))
+        if cd is not None:
+            card["close_d"] = cd
+            card["asof_d"] = asof
+        stocks[tkr] = card
 
     written = 0
     years_ok = 0

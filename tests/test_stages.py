@@ -320,6 +320,49 @@ def test_index_xlu_like_back_above_flat_sma_is_late_stage1():
     assert s["ok"] is True and s["case"] == "1late"
 
 
+
+def test_index_breakdown_under_turned_sma_is_stage4():
+    """Eyal 2026-11-27 (XLK): after a long stage-2 advance the 5-week SMA slope can still
+    read 'up' in the first week the 30W SMA ticks down. If that week also closes below the
+    SMA and breaks the last higher low, it is stage 4, not 2-weak. Rule 1 (dip under a
+    still-rising SMA) is unchanged — see test_index_xlf_like_dip_under_rising_sma_stays_stage2."""
+    from srs_app.stages import classify, sma_ticked_down
+    k = np.arange(80)
+    up = 80 * (1.012 ** k)                     # strong advance, 30W SMA rising
+    # deep multi-week break that undercuts support and finally turns the SMA down
+    crash = up[-1] * np.array([0.92, 0.84, 0.76, 0.68])
+    w = _ohlc(np.r_[up, crash], rng=0.02)
+    ma = w["Close"].rolling(30).mean().values
+    assert sma_ticked_down(ma, len(w) - 1)
+    # 5-week lookback may still be up or already flat/down; the override must not depend on it
+    r = classify_index(w)
+    assert r["stage"] == 4 and r["close"] < r["ma30"]
+    # stock classifier agrees (same last-week correction in stage_path)
+    rs = classify(w, None)
+    assert rs["stage"] == 4 and rs["close"] < rs["ma30"]
+
+
+def test_xlk_real_candles_stage4_after_nov_breakdown():
+    """Live XLK week of 2026-11-20: close 149.01, 30W SMA ticked down from its 11-13 peak,
+    last higher low 166.27 broken, ~18% below the SMA. Not stage 2."""
+    import json
+    from pathlib import Path
+    from srs_app.stages import current_slope_class, sma_ticked_down, RULES, weekly as _weekly
+    daily = Path("app/data/sector_daily/XLK.json")
+    raw = json.loads(daily.read_text())
+    df = pd.DataFrame(raw["d"], columns=["Date", "Open", "High", "Low", "Close", "Volume"])
+    df["Date"] = pd.to_datetime(df["Date"])
+    w = _weekly(df.set_index("Date"), pd.Timestamp(df["Date"].max()).normalize())
+    r = classify_index(w)
+    assert w.index[-1] >= pd.Timestamp("2026-11-20")
+    ma = w["Close"].rolling(30).mean().values
+    assert sma_ticked_down(ma, len(w) - 1)
+    cls, _ = current_slope_class(ma, len(w) - 1, RULES)
+    assert cls != "up"          # must not still report a rising SMA after the turn
+    assert r["stage"] == 4 and r["sub"] in ("4", "4A", "4-ext")
+    assert r["close"] < r["ma30"] and r["idx"]["broke_support"]
+
+
 def test_index_real_stage4_needs_falling_sma_and_support_break():
     """Stage 4 only with a falling SMA AND a close below the support (last swing low / range floor)."""
     top = 60 + 1.5 * np.sin(np.arange(30) / 2)

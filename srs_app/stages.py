@@ -323,6 +323,42 @@ def slope_class(ma: np.ndarray, i: int, R=RULES) -> Tuple[Optional[str], Optiona
     return ("up" if s > R["slope_flat_pct"] else "down" if s < -R["slope_flat_pct"] else "flat"), s
 
 
+
+def sma_ticked_down(ma: np.ndarray, i: int) -> bool:
+    """True when the 30-week SMA declined from the prior week (a turn / rollover)."""
+    return i >= 1 and not np.isnan(ma[i]) and not np.isnan(ma[i - 1]) and bool(ma[i] < ma[i - 1])
+
+
+def current_slope_class(ma: np.ndarray, i: int, R=RULES) -> Tuple[Optional[str], Optional[float]]:
+    """Reported slope of the 30W SMA at week i.
+
+    Same 5-week % change as slope_class, but once the MA has already ticked down (or up)
+    this week it is flattening — not still rising / falling. Used for the last-week report
+    only; the state-machine path keeps using slope_class so a mid-trend one-week dip does
+    not rewrite history.
+    """
+    cls, s = slope_class(ma, i, R)
+    if cls == "up" and sma_ticked_down(ma, i):
+        cls = "flat"
+    elif cls == "down" and i >= 1 and not np.isnan(ma[i]) and not np.isnan(ma[i - 1]) and ma[i] > ma[i - 1]:
+        cls = "flat"
+    return cls, s
+
+
+def stage2_breakdown_under_turned_ma(close: float, ma: np.ndarray, i: int,
+                                     floor: Optional[float]) -> bool:
+    """Last week of a stage-2 path: close below the 30W SMA after it has ticked down, and the
+    trend floor / last higher low is broken.
+
+    The 5-week slope can stay 'up' for weeks after the MA has already turned. Weinstein:
+    price below a declining 30W SMA after a breakdown is stage 4. Rule 1 (a dip under a
+    still-rising SMA) is unchanged — this is false while the MA has not ticked down.
+    """
+    if floor is None or i < 1 or np.isnan(ma[i]) or np.isnan(close):
+        return False
+    return bool(close < ma[i] and sma_ticked_down(ma, i) and close < floor)
+
+
 def mansfield(close: pd.Series, bench: pd.Series, R=RULES) -> pd.Series:
     b = bench.reindex(close.index).ffill()
     ratio = close / b
@@ -950,6 +986,10 @@ def stage_path(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Dict[str, Any]:
         if new != st:
             st, start = new, i
     i = n - 1
+    # Last-week only: do not let a lagging 5-week slope keep stage 2 after a breakdown
+    # under a 30W SMA that has already ticked down (Eyal 2026-11-27, XLK).
+    if st == 2 and stage2_breakdown_under_turned_ma(c[i], ma, i, _trend_edge(h, l, i, True, R)):
+        st, start = 4, i
     if st in (1, 3):
         ceil, floor = _range(h, l, i + 1, start, st, R)
     elif st == 2:
@@ -967,7 +1007,7 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
     c, h, l, v = (w[k].values.astype(float) for k in ("Close", "High", "Low", "Volume"))
     ma = w["Close"].rolling(R["ma_weeks"]).mean().values
     i = n - 1
-    sc, slope = slope_class(ma, i, R)
+    sc, slope = current_slope_class(ma, i, R)
     above = c[i] > ma[i]
     rs = mansfield(w["Close"], bench_w, R).values if bench_w is not None else np.full(n, np.nan)
     rs_now = rs[i]
@@ -1162,6 +1202,8 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
     2 -> 4 only with a falling SMA AND a close below the last confirmed swing low (rule 1); -> 3 when the SMA loses its
       rise (flat / falling) and there is no new high of the advance for idx_top_w weeks, or the SMA is no longer rising
       and the higher low broke. A close under a still-rising SMA keeps stage 2 ('2-dip' while the higher low holds).
+      Last-week correction (Eyal 2026-11-27): if the path is still 2 but the 30W SMA has already ticked down, the close
+      is below the SMA, and the last higher low is broken, the 5-week slope lag is ignored and the stage is 4.
     3 (top after an advance) -> 2 on a close above the top's ceiling with a non-falling SMA, or the SMA rising again +
       consistently above + HH/HL; -> 4 with a falling SMA AND a close below the top's floor / last swing low.
     4 -> 1 once the SMA stops falling; -> 2 on a close above the last lower high with a rising SMA."""
@@ -1233,7 +1275,7 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
             st, start = new, i
             peak_i = i
     i = n - 1
-    sc, slope = slope_class(ma, i, R)
+    sc, slope = current_slope_class(ma, i, R)
     hh, hl, ph, pl = struct(i)
     above = bool(c[i] > ma[i])
     an = above_n(i)
@@ -1242,6 +1284,16 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
     res = float(h[ph[-1]]) if ph else None
     pos = "above" if (an >= cn and above) else "below" if (an <= cw - cn and not above) else "cross"
     struct_cls = "HH/HL" if (hh and hl) else "LH/LL" if (hh is False and hl is False) else "mixed"
+    broke = bool(sup is not None and c[i] < sup)
+    # Last-week only: lagging 5-week slope must not keep a stale stage 2 after a breakdown
+    # under a 30W SMA that has already ticked down (Eyal 2026-11-27, XLK).
+    # If a confirmed swing low is not in yet (idx_pivot_w bars after the low), fall back
+    # to the stage-2 trend floor — same test as stage_path.
+    floor_br = sup if sup is not None else _trend_edge(h, l, i, True, R)
+    if st == 2 and stage2_breakdown_under_turned_ma(c[i], ma, i, floor_br):
+        st, start = 4, i
+        box_a = peak_i = i
+        broke = True
     if st in (1, 3):
         a = max(0, n - R["range_max_w"], min(box_a, n - R["base_window_w"]))
         ceil, floor = float(h[a:].max()), float(l[a:].min())
@@ -1249,7 +1301,6 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
         ceil, floor = float(h[peak_i:].max()) if peak_i < n else float(h[-1]), sup
     else:
         ceil, floor = res, float(l[max(0, n - R["base_window_w"]):].min())
-    broke = bool(sup is not None and c[i] < sup)
     if st == 2:
         sub = "2" if above else ("2-dip" if not broke and sc == "up" else "2-weak")
     elif st == 1:
