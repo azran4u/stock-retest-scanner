@@ -310,9 +310,10 @@ for (const [name, vp] of [['ipad-12', { width: 1024, height: 1366 }], ['ipad-9',
   await ctx.close();
 }
 
-// T-7 sector board: strip, minis, filters, large daily chart (screenshots under v2/)
-const V2 = '/workspace/stages_shots/v2';
-mkdirSync(V2, { recursive: true });
+// T-7 sector board: strip, minis, new filters, large daily chart (screenshots under v5/)
+const V5 = '/workspace/stages_shots/v5';
+mkdirSync(V5, { recursive: true });
+const V2 = V5; // keep older path var names pointing at v5 for this run
 const runBoard = async (name, vp, touch) => {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: touch ? 2 : 1, hasTouch: !!touch, locale: 'he-IL' });
   const page = await ctx.newPage();
@@ -327,7 +328,10 @@ const runBoard = async (name, vp, touch) => {
   }
   ok(await page.locator('a.stsec').count() === 11, `${name}-board: 11 sector tiles`);
   ok(await page.locator('.stsec .stbadge, .stsec .stsec-bd').count() >= 11, `${name}-board: sector stage badges`);
-  ok(await page.locator('.stboard-filters [data-bf]').count() === 4, `${name}-board: 4 board filters`);
+  ok(await page.locator('.stboard-filters [data-bf]').count() === 5, `${name}-board: 5 board filters`);
+  const chips = await page.locator('.stboard-filters [data-bf]').evaluateAll((els) => els.map((e) => e.getAttribute('data-bf')));
+  ok(chips.join(',') === 'bs_ready,2a,retest2,3_sup,retest4', `${name}-board: filter keys ${chips.join(',')}`);
+  ok(/ממוצע 150 יום/.test(await page.locator('.stsec-note').innerText()), `${name}-board: Hebrew note says 150-day SMA`);
   await page.screenshot({ path: `${V2}/${name}_strip.png`, animations: 'disabled' });
   await page.click('a.stsec[data-sec="XLK"]');
   await page.waitForSelector('.stmini, .stminis-wrap');
@@ -347,13 +351,21 @@ const runBoard = async (name, vp, touch) => {
   const V4 = '/workspace/stages_shots/v4';
   mkdirSync(V4, { recursive: true });
   await page.screenshot({ path: `${V4}/${name}_minis_XLK.png`, animations: 'disabled' });
-  await page.click('[data-bf="2a_res"]');
+  await page.click('[data-bf="bs_ready"]');
   await page.waitForTimeout(900);
-  ok(/f=2a_res/.test(page.url()), `${name}-board: 2a-near-resistance filter in the hash`);
-  await page.screenshot({ path: `${V2}/${name}_filter_2a.png`, animations: 'disabled' });
+  ok(/f=bs_ready/.test(page.url()), `${name}-board: Buy-Stop-candidate filter in the hash`);
+  await page.screenshot({ path: `${V5}/${name}_filter_bs_ready.png`, animations: 'disabled' });
+  await page.click('[data-bf="2a"]');
+  await page.waitForTimeout(600);
+  ok(/f=2a/.test(page.url()), `${name}-board: 2a breakout filter in the hash`);
+  await page.screenshot({ path: `${V5}/${name}_filter_2a.png`, animations: 'disabled' });
+  await page.click('[data-bf="retest2"]');
+  await page.waitForTimeout(600);
+  ok(/f=retest2/.test(page.url()), `${name}-board: stage-2 retest filter in the hash`);
+  await page.screenshot({ path: `${V5}/${name}_filter_retest2.png`, animations: 'disabled' });
   await page.click('[data-bf="3_sup"]');
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${V2}/${name}_filter_3.png`, animations: 'disabled' });
+  await page.screenshot({ path: `${V5}/${name}_filter_3.png`, animations: 'disabled' });
   await page.evaluate(() => { location.hash = '#/stages/board/XLK'; });
   await page.waitForSelector('.stmini-hit');
   await page.waitForTimeout(800);
@@ -368,7 +380,7 @@ const runBoard = async (name, vp, touch) => {
   await page.screenshot({ path: `${V2}/${name}_large.png`, animations: 'disabled' });
   const V4b = '/workspace/stages_shots/v4';
   mkdirSync(V4b, { recursive: true });
-  await page.screenshot({ path: `${V4b}/${name}_large_XLK.png`, animations: 'disabled' });
+  await page.screenshot({ path: `${V5}/${name}_large_XLK.png`, animations: 'disabled' });
   const bigTxt = await page.locator('#stBigDaily, .stbig-daily').first().innerText();
   ok(/\$155\.79/.test(bigTxt), `${name}-board: large header uses last daily close $155.79 (not weekly $149.01)`);
   ok(/\b4\b/.test(await page.locator('#stBigDaily .stbadge, .stbig-daily .stbadge').first().innerText().catch(() => '')), `${name}-board: XLK large chart stage badge is 4`);

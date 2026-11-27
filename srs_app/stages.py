@@ -6,7 +6,7 @@ screen, gates, expert zones, drawings or alerts.
 Rules = Eyal's masterclass page (Weinstein, 'Secrets for Profiting in Bull and Bear Markets'): weekly (Friday) closes
 only, 30-week SMA + its slope, breakout volume >= 2x the 10-week average, Mansfield RS vs the S&P 500 > 0 and rising,
 top-down market (SPY / QQQ / IWM) + sector ETF stage, pre-filter (price, liquidity, inst own 25-85%, NYSE / NASDAQ,
-no small biotech, >= 40 weeks, no heavy overhead within 20%), stop below the last structural low AND the 30W SMA,
+no small biotech, >= 40 weeks, no heavy overhead within 20%), stop below the last structural low AND the SMA 150 יום,
 R:R >= 3 to the first target, no new Buy-Stop within 10 trading days of earnings (gap-up after a report = wait for a hold). Every threshold is in RULES below and
 is shown on the page.
 
@@ -101,8 +101,38 @@ ETF_NAMES = {"SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000", "XLK"
 
 RULES: Dict[str, Any] = {
     "ma_weeks": 30,              # 30-week SMA of weekly closes
-    "slope_lookback_w": 5,       # slope = % change of the 30W SMA over the last 5 weeks
-    "slope_flat_pct": 1.0,       # |5-week change| <= 1.0% = flat; > +1% rising; < -1% declining
+    "sma10_weeks": 10,           # 10-week SMA ≈ 50-day (TraderLion early stage-3 warning)
+    "slope_lookback_w": 5,       # kept for Buy-Stop / find_breakout (unchanged)
+    "slope_flat_pct": 1.0,       # kept for Buy-Stop / find_breakout (unchanged)
+    # Stage-engine slope (TraderLion / Eyal 2026-11-27): 3-week % change of the SMA 150 יום,
+    # with a same-week turn override so a rollover is "flat" immediately. More responsive
+    # than the 5-week ±1% slope_class used by the Buy-Stop screen.
+    "sma_slope_w": 3,
+    "sma_slope_flat_pct": 0.6,   # |3-week change| <= 0.6% = flat (~0.2%/week)
+    "sma_slope_sharp_pct": 1.5,  # 3-week change <= -1.5% and MA not ticking up = sharply down
+    "stage_2a_weeks": 6,         # 2a lasts the breakout week + 6 further weeks near the level
+    "stage_2a_near_atrs": 2.0,   # stay 2a while close is within 2 weekly ATRs of the breakout
+    "light_vol_mult": 1.5,       # retest volume below this is "light"; heavy is vol_mult (2.0)
+    "far_below_atrs": 1.0,       # "far below the MA" = more than 1 weekly ATR under it
+    "retest_hold_atrs": 0.5,     # a retest "holds slightly above" if close is not >0.5 ATR under the level
+    # Daily stage engine (Eyal 2026-11-27, t453u — Stan's recent videos use the daily chart + 150d SMA).
+    # ~5 sessions per week: 30W≈150d, 10W≈50d, a 10-week base≈50 days, a 26-week window≈130 days.
+    "sma150_days": 150,
+    "sma50_days": 50,
+    "sma150_slope_d": 20,            # slope = % change of the 150d SMA over 20 sessions
+    "sma150_slope_flat_pct": 0.8,    # |20-session change| <= 0.8% = flat
+    "sma150_slope_sharp_pct": 2.0,   # 20-session change <= -2.0% and MA not ticking up = sharply down
+    "pivot_d": 10,                   # daily swing = extreme vs 10 sessions on each side (≈ a 2-week weekly pivot)
+    "idx_pivot_d": 13,               # slightly wider confirmation for index / sector ETFs
+    "base_window_d": 130,            # ~26 weeks of sessions
+    "min_base_d": 50,                # ~10 weeks
+    "range_max_d": 260,              # ~52 weeks
+    "stage_2a_days": 30,             # breakout week-equivalent: ~6 weeks of sessions
+    "idx_top_d": 50,                 # no new high of the advance for ~10 weeks
+    "vol_avg_d": 50,                 # breakout volume vs 50-day average daily volume (TraderLion: 2–3x)
+    "prior_trend_d": 260,
+    "idx_consistent_d": 25,          # 'consistently above' the 150d = >= 20 of the last 25 daily closes
+    "idx_consistent_n_d": 20,
     "prior_trend_w": 52,         # flat MA: stage 1 if the last non-flat slope (within 52w) was declining, 3 if rising
     "rs_ma_weeks": 52,           # Mansfield RS = ((stock/SPX) / SMA52(stock/SPX) - 1) * 100
     "rs_rising_w": 4,            # RS rising = RS now > RS 4 weeks ago
@@ -116,11 +146,11 @@ RULES: Dict[str, Any] = {
     "vol_mult": 2.0,             # >= 2.0x  (< 1.5x = fakeout, avoid); in-base volume is never penalised
     "strong_close": 0.75,        # A+ breakout: close in the top 25% of the breakout week's range
     "buy_zone_pct": 10.0,        # don't chase: last close <= breakout level + 10% ...
-    "max_pct_above_ma": 25.0,    # ... AND <= 30W SMA + 25% (Eyal 2026-11-14, XERS example); else 'רחוקה מדי / אל תרדוף'
+    "max_pct_above_ma": 25.0,    # ... AND <= SMA 150 יום + 25% (Eyal 2026-11-14, XERS example); else 'רחוקה מדי / אל תרדוף'
     "range_max_w": 52,           # stage 1 / 3 trading range = high / low since the stage began (10-52 weeks)
-    "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the 30W SMA (partial exit zone)
+    "extended_pct": 35.0,        # stage 2 'over-extended' = close > 35% above the SMA 150 יום (partial exit zone)
     "stop_buffer_pct": 0.7,      # (old 2026-11-14 rule, kept for reference only; replaced by stop_margin_pct 2026-11-16)
-    "stop_margin_pct": 0.75,     # Eyal 2026-11-16: stop 0.75% under the LOWER of (30W SMA, base's last unbroken low) ...
+    "stop_margin_pct": 0.75,     # Eyal 2026-11-16: stop 0.75% under the LOWER of (SMA 150 יום, base's last unbroken low) ...
     "stop_margin_max_pct": 1.0,  # ... or just under a round number when that stays within 1% of the anchor
     "stop_round_tick": 0.05,     # 'just under' the round number = $0.05 below it
     "max_stop_pct": 10.0,        # stop farther than 10% under the entry = 'SL רחב מדי' flag (info only, never disqualifies)
@@ -142,9 +172,9 @@ RULES: Dict[str, Any] = {
     "sell_stop_buf_pct": 0.5,    # Sell-Stop = base support - 0.5% (min $0.05) -- mirror of buy_stop_buf_pct
     "sell_stop_min_buf": 0.05,
     "sell_zone_pct": 10.0,       # don't chase shorts: close / Sell-Stop within 10% below breakdown level ...
-    "max_pct_below_ma": 25.0,    # ... AND within 25% below 30W SMA
+    "max_pct_below_ma": 25.0,    # ... AND within 25% below SMA 150 יום
     "short_mkt_allow_stages": [3, 4],     # SPY in stage 3 or 4 permits shorts; stage 1 / stage 2 (incl. 2-weak) block
-    "short_mkt_allow_2weak": False,       # 2-weak still has a rising 30W SMA -> wait for stage 3 or 4
+    "short_mkt_allow_2weak": False,       # 2-weak still has a rising SMA 150 יום -> wait for stage 3 or 4
     "short_sector_allow_stages": [3, 4],  # sector / industry ETF in stage 3 or 4 permits shorts; never clear stage 2
     "short_float_max_pct": 10.0,          # avoid heavily shorted names (>= 10% short float) when data exists
     "cash_etf_atr_pct_max": 1.0,          # hard pre-filter: cash / money-market / short-bond ETFs out
@@ -324,39 +354,100 @@ def slope_class(ma: np.ndarray, i: int, R=RULES) -> Tuple[Optional[str], Optiona
 
 
 
-def sma_ticked_down(ma: np.ndarray, i: int) -> bool:
-    """True when the 30-week SMA declined from the prior week (a turn / rollover)."""
-    return i >= 1 and not np.isnan(ma[i]) and not np.isnan(ma[i - 1]) and bool(ma[i] < ma[i - 1])
 
+def _stage_R(R=RULES) -> Dict[str, Any]:
+    """Bar-count keys for the daily stage engine, mapped onto the names stage_path / _range use.
 
-def current_slope_class(ma: np.ndarray, i: int, R=RULES) -> Tuple[Optional[str], Optional[float]]:
-    """Reported slope of the 30W SMA at week i.
-
-    Same 5-week % change as slope_class, but once the MA has already ticked down (or up)
-    this week it is flattening — not still rising / falling. Used for the last-week report
-    only; the state-machine path keeps using slope_class so a mid-trend one-week dip does
-    not rewrite history.
+    Stage detection is daily (Eyal t453u, 2026-11-27). Weekly RULES used by find_breakout
+    and the Buy-Stop plan (26-week base, weekly 30W SMA, 5-week slope_class) are left unchanged.
     """
-    cls, s = slope_class(ma, i, R)
-    if cls == "up" and sma_ticked_down(ma, i):
-        cls = "flat"
-    elif cls == "down" and i >= 1 and not np.isnan(ma[i]) and not np.isnan(ma[i - 1]) and ma[i] > ma[i - 1]:
-        cls = "flat"
-    return cls, s
+    d = dict(R)
+    d["ma_weeks"] = int(R.get("sma150_days", 150))
+    d["sma10_weeks"] = int(R.get("sma50_days", 50))
+    d["sma_slope_w"] = int(R.get("sma150_slope_d", 20))
+    d["sma_slope_flat_pct"] = float(R.get("sma150_slope_flat_pct", 0.8))
+    d["sma_slope_sharp_pct"] = float(R.get("sma150_slope_sharp_pct", 2.0))
+    d["pivot_w"] = int(R.get("pivot_d", 10))
+    d["idx_pivot_w"] = int(R.get("idx_pivot_d", 13))
+    d["base_window_w"] = int(R.get("base_window_d", 130))
+    d["min_base_w"] = int(R.get("min_base_d", 50))
+    d["range_max_w"] = int(R.get("range_max_d", 260))
+    d["stage_2a_weeks"] = int(R.get("stage_2a_days", 30))
+    d["idx_top_w"] = int(R.get("idx_top_d", 50))
+    d["vol_avg_w"] = int(R.get("vol_avg_d", 50))
+    d["prior_trend_w"] = int(R.get("prior_trend_d", 260))
+    d["idx_consistent_w"] = int(R.get("idx_consistent_d", 25))
+    d["idx_consistent_n"] = int(R.get("idx_consistent_n_d", 20))
+    return d
 
 
-def stage2_breakdown_under_turned_ma(close: float, ma: np.ndarray, i: int,
-                                     floor: Optional[float]) -> bool:
-    """Last week of a stage-2 path: close below the 30W SMA after it has ticked down, and the
-    trend floor / last higher low is broken.
+def sma_slope(ma: np.ndarray, i: int, R=None) -> Tuple[Optional[str], Optional[float], bool]:
+    """Responsive SMA 150 יום slope for the stage engine (TraderLion / Eyal 2026-11-27).
 
-    The 5-week slope can stay 'up' for weeks after the MA has already turned. Weinstein:
-    price below a declining 30W SMA after a breakdown is stage 4. Rule 1 (a dip under a
-    still-rising SMA) is unchanged — this is false while the MA has not ticked down.
+    3-week percent change of the SMA 150 יום, with a same-week turn override: a MA that
+    already ticked down this week is never 'up', and a MA that ticked up is never
+    'down'. So a rollover is 'flat' immediately, instead of waiting for a 5-week
+    lookback to flip. 'sharply down' = 3-week change <= -sma_slope_sharp_pct and
+    the MA did not tick up this week.
+
+    The older slope_class() (5-week, ±1%) is left unchanged for Buy-Stop / find_breakout.
     """
-    if floor is None or i < 1 or np.isnan(ma[i]) or np.isnan(close):
+    if R is None:
+        from srs_app.stages import RULES as R
+    lb = int(R.get("sma_slope_w", 3))
+    flat = float(R.get("sma_slope_flat_pct", 0.6))
+    sharp = float(R.get("sma_slope_sharp_pct", 1.5))
+    j = i - lb
+    if j < 0 or np.isnan(ma[i]) or np.isnan(ma[j]) or ma[j] <= 0:
+        return None, None, False
+    s = (ma[i] / ma[j] - 1) * 100
+    cls = "up" if s > flat else "down" if s < -flat else "flat"
+    ticked_down = i >= 1 and not np.isnan(ma[i - 1]) and ma[i] < ma[i - 1]
+    ticked_up = i >= 1 and not np.isnan(ma[i - 1]) and ma[i] > ma[i - 1]
+    if cls == "up" and ticked_down:
+        cls = "flat"
+    elif cls == "down" and ticked_up:
+        cls = "flat"
+    sharp_down = bool(s <= -sharp and not ticked_up)
+    return cls, s, sharp_down
+
+
+def _week_vol_ratio(v: np.ndarray, i: int, avg_w: int) -> Optional[float]:
+    if i < avg_w or avg_w <= 0:
+        return None
+    avg = float(np.mean(v[i - avg_w:i]))
+    if avg <= 0:
+        return None
+    return float(v[i]) / avg
+
+
+def _wilder_atr(h: np.ndarray, l: np.ndarray, c: np.ndarray, n: int = 14) -> np.ndarray:
+    atr = np.full(len(c), np.nan, dtype=float)
+    if len(c) < n + 1:
+        return atr
+    tr = np.empty(len(c))
+    tr[0] = float(h[0] - l[0])
+    for i in range(1, len(c)):
+        tr[i] = max(float(h[i] - l[i]), abs(float(h[i] - c[i - 1])), abs(float(l[i] - c[i - 1])))
+    atr[n] = float(tr[1:n + 1].mean())
+    for i in range(n + 1, len(c)):
+        atr[i] = (atr[i - 1] * (n - 1) + tr[i]) / n
+    return atr
+
+
+def _far_below(close: float, ma: float, atr: float, R) -> bool:
+    if ma is None or np.isnan(ma) or close is None or np.isnan(close):
         return False
-    return bool(close < ma[i] and sma_ticked_down(ma, i) and close < floor)
+    k = float(R.get("far_below_atrs", 1.0))
+    if atr is not None and not np.isnan(atr) and atr > 0:
+        return bool(close < ma - k * atr)
+    return bool(close < ma * 0.95)
+
+
+def _atr_or_pct(level: float, atr: float, n_atr: float, pct: float = 0.05) -> float:
+    if atr is not None and not np.isnan(atr) and atr > 0:
+        return n_atr * atr
+    return abs(level) * pct
 
 
 def mansfield(close: pd.Series, bench: pd.Series, R=RULES) -> pd.Series:
@@ -384,7 +475,7 @@ def _base_count(c: np.ndarray, end: int, res: float) -> int:
 def find_breakout(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Optional[Dict[str, Any]]:
     """Earliest week b among the last bo_max_weeks_ago+1 completed weeks whose close broke above the base resistance
     (highest high of the base_window_w weeks before b), the resistance set >= min_base_w weeks before b with >= min_base_w
-    closes at / under it (a real base: stage 1 -> 2 or a stage-2 continuation base), close > 30W SMA and the SMA not
+    closes at / under it (a real base: stage 1 -> 2 or a stage-2 continuation base), close > SMA 150 יום and the SMA not
     declining. Volume / holding are reported, not required here."""
     h, c, v = w["High"].values, w["Close"].values, w["Volume"].values
     n = len(w)
@@ -476,7 +567,7 @@ def stop_below(anchor: float, R=RULES) -> float:
 
 
 def stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_low: Optional[float], R=RULES) -> Dict[str, Any]:
-    """Initial stop (Eyal 2026-11-16, replaces the 'never under the SMA' rule). Anchor A = the 30W SMA; anchor B = the
+    """Initial stop (Eyal 2026-11-16, replaces the 'never under the SMA' rule). Anchor A = the SMA 150 יום; anchor B = the
     last significant low of the current base that has not been broken = the floor of the current base (lowest low since
     the base's ceiling week; stage-1 range = the box floor; when a later week undercut it, that newer lower low). Stop under the LOWER of the two (stop_below):
       B above the SMA -> under the SMA ('ma');  B below the SMA -> under B ('low').
@@ -509,7 +600,7 @@ def stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_low: Optiona
 
 def trade_levels(w: pd.DataFrame, ma_now: float, entry: float, resistance: Optional[float], base_low: Optional[float],
                  R=RULES) -> Dict[str, Any]:
-    """Stop (Eyal 2026-11-16) = under the lower of the 30W SMA and the base's last unbroken low (stop_anchors); first
+    """Stop (Eyal 2026-11-16) = under the lower of the SMA 150 יום and the base's last unbroken low (stop_anchors); first
     target = nearest overhead resistance of the last 2 years (significant weekly swing high); none = open sky -> target =
     entry + min_rr x risk (R:R exactly 2.5, Eyal 2026-11-14)."""
     sa = stop_anchors(w, ma_now, entry, base_low, R)
@@ -544,7 +635,7 @@ def _base_count_above(c: np.ndarray, end: int, sup: float) -> int:
 def find_breakdown(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Optional[Dict[str, Any]]:
     """Earliest week b among the last bo_max_weeks_ago+1 completed weeks whose close broke below base support
     (lowest low of base_window_w weeks before b), the support set >= min_base_w weeks before b with >= min_base_w
-    closes at/above it, close < 30W SMA and SMA flat or declining. Volume on breakdown is reported (not required)."""
+    closes at/above it, close < SMA 150 יום and SMA flat or declining. Volume on breakdown is reported (not required)."""
     h, l, c, v = w["High"].values, w["Low"].values, w["Close"].values, w["Volume"].values
     n = len(w)
     for b in range(max(R["base_window_w"], n - 1 - R["bo_max_weeks_ago"]), n):
@@ -631,7 +722,7 @@ def stop_above(anchor: float, R=RULES) -> float:
 
 def short_stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_high: Optional[float], R=RULES) -> Dict[str, Any]:
     """Initial protective Buy-Stop for shorts (exact mirror of stop_anchors, Eyal 2026-11-16):
-    Anchor A = 30W SMA; Anchor B = last unbroken rally high of the current top/base (if exceeded later, that newer
+    Anchor A = SMA 150 יום; Anchor B = last unbroken rally high of the current top/base (if exceeded later, that newer
     higher high). Stop above the HIGHER of the two (stop_above):
       B <= SMA -> above SMA ('ma');  B > SMA -> above B ('high').
     'Too far': B > SMA, stop > max_stop_pct (10%) above entry and SMA declining -> above the most recent unbroken LOWER
@@ -663,7 +754,7 @@ def short_stop_anchors(w: pd.DataFrame, ma_now: float, entry: float, base_high: 
 
 def short_trade_levels(w: pd.DataFrame, ma_now: float, entry: float, support: Optional[float], base_high: Optional[float],
                        R=RULES) -> Dict[str, Any]:
-    """Short trade plan: Sell-Stop entry, protective Buy-Stop above higher of (30W SMA, base rally high), target =
+    """Short trade plan: Sell-Stop entry, protective Buy-Stop above higher of (SMA 150 יום, base rally high), target =
     nearest significant support below (last 2 years); none = open sky -> entry - min_rr x risk (if > 0).
     Enforces 0 < target < entry < stop."""
     sa = short_stop_anchors(w, ma_now, entry, base_high, R)
@@ -848,8 +939,8 @@ def post_earn_short_check(ei: Dict[str, Any], pg: Optional[Dict[str, Any]], clos
 
 def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
     """Sector / industry ETF gate (Eyal 2026-11-14): never stage 4, and at least one of
-    (1) 'שלב 2 מובהק' = stage 2 (broke above its range), close above a RISING 30W SMA;
-    (2) 'סוף שלב 1 – התעוררות' = close back above the 30W SMA and the SMA no longer falling (flat or turning up).
+    (1) 'שלב 2 מובהק' = stage 2 (broke above its range), close above a RISING SMA 150 יום;
+    (2) 'סוף שלב 1 – התעוררות' = close back above the SMA 150 יום and the SMA no longer falling (flat or turning up).
     The sector's Mansfield RS is information only. A stage-3 sector (top / distribution) is neither of the two states
     -> fails unless RULES sector_allow_stage3."""
     if not e:
@@ -863,13 +954,13 @@ def sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
         return {"ok": False, "case": "3", "he": "שלב 3 (פסגה / הפצה) – לא שלב 2 מובהק ולא סוף שלב 1"}
     if above and e["slope_cls"] != "down":
         return {"ok": True, "case": "1late", "he": "סוף שלב 1 – התעוררות" if e["stage"] != 2 else "שלב 2 – מעל ממוצע שטוח (התעוררות)"}
-    why = "מתחת ל-30W SMA" if not above else "ה-30W SMA עדיין יורד"
+    why = "מתחת ל-SMA 150 יום" if not above else "ה-SMA 150 יום עדיין יורד"
     return {"ok": False, "case": "no", "he": f"לא עומד: {why}"}
 
 
 def short_sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
     """Short-side sector / industry ETF gate: stage 3 or 4, never stage 1 or clear stage 2 (2-weak also fails while
-    30W SMA is still rising). Stage 4 below SMA passes; stage 3 passes when below SMA or SMA not rising."""
+    SMA 150 יום is still rising). Stage 4 below SMA passes; stage 3 passes when below SMA or SMA not rising."""
     if not e:
         return {"ok": None, "case": None, "he": "לא ידוע"}
     above = e["close"] > e["ma30"]
@@ -884,7 +975,7 @@ def short_sector_status(e: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
         return {"ok": True, "case": "4", "he": "שלב 4 (מתחת לממוצע)"}
     if e["stage"] == 3 and (not above or e["slope_cls"] != "up"):
         return {"ok": True, "case": "3", "he": "שלב 3 (פסגה / הפצה)"}
-    why = "מעל 30W SMA" if above else "ה-30W SMA עדיין עולה"
+    why = "מעל SMA 150 יום" if above else "ה-SMA 150 יום עדיין עולה"
     return {"ok": False, "case": "no", "he": f"לא עומד לשורט: {why}"}
 
 
@@ -944,108 +1035,380 @@ def _trend_edge(h: np.ndarray, l: np.ndarray, i: int, up: bool, R=RULES) -> floa
     return float(h[max(0, min(k, i - R["min_base_w"])):i].max())
 
 
-def stage_path(w: pd.DataFrame, ma: np.ndarray, R=RULES) -> Dict[str, Any]:
-    """Range-based stage state machine (Eyal 2026-11-14): inside a base / trading range crossings of the 30W SMA mean
-    nothing. Stage 1 (base after a decline) -> 2 only on a weekly close above the range ceiling with the SMA flat / rising;
-    -> 4 only on a close below the range floor. Stage 3 (top after an advance) -> 4 on a close below its floor, -> 2 on a
-    close above its ceiling (SMA flat / rising). Stage 2 stays 2 (a continuation base included) until a close below the
-    floor of its current base with the SMA no longer rising (-> 3, or -> 4 when the SMA declines), or until the SMA goes
-    flat while price has made no new 26-week high for >= 10 weeks (-> 3: a top; a continuation base keeps a rising SMA). Stage 4 -> 1 once the
-    SMA stops declining (or straight to 2 on a close above its last bounce high with a non-declining SMA)."""
-    h, l, c = (w[k].values.astype(float) for k in ("High", "Low", "Close"))
+
+def _weekly_atr_aligned(daily: pd.DataFrame, n: int = 14) -> np.ndarray:
+    """Wilder ATR of Friday weeks, forward-filled onto each daily bar.
+
+    'Near' and 'far below' stay 1 weekly ATR (Eyal t453u) even though the stage
+    path itself runs on daily bars.
+    """
+    if daily is None or getattr(daily, "empty", True):
+        return np.full(0, np.nan)
+    d = daily
+    last = pd.Timestamp(d.index.max()).normalize()
+    wk = weekly(d, last)
+    if wk is None or len(wk) == 0:
+        return np.full(len(d), np.nan)
+    wa = _wilder_atr(
+        wk["High"].values.astype(float),
+        wk["Low"].values.astype(float),
+        wk["Close"].values.astype(float),
+        n,
+    )
+    s = pd.Series(wa, index=pd.to_datetime(wk.index))
+    aligned = s.reindex(pd.to_datetime(d.index), method="ffill")
+    # days after the last completed Friday keep the last weekly ATR
+    aligned = aligned.ffill().bfill()
+    return aligned.values
+
+
+def stage_path(w: pd.DataFrame, ma: np.ndarray, R=None) -> Dict[str, Any]:
+    """Weekly Weinstein / TraderLion stage state machine (Eyal 2026-11-27).
+
+    All tests are on completed weekly (W-FRI) bars, the 30-week SMA (≈150-day) and
+    the 10-week SMA (≈50-day).
+
+    Stage 1 (base): after stage 4, the SMA 150 יום has flattened / stopped declining,
+    and price moves sideways, whipsawing around the MA. If the MA is still sloping
+    sharply down and price is far below it (more than 1 weekly ATR), it stays 4.
+
+    Stage 2a (breakout, Ideal Buy point A): a weekly close above the stage-1 base
+    ceiling on volume >= 2x the prior 10-week average, with the SMA 150 יום not
+    declining and the close above it. Stays 2a for the breakout week plus
+    stage_2a_weeks (6) further weeks while price is still within 2 weekly ATRs of
+    the breakout, including the first light-volume (< 1.5x) retest of the ceiling
+    that holds (close not more than 0.5 ATR under the level — point B).
+
+    Stage 2 / 2b: after 2a. Price above a rising SMA 150 יום with higher highs / higher
+    lows. A light-volume retest that holds at or slightly above the breakout stays 2.
+    A weekly close below the SMA 150 יום is no longer stage 2 (the old 2-dip / 2-weak
+    rule is removed): go to 4 if the last higher low / stage-3 support is also
+    broken, otherwise to 3.
+
+    Stage 3 (distribution): the SMA 150 יום flattens and price chops around it, often
+    with heavy-volume churn, failed new highs, or an early warning close below the
+    10W SMA on heavy volume (>= 2x).
+
+    Stage 4: a close below stage-3 support, or below the last higher low of the
+    stage-2 advance, starts stage 4 EVEN IF the SMA 150 יום is still flat. Then lower
+    highs / lower lows, price below the MA, and the MA starts declining. Weak
+    light-volume rallies do not change it. 4→1 only after the MA has actually
+    declined during this stage-4 run and then flattened, with price no longer far
+    below it.
+    """
+    if R is None:
+        R = RULES
+    R = _stage_R(R)
+    h, l, c, v = (w[k].values.astype(float) for k in ("High", "Low", "Close", "Volume"))
     n = len(w)
-    i0 = R["ma_weeks"] + R["slope_lookback_w"] - 1
-    st, start = None, i0
+    ma10_w = int(R.get("sma10_weeks", 10))
+    ma10 = w["Close"].rolling(ma10_w).mean().values
+    atr = _weekly_atr_aligned(w, 14)
+    avg_w = int(R.get("vol_avg_w", 10))
+    vol_mult = float(R.get("vol_mult", 2.0))
+    light_vol = float(R.get("light_vol_mult", 1.5))
+    a2_weeks = int(R.get("stage_2a_weeks", 6))
+    a2_near = float(R.get("stage_2a_near_atrs", 2.0))
+    hold_atrs = float(R.get("retest_hold_atrs", 0.5))
+    k_pv = int(R.get("pivot_w", 2))
+    pl_all = pivots(l, k_pv, False)
+
+    i0 = int(R["ma_weeks"]) + int(R.get("sma_slope_w", 3)) - 1
+    st, sub, start = None, None, i0
+    bo_level, bo_i, bo_vol = None, None, None
+    adv_hl = None      # last confirmed swing low of the advance (not the ceiling)
+    base_floor = None  # stage-1 floor, last-resort support of the advance
+    saw_down = False   # SMA 150d was 'down' at least once in the current stage-4 run
+    run_2_start = None # start of the most recent stage-2 run (last_hl origin after 2→3)
+
+    def slope_at(i):
+        return sma_slope(ma, i, R)
+
+    def far(i):
+        return _far_below(c[i], ma[i], atr[i], R)
+
+    def vr(i):
+        return _week_vol_ratio(v, i, avg_w)
+
+    def heavy(i):
+        r = vr(i)
+        return r is not None and r >= vol_mult
+
+    def light(i):
+        r = vr(i)
+        return r is not None and r < light_vol
+
+    def last_hl(i):
+        """Last confirmed swing low of the current advance, else the base floor.
+
+        Origin is the most recent stage-2 start, not the current stage start, so a
+        fresh stage-3 box does not throw away the last higher low of the advance.
+        """
+        origin = run_2_start if run_2_start is not None else start
+        confirmed = [j for j in pl_all if j + k_pv <= i and (origin is None or j >= origin)]
+        if confirmed:
+            return float(l[confirmed[-1]])
+        return adv_hl if adv_hl is not None else base_floor
+
+    def cons_above(i, need=None, window=None):
+        need = int(R.get("idx_consistent_n", 20) if need is None else need)
+        window = int(R.get("idx_consistent_w", 25) if window is None else window)
+        a0 = max(int(R["ma_weeks"]) - 1, i - window + 1)
+        return int(np.sum(c[a0:i + 1] > ma[a0:i + 1])) >= need
+
     for i in range(i0, n):
-        sc, _ = slope_class(ma, i, R)
-        if sc is None:
+        sc, _, sharp = slope_at(i)
+        if sc is None or np.isnan(ma[i]):
             continue
+        above = bool(c[i] > ma[i])
+        a = atr[i]
         if st is None:
-            st = 2 if sc == "up" else 4 if sc == "down" else (1 if c[i] < ma[i] else 3)
-            start = i
+            if sc == "down" or (sc == "flat" and far(i)):
+                st, sub, start = 4, "4", i
+                saw_down = sc == "down" or sharp
+            elif sc == "up" and above:
+                st, sub, start = 2, "2", i
+            elif sc == "flat" and above:
+                st, sub, start = 3, "3", i
+            else:
+                st, sub, start = 1, "1", i
             continue
-        new = st
-        if st in (1, 3):
-            ceil, floor = _range(h, l, i, start, st, R)
-            if c[i] > ceil and sc != "down":
-                new = 2
-            elif c[i] < floor and sc != "up":
-                new = 4
+
+        new, new_sub = st, sub
+
+        if st == 4:
+            if sc == "down" or sharp:
+                saw_down = True
+            # Failed breakdown: back above broken support and back above the SMA 150 יום
+            # Recover only back above the last HL of the advance, not the ancient
+            # stage-1 floor (that recovery was almost always true and caused 2↔4 flips).
+            rec_lvl = adv_hl if adv_hl is not None else base_floor
+            # Back above a rising 150d is stage 2 again (the inverse of "a close
+            # below the MA exits stage 2"), even if the last HL has not been reclaimed.
+            if above and sc == "up":
+                new, new_sub = 2, "2"
+            elif above and rec_lvl is not None and c[i] > rec_lvl and sc != "down":
+                new, new_sub = (2, "2") if sc == "up" else (3, "3")
+            elif saw_down and sc == "flat" and not sharp and not far(i) and (
+                above or (a is not None and not np.isnan(a) and a > 0 and abs(c[i] - ma[i]) <= a)
+            ):
+                new, new_sub = 1, "1"
+
+        elif st == 1:
+            ceil, floor = _range(h, l, i, start, 1, R)
+            if c[i] > ceil and sc != "down" and above and heavy(i):
+                new, new_sub = 2, "2a"
+                bo_level, bo_i, bo_vol = float(ceil), i, vr(i)
+                base_floor = float(floor) if floor is not None else base_floor
+                adv_hl = base_floor
+            elif sc == "up" and above and (c[i] > ceil or cons_above(i)):
+                new, new_sub = 2, "2"
+                base_floor = float(floor) if floor is not None else base_floor
+                if c[i] > ceil and bo_level is None:
+                    bo_level, bo_i = float(ceil), i
+                if adv_hl is None:
+                    adv_hl = base_floor
+            elif far(i) or (floor is not None and c[i] < floor and sc != "up") or (sc == "down" and (sharp or far(i))):
+                new, new_sub = 4, "4"
+                base_floor = float(floor) if floor is not None else base_floor
+                saw_down = sc == "down" or sharp or far(i)
+
         elif st == 2:
-            a0 = max(0, i - R["base_window_w"])
-            since_hi = i - (a0 + int(np.argmax(h[a0:i + 1])))
-            if sc != "up" and c[i] < _trend_edge(h, l, i, True, R):
-                new = 4 if sc == "down" else 3
-            elif sc == "flat" and since_hi >= R["min_base_w"]:
-                new = 3  # SMA lost its rise during a >= 10-week range = a top, not a continuation base
-        elif st == 4:
-            if sc != "down" and c[i] > _trend_edge(h, l, i, False, R):
-                new = 2
-            elif sc != "down":
-                new = 1
-        if new != st:
-            st, start = new, i
+            floor_2 = last_hl(i)
+            broke_hl = floor_2 is not None and c[i] < floor_2
+
+            if sub == "2a" and bo_level is not None and bo_i is not None:
+                weeks_since = i - bo_i
+                near_bo = abs(c[i] - bo_level) <= _atr_or_pct(bo_level, a, a2_near)
+                held_retest = (
+                    light(i)
+                    and c[i] >= bo_level - _atr_or_pct(bo_level, a, hold_atrs)
+                    and (c[i] - bo_level) <= _atr_or_pct(bo_level, a, a2_near)
+                )
+                failed_bo = c[i] < bo_level - _atr_or_pct(bo_level, a, 1.0)
+                if broke_hl and not (above and sc == "up"):
+                    new, new_sub = 4, "4"
+                    saw_down = sc == "down" or sharp
+                elif failed_bo or not above:
+                    # failed / rejected breakout — back to the base if the floor holds
+                    if broke_hl:
+                        new, new_sub = 4, "4"
+                        saw_down = sc == "down" or sharp
+                    else:
+                        new, new_sub = (3, "3") if not above and not failed_bo else (1, "1")
+                elif weeks_since > a2_weeks and not held_retest:
+                    new, new_sub = 2, "2"
+                elif (not near_bo) and c[i] > bo_level + _atr_or_pct(bo_level, a, a2_near) and not held_retest:
+                    new, new_sub = 2, "2"
+                else:
+                    new, new_sub = 2, "2a"
+            else:
+                # A taken-out pullback low is not stage 4 while price is still above
+                # a rising 150d. Stage 4 on a support break applies when the MA is
+                # flat or down, or when price has already lost the MA (Eyal: even if
+                # the MA is still flat). 
+                if (broke_hl or (not above and far(i))) and not (above and sc == "up"):
+                    new, new_sub = 4, "4"
+                    saw_down = sc == "down" or sharp or far(i)
+                elif not above:
+                    new, new_sub = 3, "3"
+                elif sc == "flat":
+                    below_10 = (not np.isnan(ma10[i])) and c[i] < ma10[i] and heavy(i)
+                    a0 = max(0, i - int(R.get("base_window_w", 26)))
+                    since_hi = i - (a0 + int(np.argmax(h[a0:i + 1])))
+                    if below_10 or since_hi >= int(R.get("idx_top_w", 10)):
+                        new, new_sub = 3, "3"
+
+        elif st == 3:
+            ceil, floor = _range(h, l, i, start, 3, R)
+            # Remember the tighter of stage-3 range floor and the last HL of the advance
+            brk_lvl = floor
+            hl = last_hl(i) if adv_hl is not None or base_floor is not None else adv_hl
+            # Stage 3 support should be the range floor of the top, but don't use a
+            # 1-week-old box whose floor is just last week's low — require the box
+            # to include the last HL or at least min_base_w weeks when possible.
+            if hl is not None and (brk_lvl is None or hl < brk_lvl):
+                # last HL of the advance is a valid 4-trigger; the fresh box floor
+                # of a 1-2 week top is too tight, so only use it after min_base_w
+                if (i - start) >= int(R.get("min_base_w", 10)):
+                    pass  # brk_lvl stays the box floor
+                else:
+                    brk_lvl = hl
+            brk = brk_lvl is not None and c[i] < brk_lvl
+            # Distribution that has clearly rolled into a decline: below a declining
+            # SMA 150 יום, especially when far below it, is stage 4 (TraderLion).
+            # Support break, or price already far below the 150d (1 weekly ATR), even
+            # if the MA has not turned down yet (Eyal: stage 4 does not wait for the MA).
+            rolled = (not above) and (far(i) or sc == "down" or sharp)
+            if brk or rolled:
+                new, new_sub = 4, "4"
+                saw_down = sc == "down" or sharp or far(i)
+                if base_floor is None:
+                    base_floor = brk_lvl
+            elif c[i] > ceil and sc != "down" and above and heavy(i):
+                new, new_sub = 2, "2a"
+                bo_level, bo_i, bo_vol = float(ceil), i, vr(i)
+            elif sc == "up" and above and (c[i] > ceil or cons_above(i)):
+                new, new_sub = 2, "2"
+                if c[i] > ceil and bo_level is None:
+                    bo_level, bo_i = float(ceil), i
+
+        if new != st or new_sub != sub:
+            if new != st:
+                start = i
+                if new == 1:
+                    bo_level = bo_i = bo_vol = None
+                    run_2_start = None
+                if new == 2 and st != 2:
+                    run_2_start = i
+                if new != 4:
+                    saw_down = False
+                if new == 4 and base_floor is None:
+                    base_floor = last_hl(i)
+            st, sub = new, new_sub
+            if st == 2:
+                hl_now = last_hl(i)
+                if hl_now is not None:
+                    adv_hl = hl_now
+                elif adv_hl is None:
+                    adv_hl = base_floor
+        elif st == 2:
+            hl_now = last_hl(i)
+            if hl_now is not None:
+                adv_hl = hl_now
+
     i = n - 1
-    # Last-week only: do not let a lagging 5-week slope keep stage 2 after a breakdown
-    # under a 30W SMA that has already ticked down (Eyal 2026-11-27, XLK).
-    if st == 2 and stage2_breakdown_under_turned_ma(c[i], ma, i, _trend_edge(h, l, i, True, R)):
-        st, start = 4, i
+    sc, sl, sharp = slope_at(i) if i >= 0 else (None, None, False)
     if st in (1, 3):
         ceil, floor = _range(h, l, i + 1, start, st, R)
     elif st == 2:
-        ceil, floor = float(h[max(0, i + 1 - R["base_window_w"]):].max()), _trend_edge(h, l, i + 1, True, R)
+        ceil = float(h[max(0, (bo_i if bo_i is not None else start)):].max()) if n else None
+        floor = last_hl(i)
     else:
-        ceil, floor = _trend_edge(h, l, i + 1, False, R), float(l[max(0, i + 1 - R["base_window_w"]):].min())
-    return {"stage": st, "start": start, "since_w": n - 1 - start, "ceil": ceil, "floor": floor}
+        ceil = _trend_edge(h, l, i + 1, False, R)
+        floor = float(l[max(0, i + 1 - int(R["base_window_w"])):].min()) if n else None
+    return {
+        "stage": st, "sub": sub or (str(st) if st else None),
+        "start": start, "since_w": n - 1 - start if st is not None else 0,
+        "ceil": ceil, "floor": floor,
+        "bo_level": bo_level, "bo_i": bo_i, "bo_vol": bo_vol,
+        "adv_hl": last_hl(i) if st in (2, 3, 4) else adv_hl,
+        "base_floor": base_floor,
+        "slope_cls": sc, "slope": sl, "sharp_down": sharp,
+        "ma10": None if i < 0 or np.isnan(ma10[i]) else float(ma10[i]),
+        "vol_ratio": vr(i) if i >= 0 else None,
+        "atr": None if i < 0 or np.isnan(atr[i]) else float(atr[i]),
+    }
 
 
-def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional[Dict[str, Any]]:
-    """Stage of the last completed week + the module-3 identification checks of that stage."""
-    n = len(w)
-    if n < R["ma_weeks"] + R["slope_lookback_w"]:
+def classify(daily: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional[Dict[str, Any]]:
+    """Daily Weinstein / TraderLion stage (150d and 50d SMA) plus weekly Buy-Stop / RS helpers.
+
+    Eyal 2026-11-27 (t453u): breakouts, breakdowns and the stage path use daily closes and
+    the 150-day SMA. find_breakout, Mansfield RS and weekly ATR stay on completed Friday
+    weeks so Buy-Stop entries, Stef stops and R:R are unchanged.
+    """
+    if daily is None or getattr(daily, "empty", True):
         return None
+    d = daily.copy()
+    d.index = pd.to_datetime(d.index)
+    if getattr(d.index, "tz", None) is not None:
+        d.index = d.index.tz_localize(None)
+    last = pd.Timestamp(d.index.max()).normalize()
+    wk = weekly(d, last)
+    SR = _stage_R(R)
+    n = len(d)
+    if n < SR["ma_weeks"] + SR["sma_slope_w"]:
+        return None
+    w = d
     c, h, l, v = (w[k].values.astype(float) for k in ("Close", "High", "Low", "Volume"))
-    ma = w["Close"].rolling(R["ma_weeks"]).mean().values
+    ma = w["Close"].rolling(SR["ma_weeks"]).mean().values
     i = n - 1
-    sc, slope = current_slope_class(ma, i, R)
+    sc, slope, _sharp = sma_slope(ma, i, SR)
     above = c[i] > ma[i]
-    rs = mansfield(w["Close"], bench_w, R).values if bench_w is not None else np.full(n, np.nan)
-    rs_now = rs[i]
-    rs_prev = rs[i - R["rs_rising_w"]] if i >= R["rs_rising_w"] else np.nan
+    # Mansfield RS stays weekly (a 52-week relative-strength measure).
+    if bench_w is not None and wk is not None and len(wk):
+        rs_s = mansfield(wk["Close"], bench_w, R)
+        rs_now = float(rs_s.iloc[-1]) if len(rs_s) else float("nan")
+        prev_i = len(rs_s) - 1 - R["rs_rising_w"]
+        rs_prev = float(rs_s.iloc[prev_i]) if prev_i >= 0 else float("nan")
+    else:
+        rs_now = rs_prev = float("nan")
     rs_up = bool(rs_now > rs_prev) if not (np.isnan(rs_now) or np.isnan(rs_prev)) else None
-    k = R["pivot_w"]
-    ph = [j for j in pivots(h, k, True) if j >= n - 52]
-    pl = [j for j in pivots(l, k, False) if j >= n - 52]
+    k = SR["pivot_w"]
+    ph = [j for j in pivots(h, k, True) if j >= n - 260]
+    pl = [j for j in pivots(l, k, False) if j >= n - 260]
     hh = bool(h[ph[-1]] > h[ph[-2]]) if len(ph) >= 2 else None
     hl = bool(l[pl[-1]] > l[pl[-2]]) if len(pl) >= 2 else None
-    # prior trend for a flat MA
+    # prior trend for a flat MA (150d slope over the last year of sessions)
     prior = None
-    for j in range(i - 1, max(R["ma_weeks"] + R["slope_lookback_w"] - 2, i - R["prior_trend_w"]), -1):
-        s2, _ = slope_class(ma, j, R)
+    for j in range(i - 1, max(SR["ma_weeks"] + SR["sma_slope_w"] - 2, i - SR["prior_trend_w"]), -1):
+        s2, _, _ = sma_slope(ma, j, SR)
         if s2 in ("up", "down"):
             prior = s2
             break
-    hi52, lo52 = h[-52:].max(), l[-52:].min()
+    hi52, lo52 = h[-252:].max(), l[-252:].min()
     if prior is None:
         prior = "down" if c[i] < (hi52 + lo52) / 2 else "up"
     flat_run = 0
     for j in range(i, -1, -1):
-        s2, _ = slope_class(ma, j, R)
+        s2, _, _ = sma_slope(ma, j, SR)
         if s2 == "flat":
             flat_run += 1
         else:
             break
-    crosses13 = int(np.sum(np.diff(np.sign(c[-14:] - ma[-14:])) != 0))
-    vol10, vol52 = v[-10:].mean(), v[-52:].mean()
-    new_high_10 = bool(h[-10:].max() >= hi52)
-    bo = find_breakout(w, ma, R)
+    crosses13 = int(np.sum(np.diff(np.sign(c[-31:] - ma[-31:])) != 0))  # ~6 weeks of sessions
+    vol10, vol52 = v[-50:].mean(), v[-252:].mean()
+    new_high_10 = bool(h[-50:].max() >= hi52)
+    ma_w = wk["Close"].rolling(R["ma_weeks"]).mean().values if wk is not None and len(wk) >= R["ma_weeks"] else None
+    bo = find_breakout(wk, ma_w, R) if ma_w is not None else None
     bo_ok = None
     if bo:
         bo["holding"] = bool(c[i] >= bo["level"] and above)
         bo["vol_ok"] = bool(bo["vol_ratio"] is not None and bo["vol_ratio"] >= R["vol_mult"])
         bo["pct_above"] = _f((c[i] / bo["level"] - 1) * 100, 1)
         bo_ok = bo["holding"] and bo["vol_ok"]
-    bd = find_breakdown(w, ma, R)
+    bd = find_breakdown(wk, ma_w, R) if ma_w is not None else None
     bd_ok = None
     if bd:
         bd["holding"] = bool(c[i] <= bd["level"] and not above)
@@ -1062,30 +1425,32 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         bd_ok = False  # broke a 26-week low but is still inside the bigger stage-3 range -> not stage 4 yet
         bd["in_range"] = True
     if stage == 2:
-        sub = "2A" if bo_ok else ("2-ext" if (c[i] / ma[i] - 1) * 100 > R["extended_pct"] else "2" if above else "2-weak")
+        sub = sp.get("sub") or "2"
+        if sub not in ("2a", "2A") and (c[i] / ma[i] - 1) * 100 > R["extended_pct"]:
+            sub = "2-ext"
     elif stage == 4:
         sub = "4A" if bd_ok else ("4-ext" if (1 - c[i] / ma[i]) * 100 > R["extended_pct"] else "4" if not above else "4-late")
     elif stage == 1:
-        sub = "1B" if sp["since_w"] >= R["min_base_w"] else "1A"
+        sub = "1B" if sp["since_w"] >= SR["min_base_w"] else "1A"
     else:
         sub = "3"
     def ck(key, ok, he):
         return {"k": key, "ok": None if ok is None else bool(ok), "he": he}
     checks = {
-        1: [ck("ma_flat", sc == "flat", "30W SMA שטוח (שינוי ≤1% ב-5 שבועות)"),
-            ck("base10", flat_run >= R["min_base_w"], f"בסיס בוגר: ממוצע שטוח {flat_run} שבועות (≥10)"),
-            ck("cross", crosses13 >= 1, f"המחיר חוצה את הממוצע הלוך ושוב ({crosses13} חציות ב-13 שבועות)"),
-            ck("dry", vol10 < vol52, "מחזור מתייבש: ממוצע 10 שבועות < ממוצע 52 שבועות")],
-        2: [ck("above", above, "סגירה מעל 30W SMA"),
-            ck("ma_up", sc == "up" or (bo_ok and sc == "flat"), "30W SMA עולה (בפריצה: שטוח-עולה)"),
-            ck("hhhl", (hh and hl) if hh is not None and hl is not None else None, "שיאים עולים ושפלים עולים (52 שבועות)"),
-            ck("rs", (rs_now > 0 and rs_up) if rs_up is not None else None, "Mansfield RS > 0 ועולה")],
-        3: [ck("ma_flat", sc == "flat", "30W SMA שטוח אחרי עלייה"),
-            ck("whipsaw", crosses13 >= 2, f"חציות של הממוצע הלוך ושוב ({crosses13} ב-13 שבועות, ≥2)"),
-            ck("churn", vol10 > vol52 and not new_high_10, "מחזור גבוה (10ש > 52ש) בלי שיא 52 שבועות חדש"),
+        1: [ck("ma_flat", sc == "flat", f"SMA 150 יום שטוח (שינוי ≤{SR['sma_slope_flat_pct']}% ב-{SR['sma_slope_w']} ימי מסחר)"),
+            ck("base10", flat_run >= SR["min_base_w"], f"בסיס בוגר: ממוצע שטוח {flat_run} ימים (≥{SR['min_base_w']})"),
+            ck("cross", crosses13 >= 1, f"המחיר חוצה את הממוצע הלוך ושוב ({crosses13} חציות ב-30 ימי מסחר)"),
+            ck("dry", vol10 < vol52, "מחזור מתייבש: ממוצע 50 יום < ממוצע 252 יום")],
+        2: [ck("above", above, "סגירה יומית מעל SMA 150 יום"),
+            ck("ma_up", sc == "up" or (bo_ok and sc == "flat"), "SMA 150 יום עולה (בפריצה: שטוח-עולה)"),
+            ck("hhhl", (hh and hl) if hh is not None and hl is not None else None, "שיאים עולים ושפלים עולים (שנה)"),
+            ck("rs", (rs_now > 0 and rs_up) if rs_up is not None else None, "Mansfield RS > 0 ועולה (שבועי)")],
+        3: [ck("ma_flat", sc == "flat", "SMA 150 יום שטוח אחרי עלייה"),
+            ck("whipsaw", crosses13 >= 2, f"חציות של הממוצע הלוך ושוב ({crosses13} ב-30 ימים, ≥2)"),
+            ck("churn", vol10 > vol52 and not new_high_10, "מחזור גבוה (50י > 252י) בלי שיא שנתי חדש"),
             ck("rs_weak", (not rs_up) if rs_up is not None else None, "Mansfield RS נחלש (יורד ב-4 שבועות)")],
-        4: [ck("below", not above, "סגירה מתחת ל-30W SMA"),
-            ck("ma_down", sc == "down", "30W SMA יורד (שינוי < -1% ב-5 שבועות)"),
+        4: [ck("below", not above, "סגירה יומית מתחת ל-SMA 150 יום"),
+            ck("ma_down", sc == "down", f"SMA 150 יום יורד (או נשברה תמיכה; שיפוע {SR['sma_slope_w']} ימים)"),
             ck("lhll", ((hh is False) and (hl is False)) if hh is not None and hl is not None else None, "שיאים יורדים ושפלים יורדים"),
             ck("rs_neg", (rs_now < 0 and rs_up is False) if rs_up is not None else None, "Mansfield RS < 0 ויורד")],
     }[stage]
@@ -1093,15 +1458,23 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
     out = {
         "stage": stage, "sub": sub, "score": score, "conf": "high" if score == 4 else "med" if score == 3 else "low",
         "checks": checks, "week": w.index[i].strftime("%Y-%m-%d"), "close": _f(c[i]), "ma30": _f(ma[i]),
+        "ma150": _f(ma[i]), "ma50": _f(sp.get("ma10")),
         "slope": _f(slope), "slope_cls": sc, "pct_ma": _f((c[i] / ma[i] - 1) * 100, 1), "rs": _f(rs_now, 1),
         "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl, "prior": prior, "flat_w": flat_run,
         "crosses13": crosses13, "hi52": _f(hi52), "pct_hi52": _f((c[i] / hi52 - 1) * 100, 1),
-        "at_hi52": bool(c[i] >= hi52 * 0.97), "weeks": n, "bo": None, "bd": None,
+        "at_hi52": bool(c[i] >= hi52 * 0.97), "weeks": len(wk) if wk is not None else n, "days": n,
+        "tf": "daily", "ma_kind": "150d", "bo": None, "bd": None,
         "range": {"ceil": _f(sp["ceil"]), "floor": _f(sp["floor"]), "since_w": sp["since_w"],
+                  "since_d": sp["since_w"],
                   "since": w.index[sp["start"]].strftime("%Y-%m-%d") if sp["stage"] else None},
     }
     if bo:
         out["bo"] = {k2: (_f(v2) if isinstance(v2, float) else v2) for k2, v2 in bo.items() if k2 != "idx"}
+    elif sp.get("bo_level"):
+        out["bo"] = {"level": _f(sp["bo_level"]), "vol_ratio": _f(sp.get("bo_vol"), 2),
+                     "vol_ok": bool(sp.get("bo_vol") and sp["bo_vol"] >= R["vol_mult"])}
+    out["ma10"] = _f(sp.get("ma10"))
+    out["vol_ratio"] = _f(sp.get("vol_ratio"), 2)
     # trade plan (Eyal 2026-11-14): the entry is ALWAYS a Buy-Stop slightly above the base resistance -- 2A = that level
     # just broke (buy only while still in the buy zone, else don't chase); stage 1 / stage-2 continuation base = the order
     # waits above the ceiling. R:R from that Buy-Stop entry to the nearest overhead resistance (2 years).
@@ -1133,7 +1506,7 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
         p["level"] = _f(lvl)
         p["close_vs_level"] = _f((c[i] / lvl - 1) * 100, 1)
         p["entry_vs_ma"] = _f((p["entry"] / ma[i] - 1) * 100, 1)
-        # don't chase: price (or the Buy-Stop) too far above the breakout level / the 30W SMA
+        # don't chase: price (or the Buy-Stop) too far above the breakout level / the SMA 150 יום
         far = max(c[i], p["entry"])
         p["chase"] = bool((far / lvl - 1) * 100 > R["buy_zone_pct"] or (far / ma[i] - 1) * 100 > R["max_pct_above_ma"])
     # short trade plan (mirror): Sell-Stop slightly below base support -- 4A = fresh breakdown; stage 3 / stage 4
@@ -1173,11 +1546,11 @@ def classify(w: pd.DataFrame, bench_w: Optional[pd.Series], R=RULES) -> Optional
 
 # ----------------------------------------------------------------------------------------------- index / sector ETF stage
 # Eyal 2026-11-15: an index (SPY / QQQ) or sector ETF is classified on its own 4 objective parameters (weekly chart,
-# 30W SMA): (1) price vs the SMA (consistently above / below, or crossing back and forth), (2) the SMA slope,
+# SMA 150 יום): (1) price vs the SMA (consistently above / below, or crossing back and forth), (2) the SMA slope,
 # (3) the swing structure (HH/HL vs LH/LL) with the range support / resistance, (4) the practical (top-down) meaning.
 # Rule 1: slope beats a single cross -- stage 4 needs a FALLING SMA AND a close below significant support (the last
 # confirmed swing low / the range floor); a dip under a rising SMA that keeps its higher low stays stage 2.
-# Rule 2: back above a 30W SMA that went flat after a decline = late stage 1 / turning point ('1T').
+# Rule 2: back above a SMA 150 יום that went flat after a decline = late stage 1 / turning point ('1T').
 # Rule 3: top-down -- market stage 3 / 4 = no new long Buy-Stops; market 2 + sector 2 = full allocation; sector 4 = avoid.
 IDX_TD = {  # top-down meaning (Eyal's table, 'משמעות מעשית למסחר')
     1: ("caution", "המתנה / זהירות — מותר לסמן מובילות שפורצות מוקדם"),
@@ -1185,8 +1558,9 @@ IDX_TD = {  # top-down meaning (Eyal's table, 'משמעות מעשית למסח�
     2: ("full", "אור ירוק מלא — פריצות של מניות חזקות"),
     3: ("defend", "הגנה וצמצום חשיפה — אין לונג חדש, להדק סטופים"),
     4: ("avoid", "אור אדום ללונג — לא קונים מניות חדשות"),
-    "2-dip": ("full", "שלב 2 — ירידה זמנית מתחת לממוצע עולה, השפל העולה מחזיק (כלל 1)"),
-    "2-weak": ("caution", "שלב 2 בסיכון — השפל העולה נשבר, הממוצע עדיין עולה"),
+    "2a": ("full", "פריצה (2a) — נקודת הקנייה האידיאלית, מחזור ≥2x"),
+    "2-dip": ("full", "שלב 2"),
+    "2-weak": ("caution", "שלב 2"),
 }
 
 
@@ -1195,26 +1569,31 @@ def _swings(h: np.ndarray, l: np.ndarray, i: int, k: int, ph: List[int], pl: Lis
     return [j for j in ph if j + k <= i], [j for j in pl if j + k <= i]
 
 
-def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES) -> Optional[Dict[str, Any]]:
-    """Weinstein stage of an index / sector ETF (Eyal 2026-11-15) -- a week-by-week state machine:
-    1 (base after a decline) -> 2 on a close above the base ceiling with the SMA not falling, or a gradual breakout
-      (SMA rising + price consistently above it + HH and HL); -> 4 only with a falling SMA AND a close below the base floor.
-    2 -> 4 only with a falling SMA AND a close below the last confirmed swing low (rule 1); -> 3 when the SMA loses its
-      rise (flat / falling) and there is no new high of the advance for idx_top_w weeks, or the SMA is no longer rising
-      and the higher low broke. A close under a still-rising SMA keeps stage 2 ('2-dip' while the higher low holds).
-      Last-week correction (Eyal 2026-11-27): if the path is still 2 but the 30W SMA has already ticked down, the close
-      is below the SMA, and the last higher low is broken, the 5-week slope lag is ignored and the stage is 4.
-    3 (top after an advance) -> 2 on a close above the top's ceiling with a non-falling SMA, or the SMA rising again +
-      consistently above + HH/HL; -> 4 with a falling SMA AND a close below the top's floor / last swing low.
-    4 -> 1 once the SMA stops falling; -> 2 on a close above the last lower high with a rising SMA."""
+def classify_index(daily: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES) -> Optional[Dict[str, Any]]:
+    """Weinstein / TraderLion stage of an index or sector ETF on daily bars (Eyal 2026-11-27, t453u).
+
+    Daily closes, 150-day SMA and 50-day SMA; slope is the 20-session percent change of the 150d SMA.
+    Market / sector gates follow this classifier, so they switch to the daily engine with it.
+    Mansfield RS stays on weekly closes.
+    """
+    if daily is None or getattr(daily, "empty", True):
+        return None
+    d = daily.copy()
+    d.index = pd.to_datetime(d.index)
+    if getattr(d.index, "tz", None) is not None:
+        d.index = d.index.tz_localize(None)
+    last = pd.Timestamp(d.index.max()).normalize()
+    wk = weekly(d, last)
+    SR = _stage_R(R)
+    w = d
     n = len(w)
-    if n < R["ma_weeks"] + R["slope_lookback_w"]:
+    if n < SR["ma_weeks"] + SR["sma_slope_w"]:
         return None
     h, l, c = (w[k].values.astype(float) for k in ("High", "Low", "Close"))
-    ma = w["Close"].rolling(R["ma_weeks"]).mean().values
-    k = R["idx_pivot_w"]
+    ma = w["Close"].rolling(SR["ma_weeks"]).mean().values
+    k = SR["idx_pivot_w"]
     PH, PL = pivots(h, k, True), pivots(l, k, False)
-    cw, cn = R["idx_consistent_w"], R["idx_consistent_n"]
+    cw, cn = SR["idx_consistent_w"], SR["idx_consistent_n"]
 
     def above_n(i: int) -> int:
         a = max(R["ma_weeks"] - 1, i - cw + 1)
@@ -1232,90 +1611,36 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
             hl = False
         return hh, hl, ph, pl
 
-    i0 = R["ma_weeks"] + R["slope_lookback_w"] - 1
-    st, start, peak_i, box_a = None, i0, i0, i0
-    for i in range(i0, n):
-        sc, _ = slope_class(ma, i, R)
-        if sc is None:
-            continue
-        if st is None:
-            st = 2 if sc == "up" else 4 if sc == "down" else (1 if c[i] < ma[i] else 3)
-            start = peak_i = box_a = i
-            continue
-        hh, hl, ph, pl = struct(i)
-        sup = float(l[pl[-1]]) if pl else None          # last confirmed swing low = the support to hold
-        res = float(h[ph[-1]]) if ph else None          # last confirmed swing high
-        cons_up = above_n(i) >= cn
-        new = st
-        if st in (1, 3):
-            # box = at least the last base_window_w (26) weeks; a top's box starts at the advance's peak
-            a = max(0, i - R["range_max_w"], min(box_a, i - R["base_window_w"]))
-            # breakout level = the box's highest CONFIRMED high (not the last idx_pivot_w weeks: an advance that closes
-            # under each new intraweek high would otherwise ratchet the ceiling up forever)
-            ceil, floor = float(h[a:max(a + 1, i - k)].max()), float(l[a:i].min())
-            if (c[i] > ceil and sc != "down") or (sc == "up" and cons_up and hh and hl):
-                new = 2
-            elif sc == "down" and c[i] < floor:
-                new = 4
-        elif st == 2:
-            if h[i] >= h[peak_i]:
-                peak_i = i
-            broke = sup is not None and c[i] < sup
-            if sc == "down" and broke:
-                new = 4
-            elif sc != "up" and (i - peak_i >= R["idx_top_w"] or broke):
-                new = 3
-        elif st == 4:
-            if sc == "up" and res is not None and c[i] > res:
-                new = 2
-            elif sc != "down":
-                new = 1
-        if new != st:
-            box_a = peak_i if (st == 2 and new == 3) else i
-            st, start = new, i
-            peak_i = i
     i = n - 1
-    sc, slope = current_slope_class(ma, i, R)
+    sp = stage_path(w, ma, R)
+    st = sp["stage"] or (2 if (sma_slope(ma, i, SR)[0] == "up") else 4)
+    sub = sp.get("sub") or (str(st) if st else "4")
+    start = sp.get("start") or i
+    box_a = start
+    peak_i = start
+    sc, slope, _sharp = sma_slope(ma, i, SR)
     hh, hl, ph, pl = struct(i)
     above = bool(c[i] > ma[i])
     an = above_n(i)
-    crosses = int(np.sum(np.diff(np.sign(c[-14:] - ma[-14:])) != 0))
-    sup = float(l[pl[-1]]) if pl else None
-    res = float(h[ph[-1]]) if ph else None
+    crosses = int(np.sum(np.diff(np.sign(c[-31:] - ma[-31:])) != 0))
+    sup = float(l[pl[-1]]) if pl else (sp.get("floor") or sp.get("adv_hl"))
+    res = float(h[ph[-1]]) if ph else (sp.get("ceil") or sp.get("bo_level"))
     pos = "above" if (an >= cn and above) else "below" if (an <= cw - cn and not above) else "cross"
     struct_cls = "HH/HL" if (hh and hl) else "LH/LL" if (hh is False and hl is False) else "mixed"
     broke = bool(sup is not None and c[i] < sup)
-    # Last-week only: lagging 5-week slope must not keep a stale stage 2 after a breakdown
-    # under a 30W SMA that has already ticked down (Eyal 2026-11-27, XLK).
-    # If a confirmed swing low is not in yet (idx_pivot_w bars after the low), fall back
-    # to the stage-2 trend floor — same test as stage_path.
-    floor_br = sup if sup is not None else _trend_edge(h, l, i, True, R)
-    if st == 2 and stage2_breakdown_under_turned_ma(c[i], ma, i, floor_br):
-        st, start = 4, i
-        box_a = peak_i = i
-        broke = True
-    if st in (1, 3):
-        a = max(0, n - R["range_max_w"], min(box_a, n - R["base_window_w"]))
-        ceil, floor = float(h[a:].max()), float(l[a:].min())
-    elif st == 2:
-        ceil, floor = float(h[peak_i:].max()) if peak_i < n else float(h[-1]), sup
+    ceil, floor = sp.get("ceil"), sp.get("floor")
+    # sub already comes from stage_path (2a / 2 / 1 / 3 / 4)
+    if bench_w is not None and wk is not None and len(wk):
+        rs_s = mansfield(wk["Close"], bench_w, R)
+        rs_now = float(rs_s.iloc[-1]) if len(rs_s) else float("nan")
+        prev_i = len(rs_s) - 1 - R["rs_rising_w"]
+        rs_prev = float(rs_s.iloc[prev_i]) if prev_i >= 0 else float("nan")
     else:
-        ceil, floor = res, float(l[max(0, n - R["base_window_w"]):].min())
-    if st == 2:
-        sub = "2" if above else ("2-dip" if not broke and sc == "up" else "2-weak")
-    elif st == 1:
-        sub = "1T" if above and sc in ("flat", "up") else "1"
-    elif st == 4:
-        sub = "4" if not above else "4-late"
-    else:
-        sub = "3"
-    rs = mansfield(w["Close"], bench_w, R).values if bench_w is not None else np.full(n, np.nan)
-    rs_now = rs[i]
-    rs_prev = rs[i - R["rs_rising_w"]] if i >= R["rs_rising_w"] else np.nan
+        rs_now = rs_prev = float("nan")
     rs_up = bool(rs_now > rs_prev) if not (np.isnan(rs_now) or np.isnan(rs_prev)) else None
     sl_he = {"up": "עולה", "down": "יורד", "flat": "שטוח"}.get(sc or "", "?")
     pos_he = {"above": f"מעל הממוצע בעקביות ({an}/{cw} סגירות)", "below": f"מתחת לממוצע בעקביות ({an}/{cw} סגירות מעל)",
-              "cross": f"חוצה את הממוצע הלוך ושוב ({an}/{cw} סגירות מעל, {crosses} חציות ב-13 ש׳)"}[pos]
+              "cross": f"חוצה את הממוצע הלוך ושוב ({an}/{cw} סגירות מעל, {crosses} חציות ב-30 ימים)"}[pos]
     st_he = {"HH/HL": "שיאים עולים ושפלים עולים (HH/HL)", "LH/LL": "שיאים יורדים ושפלים יורדים (LH/LL)", "mixed": "מבנה מעורב / דשדוש"}[struct_cls]
 
     def ck(key, ok, he):
@@ -1323,36 +1648,43 @@ def classify_index(w: pd.DataFrame, bench_w: Optional[pd.Series] = None, R=RULES
     fl = f"${floor:.2f}" if floor is not None else "—"
     ce = f"${ceil:.2f}" if ceil is not None else "—"
     checks = {
-        1: [ck("pos", pos == "cross" or sub == "1T", f"מחיר מול 30W SMA: {pos_he} — שלב 1: חוצה הלוך ושוב"),
-            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 1: שטוח אחרי ירידה"),
+        1: [ck("pos", pos == "cross" or sub == "1T", f"מחיר מול SMA 150 יום: {pos_he} — שלב 1: חוצה הלוך ושוב"),
+            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{SR['sma_slope_w']} ימי מסחר) — שלב 1: שטוח אחרי ירידה"),
             ck("struct", struct_cls != "LH/LL", f"מבנה: {st_he} — שלב 1: קופסת דשדוש"),
             ck("range", floor is not None and ceil is not None and floor <= c[i] <= ceil, f"בתוך הקופסה {fl}–{ce} (תמיכה / התנגדות)")],
-        2: [ck("pos", pos == "above" or (sub == "2-dip"), f"מחיר מול 30W SMA: {pos_he} — שלב 2: מעל בעקביות (סגירה בודדת מתחת לממוצע עולה לא משנה, כלל 1)"),
-            ck("slope", sc == "up", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 2: עולה"),
+        2: [ck("pos", pos == "above" or sub == "2a", f"מחיר מול SMA 150 יום: {pos_he} — שלב 2: מעל SMA 150 יום עולה (סגירה מתחתיו אינה שלב 2)"),
+            ck("slope", sc == "up", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{SR['sma_slope_w']} ימי מסחר) — שלב 2: עולה"),
             ck("struct", struct_cls == "HH/HL", f"מבנה: {st_he}"),
             ck("range", not broke, f"השפל העולה האחרון {('$%.2f' % sup) if sup else '—'} לא נשבר" + (" — נשבר" if broke else ""))],
-        3: [ck("pos", pos == "cross", f"מחיר מול 30W SMA: {pos_he} — שלב 3: חוצה מטה ומעלה אחרי עלייה"),
-            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 3: מתיישר"),
+        3: [ck("pos", pos == "cross", f"מחיר מול SMA 150 יום: {pos_he} — שלב 3: חוצה מטה ומעלה אחרי עלייה"),
+            ck("slope", sc == "flat", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{SR['sma_slope_w']} ימי מסחר) — שלב 3: מתיישר"),
             ck("struct", hh is not True, f"מבנה: {st_he} — שלב 3: כישלון בשיא גבוה משמעותית"),
             ck("range", floor is not None and ceil is not None and floor <= c[i] <= ceil, f"בתוך קופסת הפסגה {fl}–{ce}")],
-        4: [ck("pos", pos == "below", f"מחיר מול 30W SMA: {pos_he} — שלב 4: מתחת בעקביות"),
-            ck("slope", sc == "down", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{R['slope_lookback_w']} ש׳) — שלב 4: יורד"),
+        4: [ck("pos", pos == "below", f"מחיר מול SMA 150 יום: {pos_he} — שלב 4: מתחת בעקביות"),
+            ck("slope", sc == "down", f"שיפוע הממוצע {sl_he} ({slope:+.2f}% ב-{SR['sma_slope_w']} ימי מסחר) — שלב 4: יורד (או נשברה תמיכה, גם אם הממוצע עוד שטוח)"),
             ck("struct", struct_cls == "LH/LL", f"מבנה: {st_he}"),
             ck("range", c[i] < (ceil or np.inf), f"מתחת לשיא היורד האחרון {ce} (שבר את תמיכת שלב 3)")],
     }[st]
     score = sum(1 for x in checks if x["ok"])
-    td = IDX_TD[sub if sub in ("1T", "2-dip", "2-weak") else st]
+    td = IDX_TD[sub if sub in ("1T", "2a", "2-dip", "2-weak") else st]
+    bo_out = None
+    if sp.get("bo_level"):
+        bo_out = {"level": _f(sp["bo_level"]), "vol_ratio": _f(sp.get("bo_vol"), 2),
+                  "vol_ok": bool(sp.get("bo_vol") and sp["bo_vol"] >= R["vol_mult"])}
     return {
         "stage": st, "sub": sub, "score": score, "conf": "high" if score == 4 else "med" if score == 3 else "low",
         "checks": checks, "week": w.index[i].strftime("%Y-%m-%d"), "close": _f(c[i]), "ma30": _f(ma[i]),
+        "ma150": _f(ma[i]), "ma50": _f(sp.get("ma10")),
         "slope": _f(slope), "slope_cls": sc, "pct_ma": _f((c[i] / ma[i] - 1) * 100, 1), "rs": _f(rs_now, 1),
-        "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl, "weeks": n,
+        "rs_prev": _f(rs_prev, 1), "rs_up": rs_up, "hh": hh, "hl": hl,
+        "weeks": len(wk) if wk is not None else n, "days": n, "tf": "daily", "ma_kind": "150d",
         "idx": {"pos": pos, "above_n": an, "of_w": cw, "crosses13": crosses, "struct": struct_cls,
                 "swing_hi": [_f(h[j]) for j in ph[-2:]], "swing_lo": [_f(l[j]) for j in pl[-2:]],
                 "swing_hi_w": [w.index[j].strftime("%Y-%m-%d") for j in ph[-2:]], "swing_lo_w": [w.index[j].strftime("%Y-%m-%d") for j in pl[-2:]],
                 "support": _f(sup), "resistance": _f(res), "broke_support": broke, "td": td[0], "td_he": td[1]},
-        "range": {"ceil": _f(ceil), "floor": _f(floor), "since_w": n - 1 - start, "since": w.index[start].strftime("%Y-%m-%d")},
-        "bo": None,
+        "range": {"ceil": _f(ceil), "floor": _f(floor), "since_w": n - 1 - start, "since_d": n - 1 - start,
+                  "since": w.index[start].strftime("%Y-%m-%d")},
+        "bo": bo_out, "vol_ratio": _f(sp.get("vol_ratio"), 2),
     }
 
 
@@ -1385,7 +1717,7 @@ def top_down(mkt: Optional[Dict[str, Any]], sec: Optional[Dict[str, Any]], R=RUL
 
 
 def short_market_gate(spy: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
-    """Short market gate: SPY in stage 3 or 4 permits shorts; stage 1 and stage 2 (including 2-weak, where 30W SMA is
+    """Short market gate: SPY in stage 3 or 4 permits shorts; stage 1 and stage 2 (including 2-weak, where SMA 150 יום is
     still rising) block new Sell-Stops unless short_mkt_allow_2weak."""
     if not spy:
         return {"ok": None, "he": "שוק לשורט (SPY): לא ידוע"}
@@ -1395,7 +1727,7 @@ def short_market_gate(spy: Optional[Dict[str, Any]], R=RULES) -> Dict[str, Any]:
     if sub == "2-weak":
         if R.get("short_mkt_allow_2weak"):
             return {"ok": True, "he": "שוק לשורט (SPY): שלב 2 בסיכון (2-weak) — זהירות"}
-        return {"ok": False, "he": "שוק לשורט (SPY): שלב 2 בסיכון (2-weak — מתחת לממוצע ונשבר שפל, אך 30W SMA עדיין עולה) — ממתינים לשלב 3/4"}
+        return {"ok": False, "he": "שוק לשורט (SPY): שלב 2 בסיכון (2-weak — מתחת לממוצע ונשבר שפל, אך SMA 150 יום עדיין עולה) — ממתינים לשלב 3/4"}
     return {"ok": False, "he": f"שוק לשורט (SPY) בשלב {s} — לא בשלב 3/4, אין Sell-Stop חדש"}
 
 
@@ -1548,7 +1880,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
     for e in etfs:
         if e == BENCH or e not in hm:
             continue
-        r = classify_index(weekly(hm[e], last), bw, R)  # Eyal 2026-11-15: dedicated index / sector classifier
+        r = classify_index(hm[e], bw, R)  # daily 150d stage engine (Eyal 2026-11-27, t453u); gates follow this
         if r:
             etf_out[e] = {"name": ETF_NAMES.get(e, e), **{k: r[k] for k in ("stage", "sub", "score", "conf", "close", "ma30", "slope", "slope_cls", "pct_ma", "rs", "rs_up", "week", "checks", "hh", "hl", "idx")}}
             ss_ = sector_status(etf_out[e], R)
@@ -1590,7 +1922,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
         if not cash_etf_ok(t, w, float(w["Close"].iloc[-1]), R):
             skipped["cash_etf"] += 1
             continue
-        r = classify(w, bw, R)
+        r = classify(df, bw, R)  # daily bars + 150d SMA; weekly find_breakout stays inside classify
         if r is None:
             skipped["short_history"] += 1
             continue
@@ -1612,15 +1944,15 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             entry = [
                 {"k": "mkt", "ok": mg["ok"], "he": mg["he"]},
                 {"k": "sector", "ok": None if not e else e["sec_ok"],
-                 "he": (f"{'ענף' if ind_etf else 'סקטור'} {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל 30W SMA שהפסיק לרדת)"
+                 "he": (f"{'ענף' if ind_etf else 'סקטור'} {etf or '?'} לא בשלב 4: שלב 2 מובהק או סוף שלב 1 – התעוררות (מעל SMA 150 יום שהפסיק לרדת)"
                        + (f" — {e['sec_he']} (שלב {e['stage']}, {'מעל' if e['close'] > e['ma30'] else 'מתחת'} לממוצע, שיפוע {e['slope_cls']}, מבנה {e['idx']['struct']}; RS {e['rs']} מידע בלבד) · {e.get('td_he', '')}" if e else "")
                        + (f" · סקטור {sec_etf} שלב {etf_out[sec_etf]['stage']} (מידע)" if ind_etf and sec_etf and sec_etf in etf_out else ""))},
                 {"k": "rs", "ok": rs_ok, "he": "Mansfield RS > 0 ועולה"},
                 {"k": "chase", "ok": not p["chase"],
-                 "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל 30W SMA "
+                 "he": f"לא רודפים: עד {R['buy_zone_pct']:g}% מעל רמת הפריצה ועד {R['max_pct_above_ma']:g}% מעל SMA 150 יום "
                        f"(סגירה {p['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Buy-Stop {p['entry_vs_ma']:+}% מהממוצע)"
                        + (" — רחוקה מדי / אל תרדוף" if p["chase"] else "")},
-                {"k": "stop", "ok": not p["stop_wide"], "info": True, "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, מתחת ל{ {'low': 'שפל הבסיס', 'hl': 'שפל עולה (שפל הבסיס רחוק מדי)'}.get(p['stop_basis'], '30W SMA') })"
+                {"k": "stop", "ok": not p["stop_wide"], "info": True, "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מתחת לכניסה ({p['risk_pct']}%, מתחת ל{ {'low': 'שפל הבסיס', 'hl': 'שפל עולה (שפל הבסיס רחוק מדי)'}.get(p['stop_basis'], 'SMA 150 יום') })"
                  + (" — SL רחב מדי (מעט מניות)" if p["stop_wide"] else "")},
                 {"k": "air", "ok": True if p["open_sky"] else None, "he": ov_he},
                 {"k": "rr", "ok": None if p["rr"] is None else p["rr"] >= R["min_rr"],
@@ -1649,7 +1981,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                     {"k": "near", "ok": 0 <= (base["dist_pct"] or 0) <= R["pre_bo_pct"],
                      "he": f"קרובה לתקרה: עד {R['pre_bo_pct']:g}% מתחת להתנגדות ({base['dist_pct']}%)"},
                     {"k": "ma_ok", "ok": r["close"] > r["ma30"] and r["slope_cls"] != "down",
-                     "he": f"המחיר מעל 30W SMA שאינו יורד (שיפוע {r['slope_cls']})"},
+                     "he": f"המחיר מעל SMA 150 יום שאינו יורד (שיפוע {r['slope_cls']})"},
                 ]
         # 'info' checks (SL width, Eyal 2026-11-14 'don't disqualify for a wide stop') are shown but never gate
         bs = entry_pass(entry, pre)
@@ -1672,12 +2004,12 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                         + (f" · סקטור {sec_etf} שלב {etf_out[sec_etf]['stage']} (מידע)" if ind_etf and sec_etf and sec_etf in etf_out else ""))},
                 {"k": "rs", "ok": srs_ok, "he": "Mansfield RS < 0 ויורד"},
                 {"k": "chase", "ok": not sp["chase"],
-                 "he": f"לא רודפים: עד {R['sell_zone_pct']:g}% מתחת לרמת השבירה ועד {R['max_pct_below_ma']:g}% מתחת ל-30W SMA "
+                 "he": f"לא רודפים: עד {R['sell_zone_pct']:g}% מתחת לרמת השבירה ועד {R['max_pct_below_ma']:g}% מתחת ל-SMA 150 יום "
                        f"(סגירה {sp['close_vs_level']:+}% מהרמה, {r['pct_ma']:+}% מהממוצע; Sell-Stop {sp['entry_vs_ma']:+}% מהממוצע)"
                        + (" — רחוקה מדי / אל תרדוף" if sp["chase"] else "")},
                 {"k": "sf", "ok": sf_ok, **({"info": True} if sf_val is None else {}), "he": sf_he},
                 {"k": "stop", "ok": not sp["stop_wide"], "info": True,
-                 "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מעל הכניסה ({sp['risk_pct']}%, מעל { {'high': 'שיא הפסגה', 'lh': 'שיא יורד (שיא הפסגה רחוק מדי)'}.get(sp['stop_basis'], '30W SMA') })"
+                 "he": f"מידע בלבד (לא פוסל): SL עד {R['max_stop_pct']:g}% מעל הכניסה ({sp['risk_pct']}%, מעל { {'high': 'שיא הפסגה', 'lh': 'שיא יורד (שיא הפסגה רחוק מדי)'}.get(sp['stop_basis'], 'SMA 150 יום') })"
                        + (" — SL רחב מדי (מעט מניות)" if sp["stop_wide"] else "")},
                 {"k": "air", "ok": True if sp["open_sky"] else (None if sp["rr"] is None else sp["rr"] >= R["min_rr"]), "he": sup_he},
                 {"k": "rr", "ok": None if sp["rr"] is None else sp["rr"] >= R["min_rr"],
@@ -1706,7 +2038,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
                     {"k": "near", "ok": 0 <= (sbase["dist_pct"] or 0) <= R["pre_bo_pct"],
                      "he": f"קרובה לתמיכה: עד {R['pre_bo_pct']:g}% מעל הרצפה ({sbase['dist_pct']}%)"},
                     {"k": "ma_ok", "ok": r["close"] < r["ma30"] and r["slope_cls"] != "up",
-                     "he": f"המחיר מתחת ל-30W SMA שאינו עולה (שיפוע {r['slope_cls']})"},
+                     "he": f"המחיר מתחת ל-SMA 150 יום שאינו עולה (שיפוע {r['slope_cls']})"},
                 ]
         ss_flag = entry_pass(short_entry, pre)
         rows.append({
@@ -1737,7 +2069,7 @@ def build(offline: bool = False, R=RULES) -> Dict[str, Any]:
             sparks[e] = spark(we, R["spark_weeks"])
             write_candles(e, we, R)
     counts = {str(s): sum(1 for x in rows if x["stage"] == s) for s in (1, 2, 3, 4)}
-    counts["2A"] = sum(1 for x in rows if x["sub"] == "2A")
+    counts["2A"] = sum(1 for x in rows if str(x.get("sub") or "") in ("2A", "2a"))
     counts["4A"] = sum(1 for x in rows if x["sub"] == "4A")
     cands = sorted((x for x in rows if x["bs"]), key=lambda x: -(x["plan"]["rr"] or 0))
     short_cands = sorted((x for x in rows if x["ss"]), key=lambda x: -(x["short_plan"]["rr"] or 0))

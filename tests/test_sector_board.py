@@ -1,7 +1,8 @@
 """Sector board badge, filters, and recommendations (srs_app.sector_board, T-7)."""
 from srs_app.sector_board import (
-    board_badge, flag_near_res, flag_near_sup, flag_retest2, flag_retest4, recommend, flags_of,
-    resistance_of, support_of, top_stocks, filter_lists, last_breakout_level, etf_as_stock,
+    board_badge, flag_near_res, flag_bs_ready, flag_2a, flag_near_sup, flag_retest2, flag_retest4,
+    recommend, flags_of, resistance_of, support_of, top_stocks, filter_lists, last_breakout_level,
+    etf_as_stock,
 )
 from srs_app.stages import buy_stop_price, stop_below, RULES
 
@@ -15,17 +16,21 @@ def _row(**kw):
     return base
 
 
-def test_badge_2a_is_above_ma_before_breakout():
-    r = _row(stage=1, sub="1B", close=100, ma30=95, base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 4.8})
-    assert board_badge(r) == "2a"
+def test_badge_stage1_above_ma_is_not_2a():
+    """Stage 1 above the 150d is a Buy-Stop candidate, not badge 2a."""
+    r = _row(stage=1, sub="1B", close=102, ma30=95, base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 2.9})
+    assert board_badge(r) == "1"
+    assert flag_bs_ready(r) is True  # $3 under the ceiling <= $4 weekly ATR
 
 
-def test_badge_2a_not_used_for_pipeline_2A_breakout():
-    # pipeline sub 2A is a fresh stage-2 breakout — badge stays "2"
-    r = _row(stage=2, sub="2A", close=110, ma30=95, base=None,
+def test_badge_2a_is_official_breakout():
+    r = _row(stage=2, sub="2a", close=110, ma30=95, base=None,
              range={"ceil": 120, "floor": 105, "since_w": 1, "since": "2026-11-13"},
-             bo={"level": 105, "weeks_ago": 1})
-    assert board_badge(r) == "2"
+             bo={"level": 105, "weeks_ago": 1, "vol_ratio": 2.4, "vol_ok": True})
+    assert board_badge(r) == "2a"
+    assert flag_2a(r) is True
+    # 2A (legacy spelling) also counts
+    assert board_badge(_row(stage=2, sub="2A", close=110, ma30=95, bo={"level": 105, "vol_ok": True})) == "2a"
 
 
 def test_badge_stage1_below_ma_is_1():
@@ -62,11 +67,11 @@ def test_stage3_near_support_filter():
 
 def test_stage2_retest_of_broken_resistance():
     # recorded breakout at 100, close sitting on it
-    r = _row(stage=2, sub="2", close=101, ma30=90, bo={"level": 100, "weeks_ago": 4},
+    r = _row(stage=2, sub="2", close=101, ma30=90, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
              range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     assert flag_retest2(r) is True
     # extended, not a retest
-    r2 = _row(stage=2, close=130, ma30=90, bo={"level": 100, "weeks_ago": 10},
+    r2 = _row(stage=2, close=130, ma30=90, bo={"level": 100, "weeks_ago": 10, "vol_ratio": 2.1, "vol_ok": True},
               range={"ceil": 135, "floor": 100, "since_w": 10, "since": "x"}, base=None)
     assert flag_retest2(r2) is False
     # stage 1 is not a stage-2 retest
@@ -101,7 +106,7 @@ def test_recommend_stage1_below_ma_waits_for_sma():
 
 
 def test_recommend_retest2_is_limit():
-    r = _row(stage=2, close=101, ma30=90, bo={"level": 100, "weeks_ago": 4},
+    r = _row(stage=2, close=101, ma30=90, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
              range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     rec = recommend(r, "2", flags_of(r, "2"))
     assert rec["kind"] == "limit_retest"
@@ -131,13 +136,14 @@ def test_filter_lists_keys():
         _row(t="A", stage=1, close=101, ma30=95, base={"top": 105, "low": 90, "weeks": 12, "dist_pct": 3.8}),
         _row(t="B", stage=3, close=94, ma30=100, short_base={"floor": 90, "top": 110, "weeks": 8, "dist_pct": 4.4},
              range={"ceil": 110, "floor": 90, "since_w": 8, "since": "x"}, base=None),
-        _row(t="C", stage=2, close=101, ma30=90, bo={"level": 100, "weeks_ago": 4},
+        _row(t="C", stage=2, close=101, ma30=90, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
              range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None),
         _row(t="D", stage=4, close=99, ma30=110, bd={"level": 100, "weeks_ago": 3},
              range={"ceil": 100, "floor": 80, "since_w": 3, "since": "x"}, base=None),
     ]
     fl = filter_lists(rows)
-    assert fl["2a_res"] == ["A"]
+    assert fl["bs_ready"] == ["A"]
+    assert fl["2a"] == []          # A is a Buy-Stop candidate, not a 2a breakout
     assert fl["3_sup"] == ["B"]
     assert fl["retest2"] == ["C"]
     assert fl["retest4"] == ["D"]
@@ -158,7 +164,7 @@ def test_stage2_without_breakout_level_is_not_retest():
     low = _row(stage=2, close=102, ma30=90, bo=None,
                range={"ceil": 120, "floor": 100, "since_w": 10, "since": "x"}, base=None)
     assert flag_retest2(low) is False
-    derived = _row(stage=2, close=102, ma30=90, bo=None, _bo_lvl=100,
+    derived = _row(stage=2, close=102, ma30=90, bo={"level": 100, "vol_ratio": 2.2, "vol_ok": True},
                    range={"ceil": 120, "floor": 100, "since_w": 10, "since": "x"}, base=None)
     assert flag_retest2(derived) is True
 
@@ -181,13 +187,13 @@ def test_board_near_is_one_weekly_atr_not_five_percent():
                    short_base={"floor": 90, "top": 110, "weeks": 8, "dist_pct": 11.7},
                    range={"ceil": 110, "floor": 90, "since_w": 8, "since": "x"}, base=None)
     assert flag_near_sup(sup_far) is False  # $10.50 > $4
-    retest_far = _row(stage=2, close=106, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+    retest_far = _row(stage=2, close=106, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
                       range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     assert flag_retest2(retest_far) is False  # $6 > $4; was 6% so also outside 5%, use 104
-    retest_mid = _row(stage=2, close=104.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+    retest_mid = _row(stage=2, close=104.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
                       range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     assert flag_retest2(retest_mid) is False  # $4.50 > $4 ATR, but 4.5% would have passed the old 5% rule
-    retest_ok = _row(stage=2, close=103.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4},
+    retest_ok = _row(stage=2, close=103.5, ma30=90, atr_w=4.0, bo={"level": 100, "weeks_ago": 4, "vol_ratio": 2.4, "vol_ok": True},
                      range={"ceil": 115, "floor": 100, "since_w": 4, "since": "x"}, base=None)
     assert flag_retest2(retest_ok) is True
 

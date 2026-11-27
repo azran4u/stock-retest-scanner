@@ -58,8 +58,8 @@ const ddmm = (iso?: string | null) => (iso && iso.length >= 10 ? `${iso.slice(8,
 
 export const STAGE_HE: Record<number, string> = { 1: 'שלב 1 · בסיס', 2: 'שלב 2 · עלייה', 3: 'שלב 3 · פסגה', 4: 'שלב 4 · ירידה' };
 export const SUB_HE: Record<string, string> = {
-  '2A': 'פריצה חדשה (2A)', '2': 'מגמה עולה', '2-ext': 'מתוחה מעל הממוצע (>35%)', '2-weak': 'מתחת לממוצע עולה (אזהרה)',
-  '1A': 'בסיס מוקדם (<10 ש׳)', '1': 'בסיס', '1T': 'סוף שלב 1 · נקודת מפנה', '2-dip': 'מתחת לממוצע עולה, שפל עולה מחזיק', '1B': 'בסיס בוגר (≥10 ש׳)', '3': 'פסגה / הפצה', '4A': 'שבירה חדשה (4A)', '4': 'מגמת ירידה', '4-ext': 'מתוחה מתחת לממוצע (>35%)', '4-late': 'מעל ממוצע יורד (אולי תחילת שלב 1)',
+  '2A': 'פריצה במחזור גבוה (2a)', '2a': 'פריצה במחזור גבוה (2a)', '2': 'מגמה עולה (2 / 2b)', '2-ext': 'מתוחה מעל הממוצע (>35%)',
+  '1A': 'בסיס מוקדם (<50 ימי מסחר)', '1': 'בסיס', '1T': 'סוף שלב 1 · נקודת מפנה', '1B': 'בסיס בוגר (≥50 ימי מסחר)', '3': 'פסגה / הפצה', '4A': 'שבירה חדשה (4A)', '4': 'מגמת ירידה', '4-ext': 'מתוחה מתחת לממוצע (>35%)', '4-late': 'מעל ממוצע יורד (אולי תחילת שלב 1)',
 };
 const CONF_HE: Record<string, string> = { high: 'ודאות גבוהה', med: 'ודאות בינונית', low: 'ודאות נמוכה' };
 export type Tab = 'bs' | 'ss' | '2A' | '4A' | '1' | '2' | '3' | '4' | 'novol';
@@ -86,12 +86,12 @@ export function levelsOf(r: StageRow, ed?: StEd): StLevel[] {
     const sp = r.short_plan;
     const sups = sp?.sup_levels?.length ? sp.sup_levels : sp?.support != null ? [sp.support] : [];
     sups.forEach((v, i) => comp.push({ id: 'c-sup' + i, price: v, role: 'sup', label: i === 0 ? 'תמיכה מטה (יעד)' : 'תמיכה מטה', his: false }));
-    comp.push({ id: 'c-res', price: sp?.swing_high ?? r.ma30, role: 'res', label: sp?.swing_high != null ? 'התנגדות – שיא הפסגה' : 'התנגדות – 30W SMA', his: false });
+    comp.push({ id: 'c-res', price: sp?.swing_high ?? r.ma30, role: 'res', label: sp?.swing_high != null ? 'התנגדות – שיא הפסגה' : 'התנגדות – SMA 150 יום', his: false });
   } else {
     const p = r.plan;
     const ov = p?.ov_levels?.length ? p.ov_levels : p?.overhead != null ? [p.overhead] : [];
     ov.forEach((v, i) => comp.push({ id: 'c-ov' + i, price: v, role: 'res', label: i === 0 ? 'התנגדות תקורה (יעד)' : 'התנגדות תקורה', his: false }));
-    comp.push({ id: 'c-sup', price: p?.swing_low ?? r.ma30, role: 'sup', label: p?.swing_low != null ? 'תמיכה – שפל הבסיס' : 'תמיכה – 30W SMA', his: false });
+    comp.push({ id: 'c-sup', price: p?.swing_low ?? r.ma30, role: 'sup', label: p?.swing_low != null ? 'תמיכה – שפל הבסיס' : 'תמיכה – SMA 150 יום', his: false });
   }
   const mine = (ed?.lines || []).filter((x) => x.status !== 'deleted');
   const over = new Map(mine.filter((x) => x.meta?.ref).map((x) => [x.meta!.ref as string, x]));
@@ -196,7 +196,7 @@ export function zoneOf(r: StageRow): { top: number; bottom: number; start: strin
 export function inTab(r: StageRow, tab: Tab): boolean {
   if (tab === 'bs') return !!r.bs;
   if (tab === 'ss') return !!r.ss;
-  if (tab === '2A') return r.sub === '2A';
+  if (tab === '2A') return r.sub === '2A' || r.sub === '2a';
   if (tab === '4A') return r.sub === '4A';
   if (tab === 'novol') return !!r.bo && r.bo.holding && !r.bo.vol_ok && !r.bo.in_range;
   return String(r.stage) === tab;
@@ -306,7 +306,7 @@ function cardInnerHtml(r: StageRow, e: EffPlan | null, hisZone = false, watched 
   const gates = srcEntry.filter((c) => !c.info), n = gates.length, ok = gates.filter((c) => c.ok === true).length;
   return `<div class="r1"><button class="star ${watched ? 'on' : ''}" data-star="${esc(r.t)}" aria-label="מעקב">${watched ? '★' : '☆'}</button><b class="sttk" dir="ltr">${esc(r.t)}</b> ${stageBadge(r.stage, r.sub)} <span class="badge conf-${r.conf}" title="${r.score}/4 תנאי זיהוי">${r.score}/4</span>${etfBadges(r)}</div>
   <div class="sttags">${tagsHtml(r, e, hisZone)}</div>${rsLine(r)}
-  <div class="stchartwrap"><canvas class="stchart" data-stchart="${esc(r.t)}" aria-label="גרף שבועי שנתיים + 30W SMA"></canvas><div class="atrw"${r.atr_w == null ? ' hidden' : ''}><span>ATR(W)</span><b>${r.atr_w == null ? '' : r.atr_w.toFixed(2)}</b></div></div>
+  <div class="stchartwrap"><canvas class="stchart" data-stchart="${esc(r.t)}" aria-label="גרף שבועי שנתיים + ממוצע 150 יום (≈30W)"></canvas><div class="atrw"${r.atr_w == null ? ' hidden' : ''}><span>ATR(W)</span><b>${r.atr_w == null ? '' : r.atr_w.toFixed(2)}</b></div></div>
   <div class="skvs">
     ${kv('R:R', e?.rr != null ? '1:' + f(e.rr) : '—', e?.rr != null && e.rr >= 2.5 ? 'pos' : 'neg')}${kv('SL', e?.slPct != null ? `${f(e.slPct, 1)}% · ${e.basis}` : '—', e ? (e.wide ? 'neg' : 'pos') : '')}
     ${kv('מניות ($55)', e?.shares ? String(e.shares) : '—')}${kv('תנאי כניסה', n ? `${ok}/${n}` : '—', n ? (ok === n ? 'pos' : 'neg') : '')}
@@ -397,7 +397,7 @@ export function detailHtml(d: StagesDoc, r: StageRow, e: EffPlan | null, ed: StE
           ? (() => { const sup = supOf(r, e); return kv('תמיכה מטה (שנתיים)' + (sup.his ? ' (שלך)' : ''), sp || sup.his ? (sup.sky ? 'אין — שמיים פתוחים מטה' : `$${f(sup.lv)} (-${f(sup.pct, 1)}%)`) : '—', sup.sky ? 'pos' : ''); })()
           : (() => { const ov = ovOf(r, e); return kv('התנגדות תקורה (שנתיים)' + (ov.his ? ' (שלך)' : ''), p || ov.his ? (ov.sky ? 'אין — שמיים פתוחים' : `$${f(ov.lv)} (+${f(ov.pct, 1)}%)`) : '—', ov.sky ? 'pos' : ''); })()}
         ${kv(z ? 'תקרת בסיס (שלך)' : 'תקרת בסיס', ceil != null ? '$' + f(ceil) : '—')}${kv(z ? 'רצפת בסיס (שלך)' : 'רצפת בסיס', floor != null ? '$' + f(floor) : '—')}
-        ${shortSide ? kv('מהרצפה', floor != null ? `${sg((r.close / floor - 1) * 100)}%` : '—') : kv('מהתקרה', ceil != null ? `${sg((r.close / ceil - 1) * 100)}%` : '—')}${kv('מ-30W SMA', sg(r.pct_ma) + '%', shortSide ? ((r.pct_ma ?? 0) < -25 ? 'neg' : '') : ((r.pct_ma ?? 0) > 25 ? 'neg' : ''))}
+        ${shortSide ? kv('מהרצפה', floor != null ? `${sg((r.close / floor - 1) * 100)}%` : '—') : kv('מהתקרה', ceil != null ? `${sg((r.close / ceil - 1) * 100)}%` : '—')}${kv('מ-SMA 150 יום', sg(r.pct_ma) + '%', shortSide ? ((r.pct_ma ?? 0) < -25 ? 'neg' : '') : ((r.pct_ma ?? 0) > 25 ? 'neg' : ''))}
         ${!shortSide && p?.vol_need ? kv('מחזור נדרש בשבוע הפריצה', Math.round(p.vol_need).toLocaleString('en-US')) : ''}${bo ? kv('מחזור פריצה', f(bo.vol_ratio, 1) + 'x', bo.vol_ok ? 'pos' : 'neg') : ''}${bd ? kv('מחזור שבירה', f(bd.vol_ratio, 1) + 'x') : ''}
         ${kv('דוח הבא', earnTxt(r), earnBad(r))}${r.earn_last ? kv('דוח אחרון', `${ddmm(r.earn_last)}${r.earn_last_ago != null ? ` · לפני ${r.earn_last_ago} ימ״ס` : ''}`) : ''}${kv('Mansfield RS', `${sg(r.rs)} ${r.rs_up == null ? '' : r.rs_up ? '↑' : '↓'}`, (r.rs ?? 0) > 0 ? 'pos' : 'neg')}
         ${kv('מחזור יומי' + ((R.dollar_vol_days != null) ? ` (${R.dollar_vol_days}י)` : ''), dvTxt(r.dv_m))}${kv('ATR(W)', r.atr_w != null ? '$' + f(r.atr_w) : '—')}${shortSide && r.short_float != null ? kv('שורט פלואט', `${f(r.short_float, 1)}%`, r.short_float >= 10 ? 'neg' : '') : ''}
@@ -420,7 +420,7 @@ function etfPanel(title: string, entries: [string, EtfStage][], strong: string[]
   const sok = entries.filter(([, e]) => e.short_sec_ok).map(([k]) => esc(k)).join(', ') || 'אין';
   const row = ([k, e]: [string, EtfStage]) => `<tr class="${strong.includes(k) ? 'strong' : ''}"><td dir="ltr"><a class="etfl" data-etf="${esc(k)}" href="#/stages/${esc(k)}"><b>${esc(k)}</b></a>${strong.includes(k) ? ' ★' : ''}</td><td>${esc(e.name)}</td><td>${stageBadge(e.stage, e.sub)}</td><td class="${e.sec_ok ? 'pos' : 'neg'}">${e.sec_ok ? '✓' : '✗'} ${esc(e.sec_he ?? '')}</td><td class="${e.short_sec_ok ? 'pos' : 'neg'}">${e.short_sec_ok ? '✓' : '✗'} ${esc(e.short_sec_he ?? '')}</td><td class="sectd ${TD_CLS[e.td ?? ''] ?? ''}">${esc(e.td_he ?? '')}</td><td>${esc(POS_HE[e.idx?.pos ?? ''] ?? '—')}${e.idx ? ` <span class="muted" dir="ltr">${e.idx.above_n}/${e.idx.of_w}</span>` : ''}</td><td dir="ltr">${SLOPE_HE(e.slope_cls)} ${sg(e.slope)}%</td><td dir="ltr">${esc(e.idx?.struct ?? '—')}</td><td dir="ltr">${sg(e.pct_ma)}%</td><td dir="ltr">${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}</td></tr>`;
   return `<details class="secs"><summary>${esc(title)} · לונג: ${ok} · שורט: ${sok}</summary>
-  <div class="tbl"><table><tr><th>תעודה</th><th>שם</th><th>שלב</th><th>ללונג</th><th>לשורט</th><th>משמעות (Top-Down)</th><th>מחיר מול הממוצע</th><th>שיפוע</th><th>מבנה</th><th>מ-30W</th><th>RS (מידע)</th></tr>
+  <div class="tbl"><table><tr><th>תעודה</th><th>שם</th><th>שלב</th><th>ללונג</th><th>לשורט</th><th>משמעות (Top-Down)</th><th>מחיר מול הממוצע</th><th>שיפוע</th><th>מבנה</th><th>מ-150d</th><th>RS (מידע)</th></tr>
   ${entries.map(row).join('')}
   </table></div></details>`;
 }
@@ -440,45 +440,48 @@ export function rulesHtml(d: StagesDoc, maxRisk: number): string {
   const R = d.rules;
   const scr = Object.entries(d.screens).map(([k, u]) => `<a href="${esc(u.replace('v=152', 'v=111'))}" target="_blank" rel="noopener">${k}</a>`).join(' · ');
   return `<div class="strules">
-  <p><b>מקור:</b> דף המסטרקלאס של ויינשטיין ששלחת + הכללים שהוספת ב-14/11 (התנגדות תקורה, לא רודפים, Buy-Stop, דוחות, טווח בסיס, SL). נרות שבועיים בלבד (סגירת שישי, שבוע שהושלם).</p>
+  <p><b>מקור:</b> <a href="https://traderlion.com/trading-strategies/stage-analysis/" target="_blank" rel="noopener">TraderLion Stage Analysis</a> + הגדרות שלך (27/11). זיהוי השלב הוא על <b>גרף יומי + ממוצע 150 יום</b> (הסרטונים האחרונים של סטן ויינשטיין) ועל ממוצע 50 יום כמקבילה ל-10 שבועות. "קרוב" נשאר ATR שבועי אחד. תוכנית ה-Buy-Stop (כניסה, סטופ Stef, יעד ו-R:R) עדיין מחושבת על הגרף השבועי, בלי שינוי בכללי האסטרטגיה.</p>
   <h4>יקום (FinViz)</h4><p>NYSE + NASDAQ, מניות בלבד, מחיר &gt; $${R.hard_min_price}, מחזור יומי ממוצע &gt; 100K. ${scr}.</p>
-  <h4>סיווג השלב — לפי טווח המסחר (14/11)</h4><ul>
-   <li>30W SMA = ממוצע ${R.ma_weeks} סגירות שבועיות. שיפוע = שינוי ב-${R.slope_lookback_w} שבועות: עולה &gt; +${R.slope_flat_pct}%, יורד &lt; −${R.slope_flat_pct}%, אחרת שטוח.</li>
-   <li><b>בתוך טווח בסיס חציית הממוצע לא משנה שלב.</b> שלב 1 (בסיס אחרי ירידה) עובר לשלב 2 רק בסגירה שבועית מעל תקרת הטווח כשהממוצע שטוח/עולה, ולשלב 4 רק בסגירה מתחת לרצפת הטווח. אותו דבר בשלב 3 (פסגה אחרי עלייה).</li>
-   <li>טווח שלב 1/3 = השיא והשפל מאז שהשלב התחיל (או מהשפל/שיא שסיים את המגמה הקודמת), ${R.min_base_w}–${R.range_max_w} שבועות.</li>
-   <li>שלב 2 נשאר שלב 2 (גם בבסיס המשך) עד סגירה מתחת לרצפת הבסיס הנוכחי כשהממוצע כבר לא עולה (→3, או →4 כשהממוצע יורד), או עד שהממוצע משתטח בלי שיא 26 ש׳ חדש ${R.min_base_w} שבועות (→3). שלב 4 עובר לשלב 1 כשהממוצע מפסיק לרדת.</li>
-   <li><b>Mansfield RS</b> = ((מניה / S&amp;P 500) / SMA${R.rs_ma_weeks} − 1) × 100. "עולה" = גבוה מלפני ${R.rs_rising_w} שבועות.</li></ul>
-  <h4>שלב של מדד / תעודת סקטור (15/11) — 4 פרמטרים, גרף שבועי + 30W SMA</h4><ul>
-   <li><b>מחיר מול הממוצע:</b> "מעל בעקביות" = ≥ ${R.idx_consistent_n} מ-${R.idx_consistent_w} הסגירות האחרונות מעל 30W SMA; "מתחת בעקביות" = ≤ ${(R.idx_consistent_w ?? 10) - (R.idx_consistent_n ?? 8)}; אחרת "חוצה הלוך ושוב".</li>
-   <li><b>שיפוע:</b> כמו במניות (${R.slope_lookback_w} שבועות, ±${R.slope_flat_pct}%).</li>
-   <li><b>מבנה:</b> שיאי / שפלי סווינג שבועיים (${R.idx_pivot_w} נרות מכל צד): HH/HL = שיאים ושפלים עולים, LH/LL = יורדים; סגירה מעל שיא הסווינג האחרון = HH בהתהוות, מתחת לשפל האחרון = השפל העולה נשבר.</li>
-   <li><b>כלל 1 — השיפוע גובר על חצייה בודדת:</b> שלב 4 רק כשהממוצע יורד <b>וגם</b> סגירה מתחת לתמיכה משמעותית (שפל הסווינג האחרון / רצפת הטווח). סגירה מתחת לממוצע שעדיין עולה, כשהשפל העולה מחזיק = עדיין שלב 2 ("מתחת לממוצע עולה, שפל עולה מחזיק"). שלב 2→3 כשהממוצע מאבד את העלייה ואין שיא חדש ${R.idx_top_w} שבועות (או שהשפל העולה נשבר).</li>
-   <li><b>כלל 2 — סוף שלב 1:</b> חזרה מעל 30W SMA שהשתטח אחרי ירידה = נקודת מפנה (מותר לקנות מובילות בסקטור). שלב 1→2: סגירה מעל תקרת הבסיס (שיא מאושר) כשהממוצע לא יורד, או ממוצע עולה + מעל בעקביות + HH/HL.</li>
+  <h4>סיווג השלב — גרף יומי, ממוצע 150 יום (TraderLion / 27/11)</h4><ul>
+   <li>ממוצע ראשי = SMA ${R.sma150_days ?? 150} יום. ממוצע משני (מקבילת 10 שבועות) = SMA ${R.sma50_days ?? 50} יום.</li>
+   <li><b>שיפוע:</b> שינוי באחוזים של ממוצע 150 יום על פני ${R.sma150_slope_d ?? 20} ימי מסחר. שטוח אם |השינוי| ≤ ${R.sma150_slope_flat_pct ?? 0.8}% ; ירידה חדה אם השינוי ≤ −${R.sma150_slope_sharp_pct ?? 2}% והממוצע לא עולה באותו יום. אם הממוצע ירד באותו יום — לא מסווג "עולה".</li>
+   <li><b>שלב 1 (בסיס):</b> אחרי שלב 4, הממוצע השתטח / הפסיק לרדת והמחיר מדשדש וחוצה אותו. אם הממוצע עדיין יורד בחדות או שהמחיר רחוק יותר מ-ATR שבועי אחד מתחתיו — עדיין שלב 4.</li>
+   <li><b>שלב 2a (פריצה רשמית, נקודה A):</b> סגירה יומית מעל תקרת בסיס שלב 1, במחזור ≥ ${R.vol_mult}× ממוצע ${R.sma50_days ?? 50} הימים, הממוצע אינו יורד, והמחיר מעל הממוצע. נשאר 2a כ-${R.stage_2a_days ?? 30} ימי מסחר (כולל הריטסט הראשון במחזור קל שמחזיק — נקודה B).</li>
+   <li><b>שלב 2 / 2b:</b> אחרי הפריצה. מחיר מעל ממוצע 150 יום עולה, שיאים ושפלים עולים. סגירה מתחת לממוצע יוצאת משלב 2 (אין יותר 2-dip / 2-weak). אם הממוצע עדיין עולה והמחיר מעליו — שפל קטן שנשבר אינו שלב 4.</li>
+   <li><b>שלב 3 (הפצה):</b> הממוצע משתטח, המחיר חוצה אותו, מחזור כבד בלי שיא חדש, או סגירה מתחת לממוצע 50 יום במחזור כבד.</li>
+   <li><b>שלב 4:</b> מתחיל בסגירה מתחת לתמיכת שלב 3 או מתחת לשפל העולה האחרון של העלייה — גם אם הממוצע עדיין שטוח. גם מחיר שרחוק יותר מ-ATR שבועי אחד מתחת לממוצע עובר ל-4. אחר כך שיאים ושפלים יורדים והממוצע מתחיל לרדת. 4→1 רק אחרי שהממוצע ירד בפועל ואז השתטח, והמחיר כבר לא רחוק מתחתיו.</li>
+   <li>בסיס בוגר ≈ ${R.min_base_d ?? 50} ימי מסחר; חלון בסיס ≈ ${R.base_window_d ?? 130} ימים; סווינג מאושר מול ${R.pivot_d ?? 10} ימים מכל צד. "רחוק מתחת לממוצע" / "קרוב לרמה" = ATR שבועי אחד.</li>
+   <li><b>Mansfield RS</b> נשאר שבועי: ((מניה / S&amp;P 500) / SMA${R.rs_ma_weeks} − 1) × 100. "עולה" = גבוה מלפני ${R.rs_rising_w} שבועות.</li></ul>
+  <h4>שלב של מדד / תעודת סקטור — אותם כללים יומיים + ממוצע 150 יום</h4><ul>
+   <li><b>מחיר מול הממוצע:</b> "מעל בעקביות" = ≥ ${R.idx_consistent_n_d ?? 20} מ-${R.idx_consistent_d ?? 25} הסגירות היומיות האחרונות מעל ממוצע 150 יום.</li>
+   <li><b>שיפוע:</b> כמו במניות (${R.sma150_slope_d ?? 20} ימי מסחר, ±${R.sma150_slope_flat_pct ?? 0.8}%).</li>
+   <li><b>מבנה:</b> שיאי / שפלי סווינג יומיים (${R.idx_pivot_d ?? 13} נרות מכל צד): HH/HL או LH/LL.</li>
+   <li>שערי השוק והסקטור (אין לונג חדש כש-SPY בשלב 3/4; שורט מותר ב-3/4) נשענים על הסיווג היומי הזה.</li>
    <li><b>כלל 3 — Top-Down:</b> שוק 2 + סקטור 2 = הקצאה מלאה; סקטור 4 = להימנע; סקטור 3 = אין לונג חדש; שוק בשלב 3/4 = אין Buy-Stop חדש גם אם המניה נראית טוב.</li>
    <li><b>ענפים (16/11):</b> תעודות ענף (KRE, ITA, XBI, IGV, SMH, CIBR וכו׳) מסווגות באותם 4 פרמטרים. המניה נשענת על תעודת הענף כשהתעשייה ממופת, אחרת על הסקטור הרחב. שניהם מוצגים בכרטיס ובעמוד.</li></ul>
   <h4>Buy-Stop (מועמדות)</h4><ul>
-   <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל 30W SMA; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
+   <li>כניסה = Buy-Stop מעט מעל תקרת הבסיס: תקרה + ${R.buy_stop_buf_pct}% (מינימום $${R.buy_stop_min_buf}). שני מצבים: (א) לפני פריצה — בסיס בוגר (תקרה מלפני ≥${R.min_base_w} ש׳), סגירה עד ${R.pre_bo_pct}% מתחת לתקרה ומעל ממוצע 150 יום; (ב) פריצה טרייה (2A) שעדיין באזור הקנייה.</li>
    <li>פריצה (2A): סגירה מעל תקרת ${R.base_window_w} השבועות (שנקבעה לפני ≥${R.min_base_w} ש׳) וגם מעל תקרת טווח שלב 1, מחזור שבוע הפריצה ≥ ${R.vol_mult}x ממוצע ${R.vol_avg_w} שבועות (עליות בתוך הבסיס במחזור רגיל — לא נפסל). לפני פריצה: תנאי על הטריגר — שבוע הפריצה חייב מחזור ≥ ${R.vol_mult}x.</li>
-   <li><b>לא רודפים:</b> עד ${R.buy_zone_pct}% מעל רמת הפריצה ועד ${R.max_pct_above_ma}% מעל 30W SMA (מחיר או Buy-Stop), אחרת "רחוקה מדי / אל תרדוף".</li>
-   <li><b>SL (16/11):</b> שני עוגנים בגרף השבועי — A = 30W SMA, B = השפל המשמעותי האחרון בבסיס הנוכחי שלא נשבר (רצפת הבסיס). ה-SL מתחת <b>לנמוך מבין השניים</b>, ${R.stop_margin_pct}% מתחתיו (בתוך 0.5%–${R.stop_margin_max_pct}%), או $${R.stop_round_tick} מתחת למספר עגול שנמצא ממש מתחת לעוגן אם זה עדיין בתוך ${R.stop_margin_max_pct}%. שפל מעל הממוצע → מתחת לממוצע ("ממוצע"); שפל מתחת לממוצע → מתחת לשפל ("שפל"). אם ה-SL מתחת לשפל רחוק מ-${R.max_stop_pct}% והממוצע כבר עולה — מתחת לשפל העולה האחרון שלא נשבר (מתחת לממוצע) אם יש ("שפל עולה"). קו תמיכה שלך = עוגן B (גם מתחת לממוצע). SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
+   <li><b>לא רודפים:</b> עד ${R.buy_zone_pct}% מעל רמת הפריצה ועד ${R.max_pct_above_ma}% מעל ממוצע 150 יום (מחיר או Buy-Stop), אחרת "רחוקה מדי / אל תרדוף".</li>
+   <li><b>SL (16/11):</b> שני עוגנים בגרף השבועי — A = ממוצע 150 יום (≈30W בגרף השבועי), B = השפל המשמעותי האחרון בבסיס הנוכחי שלא נשבר (רצפת הבסיס). ה-SL מתחת <b>לנמוך מבין השניים</b>, ${R.stop_margin_pct}% מתחתיו (בתוך 0.5%–${R.stop_margin_max_pct}%), או $${R.stop_round_tick} מתחת למספר עגול שנמצא ממש מתחת לעוגן אם זה עדיין בתוך ${R.stop_margin_max_pct}%. שפל מעל הממוצע → מתחת לממוצע ("ממוצע"); שפל מתחת לממוצע → מתחת לשפל ("שפל"). אם ה-SL מתחת לשפל רחוק מ-${R.max_stop_pct}% והממוצע כבר עולה — מתחת לשפל העולה האחרון שלא נשבר (מתחת לממוצע) אם יש ("שפל עולה"). קו תמיכה שלך = עוגן B (גם מתחת לממוצע). SL מעל ${R.max_stop_pct}% = תג "SL רחב מדי" — מידע בלבד, לא פוסל; אפשר למיין לפי SL%.</li>
    <li><b>התנגדות תקורה:</b> שיאי סווינג משמעותיים (${R.sig_pivot_w} נרות מכל צד) ב-${R.overhead_w} השבועות האחרונים מעל הכניסה (+${R.target_min_gap_pct}%). הקרובה = היעד. אין = "שמיים פתוחים": יעד = כניסה + ${R.min_rr}×סיכון (R:R ${R.min_rr} בדיוק). R:R ≥ ${R.min_rr}.</li>
    <li><b>דוחות — לפני כניסה:</b> לא מציבים Buy-Stop חדש כשהדוח בתוך ${R.earn_td} ימי המסחר הקרובים (שבוע הדוח והשבוע שלפניו; דוח אחרי הסגירה נספר ליום המסחר הבא) — "דוח בעוד X ימי מסחר – לא להציב Buy-Stop". כש-FinViz מציג רק דוח שעבר: הדוח הבא משוער = האחרון + 13 שבועות ("משוער"), וגם הוא חוסם בתוך החלון. תאריך לא ידוע = לא עובר עד שבודקים.</li>
    <li><b>אחרי דוח (${R.post_earn_td} ימי מסחר):</b> גאפ למעלה (פתיחה ≥ ${R.gap_min_pct}% מעל הסגירה, סגירה מעל ההתנגדות, מחזור ≥ ${R.gap_vol_mult}x ממוצע ${R.gap_vol_avg_d} ימים) = "גאפ אחרי דוח – לא לרדוף, להמתין להחזקה/בסיס קטן"; חוזרת להיות מועמדת אחרי ≥ ${R.mini_base_d} ימי מסחר שכולם נסגרו מעל רמת הפריצה (בסיס קטן; נרות יומיים, אחרת סגירה שבועית). הדוח עבר והמחיר עדיין צמוד מתחת להתנגדות = "דוח עבר – להחזיר Buy-Stop".</li>
    <li><b>בתוך פוזיציה (הנחיה בלבד, אין מעקב פוזיציות):</b> נכנסת 3–4 שבועות לפני הדוח והמניה +10%–15% מעל הכניסה — אפשר להחזיק דרך הדוח ולהדק את הסטופ מתחת לשפל האחרון. סביב מחיר הכניסה בלי כרית — לצמצם חצי או לצאת לפני הדוח.</li>
-      <li><b>שוק (SPY) לא בשלב 3 או 4</b> (כלל Top-Down, 15/11; QQQ מוצג כמידע); <b>ענף אם יש תעודה ממופת (CIBR / KRE / SMH / ITA וכו׳), אחרת סקטור SPDR</b> — לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); כשיש ענף, הסקטור מוצג כמידע בלבד. RS — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
+      <li><b>שוק (SPY) לא בשלב 3 או 4</b> (כלל Top-Down, 15/11; QQQ מוצג כמידע); <b>ענף אם יש תעודה ממופת (CIBR / KRE / SMH / ITA וכו׳), אחרת סקטור SPDR</b> — לא בשלב 4 ועומד באחד: "שלב 2 מובהק" (פרץ התנגדות, מעל ממוצע 150 יום עולה) או "סוף שלב 1 – התעוררות" (חזר מעל ממוצע 150 יום והממוצע הפסיק לרדת — שטוח או מתעגל מעלה); כשיש ענף, הסקטור מוצג כמידע בלבד. RS — מידע בלבד; RS המניה &gt; 0 ועולה. כמות = $${f(maxRisk, 0)} ÷ (כניסה − SL).</li>
    <li>התראת טלגרם בשבת אחרי הסגירה השבועית — רק כשיש מועמדות. אין פקודות אוטומטיות.</li></ul>
   <h4>Sell-Stop (מועמדי שורט — תמונת ראי)</h4><ul>
-   <li><b>כניסה = Sell-Stop</b> מתחת לתמיכת הבסיס/פסגה: רצפה − ${R.sell_stop_buf_pct ?? 0.5}% (מינימום $${R.sell_stop_min_buf ?? 0.05}). שני מצבים: (א) לפני שבירה — פסגת שלב 3 או בסיס המשך בשלב 4 (≥${R.min_base_w} ש׳), קרוב לרצפה (עד ${R.pre_bo_pct}% מעל התמיכה) ומתחת ל-30W SMA שאינו עולה; (ב) שבירה טרייה (4A) ב-${(R.bo_max_weeks_ago ?? 3) + 1} השבועות האחרונים מתחת לתמיכת ${R.base_window_w} שבועות ומתחת ל-30W SMA שטוח/יורד. מחזור בשבירה רצוי אך לא חובה בשורט (לפי ויינשטיין).</li>
-   <li><b>לא רודפים:</b> עד ${R.sell_zone_pct ?? 10}% מתחת לרמת השבירה ועד ${R.max_pct_below_ma ?? 25}% מתחת ל-30W SMA.</li>
-   <li><b>סטופ מגן (Buy-Stop):</b> מעל הגבוה מבין 30W SMA ושיא הפסגה האחרון שלא נשבר (+${R.stop_margin_pct}% או מעל מספר עגול עד ${R.stop_margin_max_pct}%). אם השיא גבוה מ-SMA, הסטופ &gt; ${R.max_stop_pct}% והממוצע כבר יורד — מעל השיא היורד האחרון (בין הממוצע לשיא).</li>
+   <li><b>כניסה = Sell-Stop</b> מתחת לתמיכת הבסיס/פסגה: רצפה − ${R.sell_stop_buf_pct ?? 0.5}% (מינימום $${R.sell_stop_min_buf ?? 0.05}). שני מצבים: (א) לפני שבירה — פסגת שלב 3 או בסיס המשך בשלב 4 (≥${R.min_base_w} ש׳), קרוב לרצפה (עד ${R.pre_bo_pct}% מעל התמיכה) ומתחת לממוצע 150 יום שאינו עולה; (ב) שבירה טרייה (4A) ב-${(R.bo_max_weeks_ago ?? 3) + 1} השבועות האחרונים מתחת לתמיכת ${R.base_window_w} שבועות ומתחת לממוצע 150 יום שטוח/יורד. מחזור בשבירה רצוי אך לא חובה בשורט (לפי ויינשטיין).</li>
+   <li><b>לא רודפים:</b> עד ${R.sell_zone_pct ?? 10}% מתחת לרמת השבירה ועד ${R.max_pct_below_ma ?? 25}% מתחת לממוצע 150 יום.</li>
+   <li><b>סטופ מגן (Buy-Stop):</b> מעל הגבוה מבין ממוצע 150 יום ושיא הפסגה האחרון שלא נשבר (+${R.stop_margin_pct}% או מעל מספר עגול עד ${R.stop_margin_max_pct}%). אם השיא גבוה מ-SMA, הסטופ &gt; ${R.max_stop_pct}% והממוצע כבר יורד — מעל השיא היורד האחרון (בין הממוצע לשיא).</li>
    <li><b>יעד ותמיכה:</b> שפל סווינג משמעותי קרוב מטה (${R.sig_pivot_w} נרות מכל צד, שנתיים); אין = שמיים פתוחים מטה (${R.min_rr}×סיכון אם מעל $0), ו־0 &lt; יעד &lt; כניסה &lt; SL, יחס R:R ≥ ${R.min_rr}.</li>
-   <li><b>שערי שוק, סקטור ונתונים:</b> SPY בשלב 3 או 4 מאפשר שורטים (שלב 1, שלב 2 ו־2-weak חוסמים כי 30W SMA עדיין עולה); ענף/סקטור בשלב 3 או 4 (לעולם לא שלב 2); Mansfield RS &lt; 0 ויורד; הימנעות משורט סקוויז (שורט פלואט &lt; ${R.short_float_max_pct ?? 10}% כשידוע); סינון מקדים זהה + הוצאת קרנות כספיות/אג״ח קצר (ATR(W) &lt; ${R.cash_etf_atr_pct_max ?? 1}%).</li>
+   <li><b>שערי שוק, סקטור ונתונים:</b> SPY בשלב 3 או 4 מאפשר שורטים (שלב 1 ושלב 2 חוסמים כי ממוצע 150 יום עדיין עולה); ענף/סקטור בשלב 3 או 4 (לעולם לא שלב 2); Mansfield RS &lt; 0 ויורד; הימנעות משורט סקוויז (שורט פלואט &lt; ${R.short_float_max_pct ?? 10}% כשידוע); סינון מקדים זהה + הוצאת קרנות כספיות/אג״ח קצר (ATR(W) &lt; ${R.cash_etf_atr_pct_max ?? 1}%).</li>
   </ul>
   <h4>סינון מקדים</h4><ul><li>מחיר ≥ $${R.min_price} · מוסדיים ${R.inst_lo}%–${R.inst_hi}% · לא ביוטק מתחת ל-$${R.biotech_cap_b}B · <b>לפחות 3 שנות היסטוריה (≥ ${R.min_weeks} נרות שבועיים)</b> — מניה צעירה יותר לא מסווגת בכלל ולא מופיעה באף לשון · <b>מחזור יומי ממוצע ≥ $${R.min_dollar_vol_m}M</b> (ממוצע ${R.dollar_vol_days} ימים של מחיר×כמות; בלי נתונים יומיים: מחזור שבועי/5 בממוצע ${R.dollar_vol_weeks} שבועות) — מניה דלילה לא מסווגת ולא מופיעה. מדדים ותעודות סקטור פטורים.</li></ul>
-  <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (עוגן B: שפל הבסיס האחרון שלא נשבר, אחרת 30W SMA), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום מזיזה את עוגן B (ה-SL מתחת לנמוך מבין הקו והממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
+  <h4>עריכה</h4><p>בגרף הגדול שני קווים מלאים: אדום = תמיכה (עוגן B: שפל הבסיס האחרון שלא נשבר, אחרת ממוצע 150 יום), כחול = התנגדות (תקרת הבסיס = Buy-Stop), ופס העסקה (היעד בתוכו). גרירת הקו הכחול מזיזה את ה-Buy-Stop, גרירת האדום מזיזה את עוגן B (ה-SL מתחת לנמוך מבין הקו והממוצע). זה נשמר כ"שלך" (טבלה נפרדת — לא נוגע בשרטוטי ה-Retest או בהתראות שלו), גובר על החישוב, ו-R:R / SL% / כמות מחושבים מחדש.</p></div>`;
 }
 
-/** Mini weekly chart: candles + 30W SMA (orange) + ceiling (blue dashed) + Buy-Stop (white) + SL (red) + target (green). */
+/** Mini weekly chart: candles + 150d-equivalent 30W SMA (orange) + ceiling (blue dashed) + Buy-Stop (white) + SL (red) + target (green). */
 export function drawStChart(cv: HTMLCanvasElement, sp: StSpark | undefined, r?: StageRow, e?: EffPlan | null, ceil?: number | null) {
   const W = cv.clientWidth, H = cv.clientHeight;
   if (!sp || !W || !H) return;
@@ -512,7 +515,7 @@ export function drawStChart(cv: HTMLCanvasElement, sp: StSpark | undefined, r?: 
 }
 
 
-/** Sector / market ETF page (#/stages/XLU, Eyal 2026-11-14): big weekly chart + 30W SMA, stage, slope and the sector
+/** Sector / market ETF page: weekly planning chart (orange ≈ 150d / 30W) + daily stage, slope and the sector
  *  rule (not stage 4 + 'שלב 2 מובהק' / 'סוף שלב 1 – התעוררות'), base ceiling when relevant. Read-only. */
 export function etfCeil(e: EtfStage): number | null {
   if (e.idx) return e.stage === 2 ? null : e.range?.ceil ?? null;
@@ -543,19 +546,19 @@ export function etfDetailHtml(d: StagesDoc, t: string, e: EtfStage, from: string
   </header>
   <div class="sttags pad"><span class="badge ${isMkt && t !== 'SPY' ? 'b-off' : ok ? 'b-pass' : 'b-fail'}" id="secrule">${isMkt && t !== 'SPY' ? 'ℹ' : ok ? '✓' : '✗'} ${ruleTxt}</span>${e.td_he ? ` <span class="badge b-off" id="sectd">${esc(isMkt ? 'משמעות' : 'Top-Down')}: ${esc(e.td_he)}</span>` : ''}</div>
   <div id="stbig" class="chartwrap" dir="ltr"><div id="stnodata" class="nodata" hidden>אין נרות שבועיים</div></div>
-  <div class="tools"><span class="small muted">כתום = 30W SMA${ceil != null ? ' · כחול = התנגדות (תקרת הטווח)' : ''}${floor != null ? ' · אדום = תמיכה (' + (e.stage === 2 ? 'השפל העולה האחרון' : 'רצפת הטווח') + ')' : ''} · קריאה בלבד</span></div>
+  <div class="tools"><span class="small muted">כתום = ממוצע 150 יום (≈30W)${ceil != null ? ' · כחול = התנגדות (תקרת הטווח)' : ''}${floor != null ? ' · אדום = תמיכה (' + (e.stage === 2 ? 'השפל העולה האחרון' : 'רצפת הטווח') + ')' : ''} · קריאה בלבד</span></div>
   <div class="panel stpanel">
-    <div class="stplan"><b>${isMkt ? 'שלב המדד (ויינשטיין, 4 פרמטרים)' : 'כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל 30W SMA עולה) או "סוף שלב 1 – התעוררות" (חזר מעל 30W SMA והממוצע הפסיק לרדת)'}</b>
+    <div class="stplan"><b>${isMkt ? 'שלב המדד (ויינשטיין, 4 פרמטרים)' : 'כלל הסקטור (ויינשטיין): לא בשלב 4, ואחד מהשניים — "שלב 2 מובהק" (פרץ התנגדות, מעל ממוצע 150 יום עולה) או "סוף שלב 1 – התעוררות" (חזר מעל ממוצע 150 יום והממוצע הפסיק לרדת)'}</b>
       <div class="skvs" id="idxkv">
         ${kv('תוצאה', isMkt && t !== 'SPY' ? 'מידע בלבד' : `${ok ? '✓ עובר' : '✗ נכשל'} · ${esc(isMkt ? `שלב ${e.stage}` : e.sec_he ?? '')}`, isMkt && t !== 'SPY' ? '' : cls)}${kv('שלב', esc(STAGE_HE[e.stage] || String(e.stage)) + (e.sub && SUB_HE[e.sub] && e.sub !== String(e.stage) ? ' · ' + esc(SUB_HE[e.sub]) : ''))}
-        ${kv('1 · מחיר מול 30W SMA', x ? `${esc(POS_HE[x.pos])} (${x.above_n}/${x.of_w} מעל · ${sg(e.pct_ma)}%)` : (e.close > e.ma30 ? `מעל (${sg(e.pct_ma)}%)` : `מתחת (${sg(e.pct_ma)}%)`), e.close > e.ma30 ? 'pos' : 'neg')}${kv('2 · שיפוע הממוצע', `${SLOPE_HE(e.slope_cls)} (${sg(e.slope)}%)`, e.slope_cls === 'down' ? 'neg' : e.slope_cls === 'up' ? 'pos' : '')}
+        ${kv('1 · מחיר מול ממוצע 150 יום', x ? `${esc(POS_HE[x.pos])} (${x.above_n}/${x.of_w} מעל · ${sg(e.pct_ma)}%)` : (e.close > e.ma30 ? `מעל (${sg(e.pct_ma)}%)` : `מתחת (${sg(e.pct_ma)}%)`), e.close > e.ma30 ? 'pos' : 'neg')}${kv('2 · שיפוע הממוצע', `${SLOPE_HE(e.slope_cls)} (${sg(e.slope)}%)`, e.slope_cls === 'down' ? 'neg' : e.slope_cls === 'up' ? 'pos' : '')}
         ${kv('3 · מבנה (HH/HL)', x ? esc(x.struct === 'HH/HL' ? 'HH/HL — שיאים ושפלים עולים' : x.struct === 'LH/LL' ? 'LH/LL — שיאים ושפלים יורדים' : 'מעורב / דשדוש') : '—', x?.struct === 'HH/HL' ? 'pos' : x?.struct === 'LH/LL' ? 'neg' : '')}${kv('4 · משמעות', esc(e.td_he ?? x?.td_he ?? '—'), TD_CLS[e.td ?? ''] ?? '')}
         ${kv('שיאי סווינג', sw(x?.swing_hi, x?.swing_hi_w))}${kv('שפלי סווינג', sw(x?.swing_lo, x?.swing_lo_w))}
         ${kv('תמיכה', floor != null ? '$' + f(floor) + (x?.broke_support ? ' (נשברה)' : '') : '—', x?.broke_support ? 'neg' : '')}${kv('התנגדות', ceil != null ? '$' + f(ceil) : x?.resistance != null ? '$' + f(x.resistance) : '—')}
-        ${kv('30W SMA', '$' + f(e.ma30))}${kv('Mansfield RS (מידע בלבד)', `${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}`)}
+        ${kv('ממוצע 150 יום', '$' + f(e.ma30))}${kv('Mansfield RS (מידע בלבד)', `${sg(e.rs)} ${e.rs_up == null ? '' : e.rs_up ? '↑' : '↓'}`)}
       </div></div>
     <h4>זיהוי ${esc(STAGE_HE[e.stage] || '')} (${e.score}/4)</h4><ul class="cks">${e.checks.map(chk).join('')}</ul>
-    ${e.range ? `<p class="small muted">בשלב ${e.stage} מאז ${ddmm(e.range.since)} (${e.range.since_w} ש׳)${e.stage === 2 ? ' — סגירה בודדת מתחת לממוצע עולה לא מעבירה לשלב 4 כל עוד השפל העולה מחזיק (כלל 1)' : ''}.</p>` : ''}
+    ${e.range ? `<p class="small muted">בשלב ${e.stage} מאז ${ddmm(e.range.since)} (${e.range.since_w} ש׳)${e.stage === 2 ? ' — סגירה מתחת לממוצע 150 יום יוצאת משלב 2; שלב 4 מתחיל בשבירת תמיכה גם אם הממוצע עוד שטוח' : ''}.</p>` : ''}
     <p class="small muted">שבוע ${ddmm(e.week)} · <a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent((ETF_NASDAQ.has(t) ? 'NASDAQ:' : 'AMEX:') + t)}&interval=W" target="_blank" rel="noopener">TradingView</a></p>
   </div></div>`;
 }

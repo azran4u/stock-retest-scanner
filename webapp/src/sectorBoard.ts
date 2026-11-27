@@ -1,7 +1,7 @@
 // Sector board on #/stages (T-7, Eyal 2026-11-26): SPDR sector strip, top-10 daily mini charts
 // (lightweight-charts), recommendations, large daily chart, and stage filters.
-// Badge 2a = above the 150-day / 30-week SMA and still at or below resistance (pre-breakout).
-// Distinct from pipeline sub-stage 2A (fresh stage-2 breakout), which is shown as badge 2.
+// Badge 2a = official high-volume breakout (daily close, 150d SMA). Stage 1 above the
+// 150d and within 1 weekly ATR of resistance is the Buy-Stop-candidate filter, not 2a.
 import type { Bar } from './types';
 import { fetchData } from './data';
 
@@ -14,7 +14,7 @@ export interface BoardRec {
   kind: string; he: string; entry: number | null; stop: number | null; side: string | null;
   res: number | null; sup: number | null; bo_lvl: number | null; bd_lvl: number | null;
 }
-export interface BoardFlags { near_res: boolean; near_sup: boolean; retest2: boolean; retest4: boolean }
+export interface BoardFlags { bs_ready?: boolean; is_2a?: boolean; near_res: boolean; near_sup: boolean; retest2: boolean; retest4: boolean }
 export interface BoardStock {
   t: string; n: string | null; sec: string | null; etf: string | null; mcap_b: number | null;
   stage: number; sub: string | null; badge: BoardBadge; close: number; ma30: number | null; atr_w: number | null;
@@ -32,15 +32,17 @@ export interface BoardDoc {
   version: number; generated_at: string; week: string | null; source: string; badge_2a: string;
   near_pct?: number; near_atrs?: number; near?: string; daily_years: number; daily_path: string; top_n: number;
   sectors: BoardSector[]; stocks: Record<string, BoardStock>;
-  filters: { '2a_res': string[]; '3_sup': string[]; retest2: string[]; retest4: string[] };
+  filters: { bs_ready?: string[]; '2a'?: string[]; '2a_res'?: string[]; '3_sup': string[]; retest2: string[]; retest4: string[] };
   hist_min_start?: string | null;
 }
 
-export type BoardFilter = '2a_res' | '3_sup' | 'retest2' | 'retest4';
+export type BoardFilter = 'bs_ready' | '2a' | '3_sup' | 'retest2' | 'retest4';
+const FILTER_ALIAS: Record<string, BoardFilter> = { '2a_res': '2a' };
 export const BOARD_FILTERS: [BoardFilter, string][] = [
-  ['2a_res', '2a ליד התנגדות'],
+  ['bs_ready', 'מועמדות ל-Buy-Stop'],
+  ['2a', 'שלב 2a פריצה'],
+  ['retest2', 'שלב 2 ריטסט'],
   ['3_sup', '3 ליד תמיכה'],
-  ['retest2', '2 ריטסט (לונג)'],
   ['retest4', '4 ריטסט (שורט)'],
 ];
 
@@ -58,7 +60,8 @@ export function parseStagesHash(hash = location.hash): StagesRoute {
   const q = new URLSearchParams(qIdx >= 0 ? raw.slice(qIdx + 1) : '');
   const parts = path.split('/').filter(Boolean);
   const fRaw = q.get('f');
-  const f = (BOARD_FILTERS.some(([k]) => k === fRaw) ? fRaw : null) as BoardFilter | null;
+  const fNorm = (fRaw && (FILTER_ALIAS[fRaw] || fRaw)) as string;
+  const f = (BOARD_FILTERS.some(([k]) => k === fNorm) ? fNorm : null) as BoardFilter | null;
   if (parts[0] !== 'stages') return { mode: 'list', t: null, sec: null, f };
   if (parts[1] === 'board') {
     const secRaw = parts[2] && parts[2] !== '_' ? decodeURIComponent(parts[2]).toUpperCase() : (q.get('sec') || '');
@@ -114,7 +117,7 @@ export function sectorStripHtml(board: BoardDoc, route: StagesRoute): string {
     const href = route.f === k ? boardHref(route.sec) : boardHref(route.sec, null, k);
     return `<a class="chip${on}" href="${href}" data-bf="${k}">${he} <span class="cnt">${n}</span></a>`;
   }).join('');
-  const src = 'סקטורים לפי תעודות SPDR (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC). 2a = מעל ממוצע 150 יום, לפני פריצה. ״קרוב״ בסינון = עד ATR שבועי אחד.';
+  const src = 'סקטורים לפי תעודות SPDR (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC). שלבים לפי גרף יומי וממוצע 150 יום (שיפוע = שינוי ב-20 ימי מסחר). 2a = פריצה במחזור גבוה (≥2× ממוצע 50 יום). מועמדות ל-Buy-Stop = שלב 1, מעל ממוצע 150 יום, בתוך ATR שבועי אחד מתחת להתנגדות. שלב 2 ריטסט = אחרי פריצה במחזור גבוה, חזרה אל הרמה שנפרצה (עד ATR שבועי אחד). ״קרוב״ = עד ATR שבועי אחד.';
   return `<section class="stsectors" aria-label="סקטורים">
     <div class="stsec-row">${tiles}</div>
     <div class="chips stboard-filters" role="tablist" aria-label="סינון לוח סקטורים">${filters}</div>
@@ -124,7 +127,12 @@ export function sectorStripHtml(board: BoardDoc, route: StagesRoute): string {
 
 export function boardStocks(board: BoardDoc, route: StagesRoute): BoardStock[] {
   let ids: string[] = [];
-  if (route.f && board.filters[route.f]) ids = board.filters[route.f].slice();
+  const filterIds = (f: BoardFilter | null): string[] => {
+    if (!f) return [];
+    const fl = board.filters as Record<string, string[] | undefined>;
+    return (fl[f] || (f === '2a' ? fl['2a_res'] : undefined) || []).slice();
+  };
+  if (route.f) ids = filterIds(route.f);
   else if (route.sec) {
     const s = board.sectors.find((x) => x.etf === route.sec);
     ids = s?.stocks?.slice() ?? [];
@@ -132,12 +140,13 @@ export function boardStocks(board: BoardDoc, route: StagesRoute): BoardStock[] {
   if (route.f && route.sec) {
     const allow = new Set(board.sectors.find((x) => x.etf === route.sec)?.stocks ?? []);
     // Filter is universe-wide; when a sector is also selected, intersect with that sector's full membership via etf field
-    ids = board.filters[route.f].filter((t) => {
+    const flist = filterIds(route.f);
+    ids = flist.filter((t) => {
       const st = board.stocks[t];
       return st && (st.etf === route.sec || allow.has(t));
     });
     // also include filter hits in this sector even if not in the top 10
-    const extra = board.filters[route.f].filter((t) => board.stocks[t]?.etf === route.sec && !ids.includes(t));
+    const extra = flist.filter((t) => board.stocks[t]?.etf === route.sec && !ids.includes(t));
     ids = [...ids, ...extra];
   }
   const rows = ids.map((t) => board.stocks[t]).filter((x): x is BoardStock => !!x);

@@ -92,14 +92,15 @@ def above_ma(close: Optional[float], ma30: Optional[float]) -> bool:
 def board_badge(row: Dict[str, Any]) -> str:
     """UI badge: 1, 2a, 2, 3 or 4.
 
-    2a = stage 1 (not yet a breakout) AND close > 30W / 150d SMA. Pipeline sub '2A'
-    (fresh stage-2 breakout) remains badge '2'.
+    2a = official high-volume breakout (path sub '2a' / '2A') still in the 2a window.
+    Stage 1 above the 150d SMA is no longer badge 2a — that is a Buy-Stop candidate.
     """
     try:
         stage = int(row.get("stage") or 0)
     except (TypeError, ValueError):
         stage = 0
-    if stage == 1 and above_ma(row.get("close"), row.get("ma30")):
+    sub = str(row.get("sub") or "").lower()
+    if stage == 2 and sub == "2a":
         return "2a"
     return str(stage) if stage in (1, 2, 3, 4) else "?"
 
@@ -121,11 +122,25 @@ def near_abs(close: Optional[float], level: Optional[float],
     return abs(close - level) <= near_atrs * atr_w
 
 
+def flag_bs_ready(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
+    """Buy-Stop candidate: stage 1, close above the 150d SMA, within 1 weekly ATR under resistance."""
+    try:
+        stage = int(row.get("stage") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (stage == 1 and above_ma(row.get("close"), row.get("ma30"))
+            and near_level(row.get("close"), resistance_of(row), from_below=True,
+                           atr_w=row.get("atr_w"), near_atrs=near_atrs))
+
+
 def flag_near_res(row: Dict[str, Any], badge: Optional[str] = None, near_atrs: float = NEAR_ATRS) -> bool:
-    """Main long filter: badge 2a and close within 1 weekly ATR under resistance."""
-    b = badge or board_badge(row)
-    return b == "2a" and near_level(row.get("close"), resistance_of(row), from_below=True,
-                                    atr_w=row.get("atr_w"), near_atrs=near_atrs)
+    """Backward-compatible alias: Buy-Stop candidate (was the old pre-breakout '2a' filter)."""
+    return flag_bs_ready(row, near_atrs)
+
+
+def flag_2a(row: Dict[str, Any], badge: Optional[str] = None, near_atrs: float = NEAR_ATRS) -> bool:
+    """Official high-volume breakout still in the 2a window (badge 2a)."""
+    return (badge or board_badge(row)) == "2a"
 
 
 def flag_near_sup(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
@@ -167,10 +182,11 @@ def last_breakout_level(w, lookback_w: int = 52) -> Optional[float]:
 
 
 def flag_retest2(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
-    """Stage 2 pulling back to the broken resistance (now support) — long retest.
+    """Stage 2 pulling back to broken resistance as support, after a high-volume breakout.
 
-    Needs a breakout level: recorded bo.level, or one derived from weekly history
-    (row['_bo_lvl'], set in write_board). Range floor alone is not enough.
+    Close must be within 1 weekly ATR of that level (not more than 1 weekly ATR below it).
+    Volume on the recorded breakout should be >= 2x the 50-day average daily volume
+    (or the weekly find_breakout vol_ok, when that is what we have).
     """
     try:
         stage = int(row.get("stage") or 0)
@@ -178,8 +194,16 @@ def flag_retest2(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
         return False
     if stage != 2:
         return False
-    lvl = (row.get("bo") or {}).get("level") or row.get("_bo_lvl")
-    return near_abs(row.get("close"), _f(lvl), atr_w=row.get("atr_w"), near_atrs=near_atrs)
+    bo = row.get("bo") or {}
+    lvl = bo.get("level") or row.get("_bo_lvl")
+    if not near_abs(row.get("close"), _f(lvl), atr_w=row.get("atr_w"), near_atrs=near_atrs):
+        return False
+    vr = bo.get("vol_ratio")
+    vol_ok = bo.get("vol_ok")
+    heavy = vol_ok is True or (vr is not None and float(vr) >= float(RULES.get("vol_mult", 2.0)))
+    if not heavy and str(row.get("sub") or "").lower() != "2a":
+        return False
+    return True
 
 
 def flag_retest4(row: Dict[str, Any], near_atrs: float = NEAR_ATRS) -> bool:
@@ -244,21 +268,23 @@ def recommend(row: Dict[str, Any], badge: Optional[str] = None, flags: Optional[
     kind, he = "wait", "אין המלצה ברורה מהגרף — להמתין."
     entry, stop, side = None, None, None
 
-    if badge == "2a":
-        if flags.get("near_res") and res and long_entry:
-            kind, side, entry, stop = "buy_stop", "long", long_entry, long_sl
-            he = (f"המלצה: פקודת Buy-Stop מעל ההתנגדות ב-{px(long_entry)} "
-                  f"(תקרה {px(res)}), סטופ לפי כלל ויינשטיין/Stef ב-{px(long_sl)}.")
-        elif res:
-            kind, side, entry, stop = "wait_breakout", "long", long_entry, long_sl
-            he = (f"מעל ממוצע 150 יום, לפני הפריצה — להמתין לסגירה מעל ההתנגדות {px(res)}."
-                  + (f" אחרי הפריצה אפשר לשקול Buy-Stop ב-{px(long_entry)}, SL ב-{px(long_sl)}." if long_entry else ""))
-        else:
-            kind = "wait_breakout"
-            he = "מעל ממוצע 150 יום, לפני הפריצה — להמתין להתבהרות רמת ההתנגדות."
+    if flags.get("bs_ready") and res and long_entry:
+        kind, side, entry, stop = "buy_stop", "long", long_entry, long_sl
+        he = (f"מועמדת ל-Buy-Stop (שלב 1, מעל ממוצע 150 יום, ליד ההתנגדות): "
+              f"פקודת Buy-Stop מעל ההתנגדות ב-{px(long_entry)} "
+              f"(תקרה {px(res)}), סטופ לפי כלל ויינשטיין/Stef ב-{px(long_sl)}.")
+    elif badge == "2a":
+        kind, side, entry, stop = "breakout_2a", "long", long_entry, long_sl
+        he = ("שלב 2a — פריצה במחזור גבוה מעל תקרת הבסיס. "
+              "אפשר להמתין לריטסט ראשון במחזור קל שמחזיק מעל הרמה שנפרצה"
+              + (f" ({px(broken_resistance(row) or res)})." if (broken_resistance(row) or res) else ".")
+              + (f" אם מופיע טריגר: Buy-Stop ב-{px(long_entry)}, SL ב-{px(long_sl)}." if long_entry else ""))
     elif int(row.get("stage") or 0) == 1:
         kind = "wait_sma"
-        he = "להמתין לסגירה מעל ממוצע 150 יום (30 שבועות)" + (f" ({px(ma)})." if ma else ".")
+        he = ("שלב 1 (בסיס). " +
+              ("מעל ממוצע 150 יום — להמתין להתקרבות להתנגדות ל-Buy-Stop."
+               if above_ma(close, ma) else
+               "להמתין לסגירה מעל ממוצע 150 יום" + (f" ({px(ma)})." if ma else ".")))
     elif flags.get("retest2") and bo_lvl:
         kind, side, entry, stop = "limit_retest", "long", bo_lvl, long_sl
         he = (f"המלצה: פקודת לימיט בריטסט של ההתנגדות שנפרצה ({px(bo_lvl)}), "
@@ -299,7 +325,9 @@ def recommend(row: Dict[str, Any], badge: Optional[str] = None, flags: Optional[
 def flags_of(row: Dict[str, Any], badge: Optional[str] = None, near_atrs: float = NEAR_ATRS) -> Dict[str, bool]:
     b = badge or board_badge(row)
     return {
-        "near_res": flag_near_res(row, b, near_atrs),
+        "bs_ready": flag_bs_ready(row, near_atrs),
+        "near_res": flag_bs_ready(row, near_atrs),  # alias of the old pre-breakout flag
+        "is_2a": flag_2a(row, b, near_atrs),
         "near_sup": flag_near_sup(row, near_atrs),
         "retest2": flag_retest2(row, near_atrs),
         "retest4": flag_retest4(row, near_atrs),
@@ -367,11 +395,14 @@ def top_stocks(rows: List[Dict[str, Any]], etf: str, n: int = TOP_N) -> List[Dic
 
 
 def filter_lists(rows: List[Dict[str, Any]], near_atrs: float = NEAR_ATRS) -> Dict[str, List[str]]:
-    out = {"2a_res": [], "3_sup": [], "retest2": [], "retest4": []}
+    out = {"bs_ready": [], "2a": [], "2a_res": [], "3_sup": [], "retest2": [], "retest4": []}
     for r in rows:
         b = board_badge(r)
-        if flag_near_res(r, b, near_atrs):
-            out["2a_res"].append(r["t"])
+        if flag_bs_ready(r, near_atrs):
+            out["bs_ready"].append(r["t"])
+        if flag_2a(r, b, near_atrs):
+            out["2a"].append(r["t"])
+            out["2a_res"].append(r["t"])  # old hash alias
         if flag_near_sup(r, near_atrs):
             out["3_sup"].append(r["t"])
         if flag_retest2(r, near_atrs):
@@ -624,11 +655,11 @@ def write_board(doc: Dict[str, Any], hm: Optional[Dict[str, pd.DataFrame]] = Non
     # history coverage for the report
     starts = [stocks[t]["hist_start"] for t in stocks if stocks[t].get("hist_start")]
     board = {
-        "version": 1,
+        "version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "week": doc.get("week"),
         "source": "SPDR Select Sector ETFs (XLK, XLF, XLV, XLE, XLI, XLY, XLP, XLU, XLB, XLRE, XLC) — FinViz sector map in srs_app.stages.SECTOR_ETF",
-        "badge_2a": "close above the 30-week SMA (≈150-day) and still at or below base resistance (pre-breakout). Distinct from pipeline sub-stage 2A (fresh stage-2 breakout), which is shown as badge 2.",
+        "badge_2a": "official high-volume breakout (daily close above the stage-1 ceiling on >=2x the 50-day average volume, 150d SMA not declining). Stage 1 above the 150d SMA and within 1 weekly ATR of resistance is the Buy-Stop-candidate filter, not badge 2a.",
         "near_atrs": near_atrs,
         "near": "1 weekly ATR (board filters only; RULES.pre_bo_pct for Buy-Stop is unchanged)",
         "daily_years": DAILY_YEARS,
